@@ -1,0 +1,19 @@
+{
+  "gene": "LEPR",
+  "reference": "GENCODE v44 (GRCh38.p14), decoy-aware index, k=31",
+  "groups": {
+    "short": ["ENST00000371060", "ENST00000616738"],
+    "long":  ["ENST00000349533"]
+  },
+  "primary_comparison": ["short", "long"],
+
+  "contamination_qc": {
+    "target_group": "long",
+    "marker_panels": {
+      "tissue":      ["TTR", "FOLR1", "OTX2", "AQP1"],
+      "contaminant": ["RBFOX3", "SNAP25", "MAP2", "GAD1"]
+    }
+  },
+
+  "_notes": "groups = named transcript sets to sum. primary_comparison = the two groups compared (steps 02/03). contamination_qc (optional, step 04) = test whether target_group signal tracks a contaminating cell type via marker panels. Replace IDs/panels for ANY gene/tissue."
+}

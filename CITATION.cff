@@ -1,0 +1,38 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "isoform-dominance-pipeline: config-driven isoform-usage quantification from bulk RNA-seq"
+type: software
+authors:
+  - family-names: "Kim"
+    given-names: "Sangeon"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+version: "1.0.0"
+date-released: "2026-06-01"
+license: MIT
+repository-code: "https://github.com/charliekim97/isoform-dominance-pipeline"
+keywords:
+  - RNA-seq
+  - alternative splicing
+  - isoform quantification
+  - Salmon
+  - reproducible pipeline
+references:
+  - type: article
+    authors:
+      - family-names: Patro
+        given-names: Rob
+      - family-names: Duggal
+        given-names: Geet
+      - family-names: Love
+        given-names: Michael I.
+      - family-names: Irizarry
+        given-names: Rafael A.
+      - family-names: Kingsford
+        given-names: Carl
+    title: "Salmon provides fast and bias-aware quantification of transcript expression"
+    journal: "Nature Methods"
+    volume: 14
+    start: 417
+    end: 419
+    year: 2017
+    doi: "10.1038/nmeth.4197"

@@ -1,0 +1,10 @@
+# Python (tested on Python 3.10)
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.7
+
+# External tools (install separately; not pip-installable)
+# salmon >= 1.10.0   https://github.com/COMBINE-lab/salmon/releases
+#   (only needed for step 01, transcript quantification on an HPC/SLURM cluster)
+#
+# Steps 02 and 03, and the self-test (test/run_test.py), need only the Python packages above.
