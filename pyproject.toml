@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "isoform-dominance"
+version = "2.0.0"
+description = "Config-driven isoform-usage quantification and discrimination from bulk RNA-seq"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Sangeon Kim" }]
+keywords = ["RNA-seq", "alternative splicing", "isoform quantification", "Salmon", "reproducible pipeline"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = ["numpy>=1.24", "scipy>=1.10", "matplotlib>=3.7"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-cov>=4"]
+
+[project.urls]
+Homepage = "https://github.com/charliekim97/isoform-dominance-pipeline"
+Repository = "https://github.com/charliekim97/isoform-dominance-pipeline"
+
+[project.scripts]
+isoform-dominance = "isoform_dominance.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

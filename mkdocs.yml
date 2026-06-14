@@ -1,0 +1,4 @@
+site_name: isoform-dominance
+theme: { name: readthedocs }
+nav:
+  - Home: index.md

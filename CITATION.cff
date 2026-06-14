@@ -1,14 +1,14 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-title: "isoform-dominance-pipeline: config-driven isoform-usage quantification from bulk RNA-seq"
+title: "isoform-dominance: isoform-usage quantification and discrimination from bulk RNA-seq"
 type: software
 authors:
   - family-names: "Kim"
     given-names: "Sangeon"
-    # orcid: "https://orcid.org/0000-0000-0000-0000"
-version: "1.0.0"
-date-released: "2026-06-01"
+version: "2.0.0"
+date-released: "2026-06-14"
 license: MIT
+doi: "10.5281/zenodo.20672052"
 repository-code: "https://github.com/charliekim97/isoform-dominance-pipeline"
 keywords:
   - RNA-seq
