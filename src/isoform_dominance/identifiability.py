@@ -9,7 +9,6 @@ k-mer sets, and reports each group's group-unique k-mer count. A group with zero
 k-mers is flagged as NOT distinguishable by short reads — an honest guardrail that most
 isoform analyses skip.
 """
-import json
 import urllib.request
 
 ENSEMBL = "https://rest.ensembl.org"

@@ -1,9 +1,11 @@
-"""Contamination control: does a target isoform's signal track a contaminating cell type?"""
+"""Contamination control: does a target isoform's signal track a contaminating cell type?
+
+Matplotlib is imported lazily inside ``run`` to keep CLI startup fast for
+subcommands that do not plot.
+"""
 import csv, os, math
 import numpy as np
 from scipy.stats import spearmanr
-import matplotlib as mpl; mpl.use("Agg")
-import matplotlib.pyplot as plt
 
 PALETTE = ["#4C72B0", "#DD8452", "#55A868", "#C44E52"]
 
@@ -30,6 +32,12 @@ def load_target(path, target_group):
 
 def run(config, markers, targets, out):
     """markers/targets: {cohort: path}. Writes <out>.{png,pdf,svg}+_scores.csv. Returns rows."""
+    import matplotlib as mpl; mpl.use("Agg")
+    import matplotlib.pyplot as plt
+    if "contamination_qc" not in config:
+        raise ValueError(
+            "config has no 'contamination_qc' section; add it with a 'target_group' "
+            "and 'marker_panels' ({'tissue': [...], 'contaminant': [...]}) to run qc.")
     qc = config["contamination_qc"]
     tg = qc["target_group"]
     tissue = qc["marker_panels"]["tissue"]; contam = qc["marker_panels"]["contaminant"]

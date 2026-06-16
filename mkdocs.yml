@@ -2,3 +2,6 @@ site_name: isoform-dominance
 theme: { name: readthedocs }
 nav:
   - Home: index.md
+  - 'Worked example: NTRK2': tutorial_NTRK2.md
+  - 'More example genes': example_genes.md
+  - 'API reference': api.md

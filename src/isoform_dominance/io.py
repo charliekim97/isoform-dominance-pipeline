@@ -1,5 +1,5 @@
 """Shared IO helpers: config and sample-map loading."""
-import json, csv, os
+import json, csv
 
 
 def load_config(path):
@@ -26,6 +26,13 @@ def load_sample_map(path):
 
 
 def primary_pair(config):
+    """The two groups named in ``primary_comparison`` (for the paired comparison)."""
     groups = config["groups"]
     pc = config.get("primary_comparison", list(groups)[:2])
+    if len(pc) < 2:
+        raise ValueError(
+            "primary_comparison must name two isoform groups for a paired "
+            "comparison; got %r. `annotate` proposes a pair only when an "
+            "alternative terminal-exon cluster exists; edit the config to define "
+            "two groups." % (pc,))
     return pc[0], pc[1]

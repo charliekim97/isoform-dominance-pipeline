@@ -1,9 +1,12 @@
-"""Paired isoform-group statistics + figure."""
+"""Paired isoform-group statistics + figure.
+
+Matplotlib is imported lazily inside ``run`` so that importing this module (and
+therefore the CLI) does not pay the matplotlib/font-cache startup cost for
+subcommands that never plot (``--version``, ``annotate``, ``identifiability``).
+"""
 import csv, os
 import numpy as np
 from scipy.stats import wilcoxon
-import matplotlib as mpl; mpl.use("Agg")
-import matplotlib.pyplot as plt
 from .io import primary_pair
 
 PALETTE = ["#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B3", "#937860"]
@@ -20,18 +23,35 @@ def load_perdonor(path, condition, gA, gB):
 
 
 def paired_stat(A, B):
-    n = len(A); ngt = int(np.sum(A > B))
-    try:
-        p = wilcoxon(A, B, alternative="two-sided").pvalue
-    except Exception:
-        p = float("nan")
+    """Return (n, n_A>B, two-sided exact Wilcoxon P, median fold A/B).
+
+    Edge cases are handled explicitly: an empty input returns NaNs; if every pair
+    is tied (no nonzero differences) the signed-rank test is undefined and P is
+    NaN; the median fold-change ignores non-finite ratios (e.g. zero denominators).
+    """
+    A = np.asarray(A, dtype=float); B = np.asarray(B, dtype=float)
+    n = len(A)
+    if n == 0:
+        return 0, 0, float("nan"), float("nan")
+    ngt = int(np.sum(A > B))
+    if np.allclose(A, B):
+        p = float("nan")          # all differences zero -> test undefined
+    else:
+        try:
+            p = float(wilcoxon(A, B, alternative="two-sided").pvalue)
+        except ValueError:
+            p = float("nan")
     with np.errstate(divide="ignore", invalid="ignore"):
-        fold = float(np.median(A / B))
+        ratios = A / B
+    ratios = ratios[np.isfinite(ratios)]
+    fold = float(np.median(ratios)) if ratios.size else float("nan")
     return n, ngt, p, fold
 
 
 def run(config, condition, cohorts, out):
     """cohorts: {name: perdonor.csv}. Writes <out>.{png,pdf,svg} + <out>_stats.csv. Returns summary dict."""
+    import matplotlib as mpl; mpl.use("Agg")
+    import matplotlib.pyplot as plt
     gene = config.get("gene", "gene")
     gA, gB = primary_pair(config)
     mpl.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["Arial", "DejaVu Sans"],

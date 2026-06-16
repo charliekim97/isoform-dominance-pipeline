@@ -1,9 +1,10 @@
 # isoform-dominance
 
 [![CI](https://github.com/charliekim97/isoform-dominance-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/charliekim97/isoform-dominance-pipeline/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/isoform-dominance)](https://pypi.org/project/isoform-dominance/)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20672052.svg)](https://doi.org/10.5281/zenodo.20672052)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20692725.svg)](https://doi.org/10.5281/zenodo.20692725)
 
 **Isoform-usage quantification *and discrimination* from bulk RNA-seq — one config away for any gene.**
 
@@ -81,6 +82,32 @@ isoform-dominance qc --config config.json \
     --markers GSE228458=markers_228.csv --target GSE228458=perdonor_GSE228458.csv --out results/qc
 ```
 
+## How this relates to existing tools
+
+Differential transcript usage (DTU) is a mature area, and for genome-wide
+discovery you should use the established tools — this one does **not** replace them:
+
+- **DEXSeq, DRIMSeq, satuRn** — genome-wide DTU testing. They assume you already
+  have a transcript-by-sample count matrix and defined transcript groups.
+- **IsoformSwitchAnalyzeR** — rich functional annotation of isoform switches
+  (domains, NMD, coding potential) in R/Bioconductor; grouping and import are
+  configured by the analyst.
+- **fishpond / swish** — rigorously propagates quantification uncertainty using
+  Salmon inferential replicates.
+
+`isoform-dominance` targets a narrower, common question: *for one gene, which
+functional isoform class predominates?* Its specific contributions are (1) going
+from a **gene symbol** straight to a reviewed isoform-group proposal, (2) an
+explicit, machine-checkable **identifiability guardrail** that refuses to report a
+comparison short reads cannot resolve, and (3) a scriptable Python CLI with a
+download-free self-test meant to ship alongside a manuscript. Group proposals are
+presented for review, not treated as final.
+
+More documentation: a step-by-step [NTRK2 walkthrough](docs/tutorial_NTRK2.md), a
+[gallery of further example genes](docs/example_genes.md) (NTRK2/NTRK3 kinase
+truncations and the FLT1 soluble-decoy receptor, all verified short-read
+separable), and an [API reference](docs/api.md).
+
 ## Statistical notes
 
 - Donor-level two-sided **exact Wilcoxon signed-rank** (`scipy.stats.wilcoxon`), per cohort + combined.
@@ -100,7 +127,7 @@ example/                 config + sample maps
 
 ## Citation
 
-Cite this repository (see `CITATION.cff`, DOI 10.5281/zenodo.20672052) and Salmon:
+Cite this repository (see `CITATION.cff`, DOI 10.5281/zenodo.20692725) and Salmon:
 Patro, R. et al. *Nat. Methods* **14**, 417–419 (2017). https://doi.org/10.1038/nmeth.4197
 
 ## License

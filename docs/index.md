@@ -3,7 +3,7 @@
 [![CI](https://github.com/charliekim97/isoform-dominance-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/charliekim97/isoform-dominance-pipeline/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20672052.svg)](https://doi.org/10.5281/zenodo.20672052)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20692725.svg)](https://doi.org/10.5281/zenodo.20692725)
 
 **Isoform-usage quantification *and discrimination* from bulk RNA-seq — one config away for any gene.**
 
@@ -100,7 +100,7 @@ example/                 config + sample maps
 
 ## Citation
 
-Cite this repository (see `CITATION.cff`, DOI 10.5281/zenodo.20672052) and Salmon:
+Cite this repository (see `CITATION.cff`, DOI 10.5281/zenodo.20692725) and Salmon:
 Patro, R. et al. *Nat. Methods* **14**, 417–419 (2017). https://doi.org/10.1038/nmeth.4197
 
 ## License
