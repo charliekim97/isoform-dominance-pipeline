@@ -4,7 +4,7 @@
 [![PyPI](https://img.shields.io/pypi/v/isoform-dominance)](https://pypi.org/project/isoform-dominance/)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20692725.svg)](https://doi.org/10.5281/zenodo.20692725)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20672051.svg)](https://doi.org/10.5281/zenodo.20672051)
 
 **Isoform-usage quantification *and discrimination* from bulk RNA-seq — one config away for any gene.**
 
@@ -40,7 +40,7 @@ isoform-dominance --version
 isoform-dominance selftest
 # or: pytest -q
 ```
-reproduces the published LEPR result (5/5, 6/6, combined n=11 P=9.8e-4) on a clean machine.
+reproduces the LEPR reference result (5/5, 6/6, combined n=11 P=9.8e-4) on a clean machine.
 
 ## What makes it more than a quantifier
 
@@ -119,7 +119,7 @@ separable), and an [API reference](docs/api.md).
 
 ```
 src/isoform_dominance/   annotate · identifiability · extract · stats · contamination · cli · _selftest
-tests/                   pytest (offline; reproduces the published result + unit tests)
+tests/                   pytest (offline; reproduces the reference result + unit tests)
 scripts/01_salmon_quant.sbatch
 example/                 config + sample maps
 .github/workflows/ci.yml docs/  pyproject.toml  CITATION.cff  LICENSE
@@ -127,7 +127,7 @@ example/                 config + sample maps
 
 ## Citation
 
-Cite this repository (see `CITATION.cff`, DOI 10.5281/zenodo.20692725) and Salmon:
+Cite this repository (see `CITATION.cff`, DOI 10.5281/zenodo.20672051) and Salmon:
 Patro, R. et al. *Nat. Methods* **14**, 417–419 (2017). https://doi.org/10.1038/nmeth.4197
 
 ## License

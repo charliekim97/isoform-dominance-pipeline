@@ -2,7 +2,7 @@
 import math
 import numpy as np
 import pytest
-from isoform_dominance import stats, extract, io
+from isoform_dominance import stats, extract, io, contamination, cli
 
 
 def test_paired_stat_empty():
@@ -57,6 +57,34 @@ def test_single_group_extract_still_writes(tmp_path):
     n = extract.run(cfg, str(tmp_path), str(sm), "C", str(out))
     assert n == 1
     assert "only_TPM" in out.read_text()        # no pair fraction, no crash
+
+
+def test_cli_kv_rejects_bad_argument():
+    with pytest.raises(SystemExit):
+        cli._kv(["GSE1=a.csv", "badarg"])          # missing '='
+    assert cli._kv(["GSE1=a.csv"]) == {"GSE1": "a.csv"}
+
+
+def test_contamination_missing_marker_columns_raises(tmp_path):
+    p = tmp_path / "markers.csv"
+    p.write_text("donor,SOMETHING\nd1,1.0\n")      # no tissue/contaminant columns
+    with pytest.raises(ValueError):
+        contamination.load_markers(str(p), ["TTR"], ["RBFOX3"])
+
+
+def test_contamination_missing_target_column_raises(tmp_path):
+    p = tmp_path / "target.csv"
+    p.write_text("donor,other\nd1,1.0\n")
+    with pytest.raises(ValueError):
+        contamination.load_target(str(p), "long")   # no long_TPM column
+
+
+def test_stats_empty_condition_raises(tmp_path):
+    cfg = {"gene": "G", "groups": {"a": ["T1"], "b": ["T2"]}, "primary_comparison": ["a", "b"]}
+    pd = tmp_path / "pd.csv"
+    pd.write_text("cohort,donor,condition,a_TPM,b_TPM\nC,d1,control,5,1\n")
+    with pytest.raises(ValueError):
+        stats.run(cfg, "MISSING", {"C": str(pd)}, str(tmp_path / "res"))
 
 
 def test_extract_errors_on_malformed_quantsf(tmp_path):

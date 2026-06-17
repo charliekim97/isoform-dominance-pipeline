@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses semantic
 versioning.
 
+## [2.1.1] - 2026-06-16
+
+### Changed
+- Paper and README no longer describe the bundled result as "published"; it is
+  framed as a reanalysis of public cohorts (the associated publication citation is
+  added on availability), removing an internal inconsistency.
+
+### Fixed
+- `qc` validates inputs explicitly: the marker table must contain at least one
+  tissue and one contaminant column, the target column must exist, and at least
+  three donors must overlap before a Spearman correlation is attempted (previously
+  these could silently produce `NaN`).
+- `stats` now fails with a clear error when no donors match the requested
+  condition, instead of emitting an all-`NaN` figure/table.
+- The CLI reports a clear "expected NAME=path" error for malformed
+  `--perdonor` / `--markers` / `--target` arguments instead of a raw `ValueError`.
+- The Salmon helper script no longer swallows download failures (`|| true`
+  removed) and verifies each FASTQ exists before quantification.
+
 ## [2.1.0] - 2026-06-14
 
 ### Added

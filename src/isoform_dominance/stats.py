@@ -62,6 +62,10 @@ def run(config, condition, cohorts, out):
     allA, allB, statrows = [], [], []
     for i, name in enumerate(names):
         don, A, B = load_perdonor(cohorts[name], condition, gA, gB)
+        if len(A) == 0:
+            raise ValueError(
+                "cohort %s: no donors matched condition %r in %s."
+                % (name, condition, cohorts[name]))
         allA += list(A); allB += list(B)
         n, ngt, p, fold = paired_stat(A, B); statrows.append((name, n, ngt, p, fold))
         ax = axes[0, i]; c = PALETTE[i % len(PALETTE)]; fl = 1e-3

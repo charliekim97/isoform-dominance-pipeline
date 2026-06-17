@@ -5,10 +5,10 @@ type: software
 authors:
   - family-names: "Kim"
     given-names: "Sangeon"
-version: "2.1.0"
+version: "2.1.1"
 date-released: "2026-06-14"
 license: MIT
-doi: "10.5281/zenodo.20692725"
+doi: "10.5281/zenodo.20672051"
 repository-code: "https://github.com/charliekim97/isoform-dominance-pipeline"
 keywords:
   - RNA-seq

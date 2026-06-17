@@ -5,7 +5,15 @@ from . import __version__, io, extract, stats, contamination, annotate, identifi
 
 
 def _kv(items):
-    return dict(s.split("=", 1) for s in (items or []))
+    out = {}
+    for s in (items or []):
+        if "=" not in s:
+            raise SystemExit("argument error: expected NAME=path, got %r" % s)
+        k, v = s.split("=", 1)
+        if not k or not v:
+            raise SystemExit("argument error: expected NAME=path, got %r" % s)
+        out[k] = v
+    return out
 
 
 def _net_fail(e):

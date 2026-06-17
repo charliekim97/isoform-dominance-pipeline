@@ -17,9 +17,17 @@ def _log2p1(x):
 def load_markers(path, tissue, contaminant):
     out = {}
     with open(path) as f:
-        for r in csv.DictReader(f):
-            t = np.mean([_log2p1(float(r[g])) for g in tissue if g in r])
-            c = np.mean([_log2p1(float(r[g])) for g in contaminant if g in r])
+        reader = csv.DictReader(f)
+        cols = set(reader.fieldnames or [])
+        have_t = [g for g in tissue if g in cols]
+        have_c = [g for g in contaminant if g in cols]
+        if not have_t or not have_c:
+            raise ValueError(
+                "%s is missing marker columns: present tissue=%s, contaminant=%s "
+                "(need at least one column from each panel)." % (path, have_t, have_c))
+        for r in reader:
+            t = np.mean([_log2p1(float(r[g])) for g in have_t])
+            c = np.mean([_log2p1(float(r[g])) for g in have_c])
             out[r["donor"]] = (t, c, (c / t if t > 0 else float("nan")))
     return out
 
@@ -27,7 +35,10 @@ def load_markers(path, tissue, contaminant):
 def load_target(path, target_group):
     col = "%s_TPM" % target_group
     with open(path) as f:
-        return {r["donor"]: float(r[col]) for r in csv.DictReader(f)}
+        reader = csv.DictReader(f)
+        if col not in (reader.fieldnames or []):
+            raise ValueError("%s has no column %r (target_group=%s)." % (path, col, target_group))
+        return {r["donor"]: float(r[col]) for r in reader}
 
 
 def run(config, markers, targets, out):
@@ -51,6 +62,10 @@ def run(config, markers, targets, out):
         m = load_markers(markers[name], tissue, contam)
         t = load_target(targets[name], tg)
         donors = [d for d in m if d in t]
+        if len(donors) < 3:
+            raise ValueError(
+                "cohort %s: only %d donor(s) overlap between markers and target tables; "
+                "need >= 3 for a Spearman correlation." % (name, len(donors)))
         cs = np.array([m[d][1] for d in donors])
         ratio = np.array([m[d][2] for d in donors])
         tv = np.array([t[d] for d in donors])

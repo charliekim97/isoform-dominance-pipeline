@@ -18,10 +18,14 @@ ena(){ local s=$1; echo "https://ftp.sra.ebi.ac.uk/vol1/fastq/${s:0:6}/0${s: -2}
 mapfile -t LINES < <(tail -n +2 "$SAMPLE_MAP")
 : > urls.txt
 for ln in "${LINES[@]}"; do IFS=, read -r d c srr <<< "$ln"; b=$(ena "$srr"); echo "$b/${srr}_1.fastq.gz"; echo "$b/${srr}_2.fastq.gz"; done > urls.txt
-xargs -P 6 -n 1 wget -c -q -P fastq/ < urls.txt || true
+# Download all FASTQs; fail the job if any download fails (reproducibility > silent skip).
+xargs -P 6 -n 1 wget -c -q -P fastq/ < urls.txt
 for ln in "${LINES[@]}"; do
   IFS=, read -r d c srr <<< "$ln"
   [ -f "$OUTDIR/$d/quant.sf" ] && continue
+  for mate in 1 2; do
+    [ -s "fastq/${srr}_${mate}.fastq.gz" ] || { echo "ERROR: missing or empty fastq/${srr}_${mate}.fastq.gz" >&2; exit 1; }
+  done
   "$SALMON" quant -i "$INDEX" -l A -1 fastq/${srr}_1.fastq.gz -2 fastq/${srr}_2.fastq.gz \
     -p "$THREADS" --validateMappings --gcBias -o "$OUTDIR/$d"
 done

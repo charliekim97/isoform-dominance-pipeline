@@ -1,7 +1,7 @@
 """Download-free end-to-end self-test.
 
-Generates synthetic Salmon quant.sf files from the real per-transcript LEPR TPM values of
-the published analysis, runs extract + stats (+ contamination), and asserts the published
+Generates synthetic Salmon quant.sf files from the per-transcript LEPR TPM values of the
+choroid-plexus reanalysis, runs extract + stats (+ contamination), and asserts the reference
 result is reproduced: combined n=11, 11/11 short>long, paired Wilcoxon P ~= 9.77e-4.
 """
 import tempfile, os, csv, shutil
@@ -95,7 +95,7 @@ def main():
         ok, msgs = run(work)
         for m in msgs:
             print("  " + m)
-        print("\n%s" % ("PASS - reproduces the published LEPR result." if ok else "FAIL"))
+        print("\n%s" % ("PASS - reproduces the reference LEPR result." if ok else "FAIL"))
         return 0 if ok else 1
     finally:
         shutil.rmtree(work, ignore_errors=True)
