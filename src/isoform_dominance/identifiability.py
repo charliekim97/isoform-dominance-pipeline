@@ -56,7 +56,14 @@ def analyze(config, k=31, sequences=None):
                      "distinguishable": len(uniq) > 0}
 
     pc = config.get("primary_comparison", list(groups)[:2])
-    primary_ok = all(report[g]["distinguishable"] for g in pc if g in report)
+    if len(pc) < 2:
+        raise ValueError(
+            "primary_comparison must name two isoform groups; got %r" % (pc,))
+    missing = [g for g in pc if g not in report]
+    if missing:
+        raise ValueError(
+            "primary_comparison names group(s) not in config['groups']: %r" % (missing,))
+    primary_ok = all(report[g]["distinguishable"] for g in pc)
     return {"k": k, "groups": report, "primary_comparison": pc,
             "primary_distinguishable": primary_ok}
 

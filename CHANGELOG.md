@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses semantic
 versioning.
 
+## [Unreleased]
+
+### Fixed
+- `identifiability` no longer reports `primary_distinguishable: True` for a
+  `primary_comparison` that names a group missing from `groups` (the unknown label
+  was silently skipped, so an all-unknown pair reduced to a vacuously true `all()`),
+  nor for a single-group config (with no other group, the lone group trivially owns
+  every k-mer). Both now raise a clear error. This mattered because the CLI's exit
+  code is the gate a pipeline keys on: the bad config exited 0 and `extract`/`stats`
+  ran on a comparison that was never checked.
+- `identifiability` exit code **1** is new, for a config error. The command now
+  distinguishes three outcomes: **0** groups distinguishable, **1** invalid config,
+  **2** a primary group has no unique k-mers. Previously a config error surfaced as
+  an uncaught traceback, and the two failure kinds were not separable by exit code.
+
 ## [2.1.1] - 2026-06-16
 
 ### Changed

@@ -41,6 +41,9 @@ def cmd_identifiability(a):
         res = identifiability.analyze(cfg, k=a.k, sequences=seqs)
     except (URLError, HTTPError) as e:
         return _net_fail(e)
+    except ValueError as e:
+        print("config error: %s" % e, file=sys.stderr)
+        return 1
     print("Identifiability (k=%d):" % res["k"])
     for g, r in res["groups"].items():
         flag = "OK" if r["distinguishable"] else "NOT DISTINGUISHABLE"
