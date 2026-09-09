@@ -1,0 +1,33 @@
+name: Ensembl live check
+
+# The offline suite covers the Ensembl-parsing code against a recorded payload, which
+# cannot notice the REST schema changing under it. This job hits the live API weekly so
+# a break surfaces here rather than in a user's first run.
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e "."
+      - name: annotate against live Ensembl
+        run: |
+          isoform-dominance annotate --gene LEPR --out /tmp/lepr.json --json
+          python - <<'PY'
+          import json
+          cfg = json.load(open("/tmp/lepr.json"))
+          assert cfg["groups"], "no groups proposed"
+          assert len(cfg["primary_comparison"]) == 2, cfg["primary_comparison"]
+          ids = {t for v in cfg["groups"].values() for t in v}
+          assert "ENST00000349533" in ids, sorted(ids)   # LepRb must still be there
+          print("ok:", {k: len(v) for k, v in cfg["groups"].items()})
+          PY
+      - name: identifiability against live Ensembl
+        run: isoform-dominance identifiability --config /tmp/lepr.json --json

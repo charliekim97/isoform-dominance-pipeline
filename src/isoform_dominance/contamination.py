@@ -77,7 +77,7 @@ def run(config, markers, targets, out):
         ax.set_ylabel("%s (%s) TPM" % (config.get("gene", "target"), tg))
         ax.set_title("%s (n=%d)" % (name, len(donors)), fontsize=9.5)
         ax.text(0.03, 0.97, "rho=%.2f\nP=%.2f" % (rho, p), transform=ax.transAxes, va="top",
-                fontsize=8, bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#ccc", lw=0.6))
+                fontsize=8, bbox={"boxstyle": "round,pad=0.3", "fc": "white", "ec": "#ccc", "lw": 0.6})
         ax.spines[["top", "right"]].set_visible(False)
     fig.suptitle("%s (%s) vs contamination - no positive dependence = genuine signal"
                  % (config.get("gene", "target"), tg), fontsize=10, fontweight="bold", y=1.04)
