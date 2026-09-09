@@ -16,7 +16,7 @@ def extract(config, quantdir, samplemap, cohort):
     rows = []
     for q in quants:
         donor = os.path.basename(os.path.dirname(q))
-        gt = {g: 0.0 for g in groups}
+        gt = dict.fromkeys(groups, 0.0)
         with open(q) as fh:
             reader = csv.DictReader(fh, delimiter="\t")
             if reader.fieldnames is None or "Name" not in reader.fieldnames or "TPM" not in reader.fieldnames:

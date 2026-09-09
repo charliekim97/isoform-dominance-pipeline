@@ -4,6 +4,66 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses semantic
 versioning.
 
+> **Provenance note.** Version 2.1.1 is the version cited for LEPR isoform
+> quantification and aggregation in the leptin-receptor/LRP1 choroid-plexus study, and
+> is archived at Zenodo DOI 10.5281/zenodo.20738150. That archive is immutable and its
+> tag and release are permanent; nothing in this or any later version alters it. The
+> `extract` aggregation behaviour those results depend on — transcript-to-group mapping
+> and per-donor TPM summation — is unchanged in 2.2.0, and the bundled self-test still
+> reproduces the same reference numbers.
+
+## [2.2.0] - 2026-09-09
+
+### Added
+- **Group-level estimability.** `identifiability` now builds the fragment-compatibility
+  system for the gene and reports whether each class total, and the contrast between the
+  two class totals, is an estimable function of it — the textbook row-space condition —
+  together with a structural conditioning factor. That factor is `sqrt(c'(A'A)^+c)` and is
+  deliberately not called a variance: it is the GLS variance factor under `Var(y)=sigma^2 I`,
+  which a quantifier does not satisfy. Its thresholds are provisional. A full-rank system with a
+  near-degenerate contrast direction passes a rank test and still yields nothing, so
+  both are reported. Formalises at the *class* level what @hiller2009 and
+  @ferrerbonsoms2022 established at the transcript level.
+- **Background-aware uniqueness.** Uniqueness is judged against the gene's remaining
+  transcripts by default (`--no-gene-background` restores the old behaviour), and
+  against an arbitrary FASTA via `--background-fasta` — ideally the one the Salmon index
+  was built from. The FASTA is streamed, so a whole-transcriptome background costs
+  memory proportional to the query rather than the file.
+- **Canonical k-mers**, matching what the index actually stores and what an unstranded
+  library requires. `--strand-aware` restores the old behaviour.
+- **A read/fragment model.** `unique_length`, `unique_fraction`, block structure,
+  `informative_fraction` and `expected_informative_reads` at a stated read length,
+  fragment-length distribution, depth and class TPM, plus the resulting counting-noise
+  floor on the log2 class ratio. Informativeness is evaluated on the *sequenced ends*,
+  not the whole fragment: a unique region in the middle of a long fragment is never
+  observed.
+- **Graded verdicts with reasons**: `identifiable`, `weakly_identifiable`,
+  `not_identifiable`, exposed as exit codes 0 / 3 / 2 and as a `reasons` list.
+- **`--json` on every subcommand**, emitting the full result object.
+- **Statistics**: `min_achievable_p` (the exact-test floor — at n = 5 the two-sided
+  floor is 0.0625, so five donors can never reach 0.05), donor-bootstrap confidence
+  intervals on the median fold-change, tie accounting and an explicit `zero_method`, and
+  two stratified cohort combinations — weighted Stouffer over the per-cohort exact tests
+  and van Elteren's design-free stratified signed-rank — reported beside the pooled test.
+
+### Changed
+- `identifiability`'s verdict is no longer "does each class own a unique k-mer". That
+  proxy erred in both directions and both errors are now regression-tested: a class
+  whose only unique sequence is a splice junction passed while being practically
+  unmeasurable, and a class nested inside another failed while being perfectly
+  estimable. `primary_distinguishable` is retained for callers written against v2.1 but
+  is superseded by `verdict`.
+- `stats` reports the pooled combination *and* the stratified ones. Pooling donors
+  across independent cohorts ranks one cohort's differences against another's; the
+  stratified figures are the ones to quote. The `combined` key and the self-test's
+  reference numbers are unchanged.
+- Package description now leads with the identifiability question rather than with
+  quantification.
+
+### Notes
+- Public API additions are additive: `paired_stat`, `analyze`, `kmers` and the shape of
+  the `stats.run` return value all keep their v2.1 behaviour.
+
 ## [Unreleased]
 
 ### Fixed

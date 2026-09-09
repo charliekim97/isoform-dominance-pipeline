@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isoform-dominance"
-version = "2.1.1"
-description = "Config-driven isoform-usage quantification and discrimination from bulk RNA-seq"
+version = "2.2.0"
+description = "Is this functional isoform-class comparison measurable by short reads? Group-level identifiability, quantification and testing from bulk RNA-seq"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -20,7 +20,7 @@ classifiers = [
 dependencies = ["numpy>=1.24", "scipy>=1.10", "matplotlib>=3.7"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "pytest-cov>=4"]
+dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6"]
 
 [project.urls]
 Homepage = "https://github.com/charliekim97/isoform-dominance-pipeline"
@@ -34,3 +34,18 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# Correctness rules, not house style: pyflakes (F), pycodestyle errors that indicate
+# real problems (E4/E7/E9), unused arguments and shadowed builtins (A, ARG), and
+# comprehension/bugbear checks (B, C4). The compact `import csv, os` and
+# semicolon-joined one-liners in this codebase are deliberate and are not flagged.
+select = ["F", "E4", "E7", "E9", "B", "C4", "A", "UP"]
+ignore = ["E701", "E702", "E401", "UP031", "UP032", "A002"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
