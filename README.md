@@ -23,15 +23,24 @@ qc        marker TPM       → contamination control (is the signal a cell-type 
 ![example output](docs/example_output.png)
 
 *Bundled self-test: short LEPR isoform (LepRa) predominates over the long isoform (LepRb) in
-control human choroid plexus across two independent cohorts; combined n = 11, P = 1×10⁻³.*
+control human choroid plexus, in each of two independent cohorts (5/5 and 6/6 donors). The
+pooled figure (n = 11, P = 1×10⁻³) is reported alongside the stratified combinations — see
+[Statistical notes](#statistical-notes) for why the stratified ones are the numbers to quote.*
 
 ---
 
 ## Install
 
 ```bash
-pip install -e ".[dev]"        # from a clone
+pip install isoform-dominance          # released version
 isoform-dominance --version
+```
+
+From a clone, for development:
+
+```bash
+pip install -e ".[dev]"
+pytest -q
 ```
 
 ## Verify it works (no downloads, seconds)
@@ -76,11 +85,12 @@ it) · **1** config error.
 
 > **Why not just count unique k-mers?** Because that proxy — used by this package up to
 > v2.1.1 — is wrong in both directions. A class whose only unique sequence is the ~30 k-mers
-> spanning one splice junction *passes* while yielding a handful of usable fragments. A class
-> nested inside another owns no unique k-mer at all and *fails*, yet is perfectly recoverable:
-> the containing class is pinned by its own unique sequence and its contribution to the shared
-> region is subtracted, which is exactly what the quantifier's EM does. Both cases are
-> regression-tested in `tests/test_identifiability_model.py`.
+> spanning one splice junction *passes* while yielding a handful of usable fragments. A class nested inside another owns no unique k-mer at all and *fails*, yet its
+> total is still an estimable function of the system: the containing class is pinned by its own
+> unique sequence, so the nested class's indicator lies in the row space. That is an algebraic
+> fact about the design matrix — **not** a claim that "the EM will work it out", since an EM
+> returns numbers for a non-identifiable model just as readily. Both cases are regression-tested
+> in `tests/test_identifiability_model.py`.
 
 **What it checks, in three layers** — all from sequence alone, before any read is quantified:
 
@@ -137,13 +147,29 @@ discovery you should use the established tools — this one does **not** replace
 - **fishpond / swish** — rigorously propagates quantification uncertainty using
   Salmon inferential replicates.
 
-`isoform-dominance` targets a narrower, common question: *for one gene, which
-functional isoform class predominates?* Its specific contributions are (1) going
-from a **gene symbol** straight to a reviewed isoform-group proposal, (2) an
-explicit, machine-checkable **identifiability guardrail** that refuses to report a
-comparison short reads cannot resolve, and (3) a scriptable Python CLI with a
-download-free self-test meant to ship alongside a manuscript. Group proposals are
-presented for review, not treated as final.
+**On identifiability specifically**, this package builds on existing work rather than
+claiming the idea:
+
+- **Hiller et al. 2009** ([doi:10.1093/bioinformatics/btp544](https://doi.org/10.1093/bioinformatics/btp544))
+  — criteria under which isoform abundances are uniquely determined by RNA-seq observations.
+- **Ferrer-Bonsoms et al. 2022** ([doi:10.1093/bioinformatics/btab873](https://doi.org/10.1093/bioinformatics/btab873))
+  — a read- and fragment-length-aware identifiability criterion, applied genome wide.
+- **terminus** ([doi:10.1093/bioinformatics/btaa448](https://doi.org/10.1093/bioinformatics/btaa448))
+  — groups transcripts *post hoc, from the data*, by inferential uncertainty.
+
+The first two address **transcript-level** identifiability of the full deconvolution;
+`terminus` chooses its groups after seeing the data. Neither answers the question a biologist
+arrives with: *is the contrast between two classes I defined on biological grounds estimable?*
+Those are different questions with different answers — two transcripts with identical sequence
+make each abundance unidentifiable while their **sum** is perfectly identifiable, and
+conversely a set of individually identifiable transcripts can define a contrast that is not.
+
+`isoform-dominance` targets that narrower question: *for one gene, which functional isoform
+class predominates?* Its specific contributions are (1) going from a **gene symbol** straight
+to a reviewed isoform-group proposal, (2) evaluating the **estimability of the user's own
+class contrast, before quantification**, and (3) a scriptable Python CLI with a download-free
+self-test meant to ship alongside a manuscript. Group proposals are presented for review, not
+treated as final.
 
 More documentation: a step-by-step [NTRK2 walkthrough](docs/tutorial_NTRK2.md), a
 [gallery of further example genes](docs/example_genes.md) (NTRK2/NTRK3 kinase
@@ -159,8 +185,12 @@ separable), and an [API reference](docs/api.md).
   reaches 0.05. Ties among the absolute differences do **not** raise it. Every test is
   reported with its floor and flagged when the floor exceeds 0.05.
 - **Cohorts are combined three ways**, all reported: donor-**pooled** (what v2.1 reported alone),
-  weighted **Stouffer** over the per-cohort exact tests, and **van Elteren**'s design-free
-  stratified signed-rank. Pooling donors from independent studies ranks one cohort's differences
+  a weighted **Stouffer** combination of the per-cohort *exact* tests, and a weighted
+  **stratified signed-rank** combination. The latter borrows van Elteren's design-free
+  `1/(n+1)` stratum weights but is *not* van Elteren's test, which is a stratified
+  **two-sample** rank-sum procedure; these data are paired within donor. Stouffer is the
+  default, because at these sample sizes each stratum's exact p-value is trustworthy and the
+  normal approximation behind a combined rank statistic is not. Pooling donors from independent studies ranks one cohort's differences
   against another's and lets depth or tissue handling drive the result — quote the stratified
   figures when the cohorts are genuinely independent.
 - Effect size = median fold-change **with a donor-bootstrap 95% interval** (seeded, so it
@@ -180,8 +210,10 @@ example/                 config + sample maps
 
 **Version provenance.** Version **2.1.1** was used for the LEPR isoform quantification and
 aggregation in a leptin-receptor/LRP1 choroid-plexus manuscript (under revision), and is
-archived at [10.5281/zenodo.20738150](https://doi.org/10.5281/zenodo.20738150). That archive,
-and the `v2.1.1` tag and release, are permanent — later versions never alter them. The `extract`
+archived at [10.5281/zenodo.20738150](https://doi.org/10.5281/zenodo.20738150). Releasing a new
+version does **not** alter that record: Zenodo mints a separate version DOI and leaves the old
+one in place, and the `v2.1.1` tag and release are left untouched by policy — not because they
+are technically immutable, but because a published paper cites them. The `extract`
 aggregation behaviour those results rest on is unchanged in 2.2.0, and the bundled self-test
 still reproduces the same reference numbers.
 
