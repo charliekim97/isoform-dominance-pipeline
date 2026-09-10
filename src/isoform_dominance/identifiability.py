@@ -342,31 +342,50 @@ def compatibility_matrix(tracks, transcript_ids):
     the set of transcripts that contain them -- are indistinguishable to a quantifier
     and are collapsed into one row.  ``A[c, t]`` is the probability that a window
     drawn uniformly from transcript ``t`` falls in class ``c``, so
-    ``E[count_c] = sum_t theta_t A[c, t]`` up to a shared depth factor.
+    ``E[count_c] = sum_t theta_t A[c, t]`` up to a shared depth factor.  Each column
+    therefore sums to 1 by construction.
 
-    Using windows rather than full fragments is deliberately conservative: a read
-    contains many windows and its compatibility set is their intersection, hence never
-    larger than any single window's.  Anything this matrix says is unidentifiable is
-    unidentifiable for real reads too.
+    That probability is over *positions*, not over distinct window sequences.  A window
+    that occurs twice in a transcript is drawn twice as often, and repeated windows are
+    the rule rather than the exception in cDNA -- A-rich 3' ends, tandem repeats, Alu
+    elements in long UTRs.  Counting distinct sequences instead under-weights exactly
+    the shared classes that absorb the most fragments.
+
+    **What the window construction does and does not give you.**  A read spans many
+    windows and its compatibility set is their intersection, so it is never larger than
+    any single window's.  Reads are therefore *more* discriminating than windows, the
+    read-level classes are finer, and the read-level row space contains this one.  The
+    guarantee that follows is one-directional: anything this matrix says is **estimable
+    is estimable from reads too**.  The converse does not hold.  A contrast this system
+    rejects may still be recoverable from reads longer than the window -- two
+    transcripts can carry identical window multisets in different orders, which this
+    construction cannot separate because it uses membership only and discards
+    adjacency.  Read a ``not_identifiable`` verdict at ``window = k`` as "not
+    identifiable from k-mer compatibility", not as a property of the data; raising
+    ``window`` toward the read length is what sharpens it.
     """
     sig = {}
     for tid in transcript_ids:
         for w in tracks.get(tid, []):
             sig.setdefault(w, set()).add(tid)
 
-    counts = {}
-    for owners in sig.values():
-        key = frozenset(owners)
-        counts[key] = counts.get(key, 0) + 1
+    # positions carrying each signature, per transcript -- see the docstring on why
+    # this is not a count of distinct window sequences
+    pos_counts = {}
+    class_keys = set()
+    for tid in transcript_ids:
+        for w in tracks.get(tid, []):
+            key = frozenset(sig[w])
+            class_keys.add(key)
+            pos_counts[(key, tid)] = pos_counts.get((key, tid), 0) + 1
 
     idx = {t: j for j, t in enumerate(transcript_ids)}
     n_windows = {t: max(1, len(tracks.get(t, []))) for t in transcript_ids}
-    classes = sorted(counts, key=lambda s: (-len(s), sorted(s)))
+    classes = sorted(class_keys, key=lambda s: (-len(s), sorted(s)))
     A = np.zeros((len(classes), len(transcript_ids)), dtype=float)
     for i, key in enumerate(classes):
         for t in key:
-            # windows of t carrying this signature / total windows of t
-            A[i, idx[t]] = counts[key] / n_windows[t]
+            A[i, idx[t]] = pos_counts.get((key, t), 0) / n_windows[t]
     return A, [sorted(c) for c in classes]
 
 
@@ -379,10 +398,12 @@ def estimability(A, c, rcond=1e-10):
     which fragment classes are observable, not on how their counts are distributed.
 
     **Conditioning.**  ``conditioning_factor`` is ``sqrt(c' (A'A)^+ c)``.  Read it as a
-    *structural conditioning proxy*, not as the standard error of anything.  It is the
-    generalised-least-squares variance factor one would get under
-    ``Var(y) = sigma^2 I`` -- an assumption this package does not make and that a
-    short-read quantifier does not satisfy: fragment counts are heteroskedastic, and
+    *structural conditioning proxy*, not as the standard error of anything.  Note the
+    square root: the variance factor is ``c'(A'A)^+ c`` and this is its
+    standard-deviation counterpart, so that ``SD(BLUE of c'theta) = sigma *
+    conditioning_factor`` would hold under ``Var(y) = sigma^2 I`` -- an assumption this
+    package does not make and that a short-read quantifier does not satisfy: fragment
+    counts are heteroskedastic, and
     Salmon's rich equivalence classes carry per-transcript conditional probabilities and
     bias weights rather than the 0/1-derived compatibilities used to build ``A`` here.
     What the quantity does capture is the geometry: a contrast direction that is nearly
@@ -397,23 +418,43 @@ def estimability(A, c, rcond=1e-10):
     """
     A = np.asarray(A, dtype=float)
     c = np.asarray(c, dtype=float)
-    if A.size == 0 or not np.any(c):
-        return {"estimable": False, "residual": float("nan"),
-                "conditioning_factor": float("inf"), "rank": 0}
-    # row space of A == column space of A.T
+    if A.size == 0:
+        # no observable classes: the row space is {0}, so only the zero functional is
+        # estimable, and it is estimated by the constant 0 with no error
+        zero = not np.any(c)
+        return {"estimable": zero, "residual": 0.0 if zero else 1.0,
+                "conditioning_factor": 0.0 if zero else float("inf"), "rank": 0}
+
+    # Row space of A == column space of A.T, so the columns of ``u`` are the right
+    # singular vectors of A and ``s`` its singular values.  Rank and conditioning are
+    # computed from the SAME truncation: taking the rank from sigma(A) while taking the
+    # conditioning from pinv(A'A) -- whose rcond is relative to sigma(A)^2 -- puts a
+    # band of directions on both sides of the line at once, where a contrast is
+    # declared estimable and its conditioning direction is simultaneously projected
+    # away, reporting 0.0 (the best possible score) for the worst-conditioned case.
     u, s, _ = np.linalg.svd(A.T, full_matrices=False)
     tol = max(A.shape) * (s[0] if s.size else 0.0) * rcond
     r = int((s > tol).sum())
+    if not np.any(c):
+        return {"estimable": True, "residual": 0.0,
+                "conditioning_factor": 0.0, "rank": r}
     basis = u[:, :r]
-    proj = basis @ (basis.T @ c)
+    coef = basis.T @ c                      # coordinates of c in the retained row space
+    proj = basis @ coef
     denom = np.linalg.norm(c) or 1.0
     residual = float(np.linalg.norm(c - proj) / denom)
-    pinv = np.linalg.pinv(A.T @ A, rcond=rcond)
-    quad = float(c @ pinv @ c)
+    estimable = residual < 1e-8
+    if estimable and r:
+        # c'(A'A)^+ c = sum_i (v_i'c)^2 / sigma_i^2 over the retained directions
+        cond = float(math.sqrt(float(np.sum((coef[:r] / s[:r]) ** 2))))
+    else:
+        # a contrast with a component outside the row space has no unbiased estimator,
+        # so there is no finite factor to report for it
+        cond = float("inf")
     return {
-        "estimable": residual < 1e-8,
+        "estimable": estimable,
         "residual": residual,
-        "conditioning_factor": float(math.sqrt(quad)) if quad > 0 else 0.0,
+        "conditioning_factor": cond,
         "rank": r,
     }
 

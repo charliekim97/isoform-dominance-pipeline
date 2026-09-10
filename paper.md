@@ -179,17 +179,26 @@ evaluated exactly over all start positions and averaged over a truncated-normal
 fragment-length distribution, then converted to a counting-noise floor on the log2
 class ratio.
 
-*The compatibility system is built on windows, which is conservative by construction.*
-A read contains many windows and its compatibility set is their intersection, hence
-never larger than any single window's; anything this system declares unidentifiable is
-unidentifiable for real reads too. Estimability is then the textbook condition — the
-functional lies in the row space of the design matrix — reported with a structural
-conditioning factor, because a full-rank system with a near-degenerate contrast
-direction passes a rank test and still yields nothing.
+*The compatibility system is built on windows, and the guarantee that gives is
+one-directional.* A read spans many windows and its compatibility set is their
+intersection, hence never larger than any single window's — so reads are *more*
+discriminating than windows, the read-level classes are finer, and the read-level row
+space contains this one. What follows is that anything this system declares
+**estimable is estimable from reads too**. The converse does not follow and is false: a
+contrast this system rejects may still be recoverable from reads longer than the
+window, because the construction uses window membership only and discards adjacency,
+so two transcripts carrying the same windows in a different order are not separated
+here although a read spanning the difference separates them. A `not_identifiable`
+verdict at `window = k` therefore means "not identifiable from k-mer compatibility",
+and raising `window` toward the read length is what sharpens it. Estimability is
+otherwise the textbook condition — the functional lies in the row space of the design
+matrix — reported with a structural conditioning factor, because a full-rank system
+with a near-degenerate contrast direction passes a rank test and still yields nothing.
 
-That conditioning factor, `sqrt(c' (A'A)^+ c)`, is deliberately not called a variance.
-It is the value the generalised-least-squares variance factor would take under
-`Var(y) = sigma^2 I`, and a short-read quantifier does not satisfy that: fragment counts
+That conditioning factor, `sqrt(c' (A'A)^+ c)`, is deliberately not called a variance —
+note the square root: the variance factor is `c'(A'A)^+ c` and this is its
+standard-deviation counterpart. It is the value that standard-deviation factor would
+take under `Var(y) = sigma^2 I`, and a short-read quantifier does not satisfy that: fragment counts
 are heteroskedastic, and Salmon's rich equivalence classes carry per-transcript
 conditional probabilities and bias weights rather than the compatibility-only
 construction used here. What the quantity captures is geometry — a contrast direction

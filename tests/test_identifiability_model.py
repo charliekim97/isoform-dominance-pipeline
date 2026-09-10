@@ -275,11 +275,48 @@ def test_conditioning_factor_threshold_downgrades_to_weakly_identifiable():
     assert any("conditioning factor" in r for r in res["reasons"])
 
 
-def test_estimability_of_a_zero_functional_is_reported_not_raised():
+def test_the_zero_functional_is_estimable():
+    """0'theta = 0 lies in every row space and is estimated by the constant 0.
+
+    The previous answer here was `estimable=False, conditioning=inf, rank=0`, which is
+    wrong on all three counts and was reachable from a config whose two groups name the
+    same transcripts: the tool refused the self-comparison, correctly, for a reason that
+    was not true.
+    """
     A = np.eye(2)
     got = I.estimability(A, np.zeros(2))
-    assert got["estimable"] is False
-    assert np.isinf(got["conditioning_factor"])
+    assert got["estimable"] is True
+    assert got["residual"] == 0.0
+    assert got["conditioning_factor"] == 0.0
+    assert got["rank"] == 2
+
+    # with no observable classes the row space is {0}: only c = 0 survives
+    empty = np.zeros((0, 2))
+    assert I.estimability(empty, np.zeros(2))["estimable"] is True
+    assert I.estimability(empty, np.array([1.0, -1.0]))["estimable"] is False
+
+
+def test_conditioning_is_truncated_on_the_same_tolerance_as_the_rank():
+    """A contrast that is declared estimable must get a conditioning factor to match.
+
+    Regression for a tolerance mismatch: the rank test ran on sigma(A) while the
+    conditioning ran through `pinv(A'A)`, whose rcond is relative to sigma(A)**2. Every
+    direction in the five-decade band between the two thresholds was declared estimable
+    and had its conditioning direction projected away at the same time, so the reported
+    factor collapsed to 0.0 -- the best possible score -- for the worst-conditioned
+    contrasts there are. That inverts the reason the quantity exists.
+    """
+    for eps in (1e-3, 1e-5, 1e-7, 1e-9):
+        got = I.estimability(np.diag([1.0, eps]), np.array([0.0, 1.0]))
+        assert got["estimable"] is True
+        assert got["rank"] == 2
+        # exact answer for a diagonal design is 1/eps
+        assert got["conditioning_factor"] == pytest.approx(1.0 / eps, rel=1e-6)
+
+    # and a contrast outside the row space has no finite factor at all
+    bad = I.estimability(np.array([[1.0, 1.0]]), np.array([1.0, -1.0]))
+    assert bad["estimable"] is False
+    assert np.isinf(bad["conditioning_factor"])
 
 
 def test_compatibility_matrix_collapses_indistinguishable_windows():
@@ -290,6 +327,31 @@ def test_compatibility_matrix_collapses_indistinguishable_windows():
     assert A.shape == (3, 2)
     # rows are per-transcript probabilities, so each column sums to 1
     assert A.sum(axis=0) == pytest.approx([1.0, 1.0])
+
+
+def test_compatibility_matrix_counts_positions_not_distinct_windows():
+    """A repeated window is drawn twice as often, so it must be counted twice.
+
+    Counting distinct window *sequences* per signature while dividing by the number of
+    window *positions* breaks the column-sum invariant and under-weights precisely the
+    shared classes that absorb the most fragments -- and repeated windows are the rule
+    in cDNA (A-rich 3' ends, tandem repeats, Alu in long UTRs), not an edge case. The
+    previous fixture could not see it because all of its windows were distinct.
+    """
+    A, classes = I.compatibility_matrix(
+        {"t1": ["aa", "bb", "aa"], "t2": ["bb", "cc"]}, ["t1", "t2"])
+    assert A.sum(axis=0) == pytest.approx([1.0, 1.0])
+    own = classes.index(["t1"])
+    shared = classes.index(["t1", "t2"])
+    # two of t1's three window positions are its own; one is shared
+    assert A[own, 0] == pytest.approx(2.0 / 3.0)
+    assert A[shared, 0] == pytest.approx(1.0 / 3.0)
+
+    # a real repeat: an A-rich 3' end repeats one 31-mer many times over
+    tracks = {"x": I.kmer_track("ACGT" * 40 + "A" * 80, 31, True),
+              "y": I.kmer_track("ACGT" * 40 + "TTTT" * 20, 31, True)}
+    B, _ = I.compatibility_matrix(tracks, ["x", "y"])
+    assert B.sum(axis=0) == pytest.approx([1.0, 1.0])
 
 
 # --------------------------------------------------------------------------- #
