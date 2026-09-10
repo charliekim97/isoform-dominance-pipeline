@@ -93,9 +93,13 @@ versioning.
   `COMBINED` row).
 - Added `scripts/make_docs_example.py`, so the committed example figure and stats table
   can be regenerated from the bundled self-test data with no data access. It refuses to
-  overwrite the committed files if the reference result does not reproduce, and its
-  output is byte-reproducible for a given Matplotlib and font set (`SOURCE_DATE_EPOCH`
-  suppresses the embedded timestamp, a fixed `svg.hashsalt` stabilises element ids).
+  overwrite the committed files if the reference result does not reproduce. The CSV,
+  SVG and PDF it writes are byte-reproducible for a given Matplotlib (`SOURCE_DATE_EPOCH`
+  suppresses the embedded timestamp, a fixed `svg.hashsalt` stabilises element ids, and
+  the font family is pinned). The PNG is not, across platforms: glyph rasterisation goes
+  through FreeType, whose hinting differs by build and CPU architecture, so a
+  macOS/arm64 render and a Linux/x86-64 render of the same figure differ in the
+  compressed pixel data while looking the same. The committed PNG is the Linux render.
   Previously the committed artefacts had no committed way to rebuild them, which is how
   they came to be a minor version out of date.
 - `stats.FONT_STACK` exposes the figure font stack (`["Arial", "DejaVu Sans"]`, unchanged

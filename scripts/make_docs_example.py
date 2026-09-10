@@ -9,10 +9,21 @@ is reproducible on any machine with the package installed and needs no data acce
 It must be re-run whenever the figure layout or the reported statistics change, so
 that what the README shows is what the current code produces.
 
-The output is byte-reproducible: ``SOURCE_DATE_EPOCH`` suppresses the creation
-timestamp Matplotlib would otherwise embed in the SVG and PDF, and a fixed
-``svg.hashsalt`` makes the generated element ids stable.  ``git status`` is therefore
-a valid check that the committed artefacts match the current code.
+The CSV, the SVG and the PDF are byte-reproducible: ``SOURCE_DATE_EPOCH`` suppresses
+the creation timestamp Matplotlib would otherwise embed, a fixed ``svg.hashsalt``
+stabilises the generated element ids, and pinning the font family (below) keeps the
+embedded font and the text metrics identical.
+
+**The PNG is not, across platforms.**  Rasterising glyphs goes through FreeType, and
+its hinting and anti-aliasing differ by build and by CPU architecture, so the same
+code produces a visually identical but bit-different PNG on macOS/arm64 and on
+Linux/x86-64 (~10% apart in file size, all of it in the compressed pixel data).  A
+PNG-only difference after running this script therefore means "rendered elsewhere",
+not "out of date"; ``git checkout -- docs/example_output.png`` discards it.  The
+committed PNG is the Linux render, which is what CI and the README agree on.
+
+So ``git status`` is a valid staleness check for the CSV, SVG and PDF, and CI gates
+on the CSV, which has no font or renderer dependence at all.
 """
 import os
 

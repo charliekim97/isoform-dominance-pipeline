@@ -73,9 +73,11 @@ jobs:
       # what the code produces. This is exactly how it went a minor version stale.
       - name: stats table must be current
         run: git diff --exit-code -- docs/example_output_stats.csv
-      # The figure is byte-reproducible for a given Matplotlib and font set, but not
-      # across them, so a difference is reported for a human to look at rather than
-      # failing the build on an unrelated Matplotlib release.
+      # The SVG and PDF are byte-reproducible for a given Matplotlib; the PNG is not,
+      # across platforms, because glyph rasterisation goes through FreeType and its
+      # hinting differs by build and CPU architecture. So a figure difference is
+      # reported for a human to look at rather than failing the build on someone's
+      # machine or on an unrelated Matplotlib release.
       - name: report any figure difference
         if: always()
         run: git diff --stat -- docs/example_output.png docs/example_output.pdf docs/example_output.svg
