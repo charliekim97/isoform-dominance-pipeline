@@ -4,7 +4,7 @@ Short-read quantifiers apportion fragments among transcripts by solving a linear
 inverse problem: the expected count of each observable fragment class is a linear
 function of the transcript abundances.  A quantity is *estimable* from that system
 only when its coefficient vector lies in the row space of the design matrix, and it
-is estimable *usefully* only when the corresponding variance factor is small.
+is estimable *usefully* only when the corresponding conditioning factor is small.
 
 Transcript-level identifiability of this system has been studied before
 (Hiller et al. 2009, doi:10.1093/bioinformatics/btp544; Ferrer-Bonsoms et al. 2022,
@@ -20,8 +20,8 @@ short reads at all, and with what precision?  The relevant estimands are
     s_g = sum_{t in g} theta_t          (one per group)
     d   = s_A - s_B                     (the primary comparison)
 
-and each is checked by the textbook estimability condition together with its
-generalised variance factor.  Three layers are reported, cheapest first:
+and each is checked by the textbook estimability condition together with a structural
+conditioning factor.  Three layers are reported, cheapest first:
 
 1. **Sequence uniqueness** -- group-unique k-mers, the positions they cover, and how
    those positions are arranged into blocks.  Uniqueness is assessed against a
@@ -221,12 +221,30 @@ def coverage_stats(unique_flags, k):
     about (it depends on k and on how the unique region abuts shared sequence), while
     "how many bases of this transcript are uniquely attributable" is directly
     interpretable and is what the read model consumes.
+
+    A base is uniquely attributable when *some* unique k-mer covers it, so the answer is
+    the size of the **union** of the spans, not the sum of their lengths.  Two runs of
+    unique starts separated by a gap of fewer than ``k`` positions have overlapping or
+    touching spans: at ``k = 3`` with unique starts at 0 and 2 the spans are bases 0-2
+    and 2-4, five bases, not six.  Summing run lengths double-counts the overlap and can
+    drive ``unique_fraction`` above 1.  A ``block`` is likewise a maximal run of
+    contiguous unique *bases*, which is what a read has to sit on, rather than a maximal
+    run of unique k-mer starts.
     """
     flags = list(unique_flags)
     runs = _blocks(flags)
-    # a run of r unique k-mer starts covers r + k - 1 bases
-    covered = sum(r + k - 1 for _, r in runs)
-    block_lengths = sorted((r + k - 1 for _, r in runs), reverse=True)
+    # a run of r unique k-mer starts spans [s, s + r + k - 1); merge spans that touch
+    # or overlap, because the bases under them are one contiguous unique stretch
+    spans = []
+    for s, r in runs:
+        lo, hi = s, s + r + k - 1
+        if spans and lo <= spans[-1][1]:
+            spans[-1][1] = max(spans[-1][1], hi)
+        else:
+            spans.append([lo, hi])
+    covered = sum(hi - lo for lo, hi in spans)
+    block_lengths = sorted((hi - lo for lo, hi in spans), reverse=True)
+    runs = spans
     return {
         "unique_length": int(covered),
         "n_blocks": len(runs),
@@ -351,18 +369,23 @@ def compatibility_matrix(tracks, transcript_ids):
     elements in long UTRs.  Counting distinct sequences instead under-weights exactly
     the shared classes that absorb the most fragments.
 
-    **What the window construction does and does not give you.**  A read spans many
-    windows and its compatibility set is their intersection, so it is never larger than
-    any single window's.  Reads are therefore *more* discriminating than windows, the
-    read-level classes are finer, and the read-level row space contains this one.  The
-    guarantee that follows is one-directional: anything this matrix says is **estimable
-    is estimable from reads too**.  The converse does not hold.  A contrast this system
-    rejects may still be recoverable from reads longer than the window -- two
-    transcripts can carry identical window multisets in different orders, which this
-    construction cannot separate because it uses membership only and discards
-    adjacency.  Read a ``not_identifiable`` verdict at ``window = k`` as "not
-    identifiable from k-mer compatibility", not as a property of the data; raising
-    ``window`` toward the read length is what sharpens it.
+    **This is a surrogate, not the observation model of a sequencing run.**  What an
+    actual paired-end library observes is decided by read length, the fragment-length
+    distribution, and the fact that only the two ends of a fragment are sequenced.  No
+    claim is made relating the two systems -- not that a verdict here transfers to
+    reads, and not that it is conservative in either direction.  Several attempts to
+    state such a relation failed, and the counterexample that ended the last of them is
+    ``test_a_longer_window_is_a_different_system_not_a_sharper_one``: four transcripts
+    whose class contrast is estimable at window 3 and 4, not at 5 and 6, and estimable
+    again at 7 and 8.  Raising ``window`` gives a different system, not a sharper one.
+    Read a verdict from this matrix as a statement about a sequence-derived screening
+    surrogate at a stated ``window``, never as a property of the data; whether it
+    predicts what a quantifier recovers is the empirical question the simulation study
+    addresses.
+
+    One caveat on the column sums: a transcript shorter than ``window`` has no windows
+    and gets an all-zero column, so ``A`` is column-stochastic only when every
+    transcript is at least ``window`` long.
     """
     sig = {}
     for tid in transcript_ids:
@@ -465,16 +488,22 @@ def estimability(A, c, rcond=1e-10):
 def _verdict(entry, tau, min_reads=None):
     """Grade one estimand, and say why.
 
-    Structure first: a functional outside the row space cannot be recovered at any
-    depth.  Then precision, from two independent directions -- an ill-conditioned
-    contrast (large variance factor) and simple lack of informative fragments.  The
+    ``entry`` may be a class total or the contrast; ``entry["label"]`` names which, so
+    the reason string does not assert the wrong one.  Structure first: a functional
+    outside the row space of *this surrogate system*
+    cannot be recovered from it at any depth -- which is a statement about the
+    surrogate, not about the data; see :func:`compatibility_matrix`.  Then precision,
+    from two independent directions -- an ill-conditioned contrast (a large conditioning
+    factor, which is a standard-deviation factor and not a variance) and simple lack of
+    informative fragments.  The
     second is why "has at least one unique k-mer" is not a usable gate: a class whose
     uniqueness is thirty junction k-mers is structurally estimable and practically
     hopeless.
     """
     reasons = []
     if not entry.get("estimable"):
-        reasons.append("contrast outside the row space of the compatibility system")
+        reasons.append("%s outside the row space of the compatibility system"
+                       % entry.get("label", "estimand"))
         return "not_identifiable", reasons
     if entry.get("conditioning_factor", 0.0) > tau:
         reasons.append("conditioning factor %.1f exceeds tau=%.1f"
@@ -502,8 +531,9 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         The pipeline config dict; ``groups`` and ``primary_comparison`` are used.
     k, window
         k-mer length, and the window length used to build the compatibility system
-        (defaults to ``k``; set it to the read length for a sharper, still
-        conservative, system).
+        (defaults to ``k``; a different window gives a different system, not a
+        uniformly sharper one -- the rank is not monotone in it, see
+        :func:`compatibility_matrix`)
     sequences
         ``{transcript_id: cdna}``.  Anything missing is fetched from Ensembl.
     background_sequences, background_fasta, background_gene_transcripts
@@ -636,6 +666,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         for t in ids:
             c[idx[t]] = 1.0
         report[g].update(estimability(A, c))
+        report[g]["label"] = "the %s class total" % g
         report[g]["verdict"], report[g]["reasons"] = _verdict(
             report[g], conditioning_tau, min_informative_reads)
 
@@ -645,6 +676,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     for t in group_ids[pc[1]]:
         c[idx[t]] -= 1.0
     contrast = estimability(A, c)
+    contrast["label"] = "the class contrast"
     contrast["verdict"], contrast["reasons"] = _verdict(contrast, conditioning_tau)
 
     noise = counting_noise_floor(

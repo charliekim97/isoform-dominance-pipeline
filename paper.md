@@ -80,8 +80,8 @@ what this package computes and reports.
 `isoform-dominance` replaces that proxy with the estimability condition itself,
 evaluated on the class-collapsed system, and reports it beside the two quantities that
 indicate whether an estimable comparison is also a usable one: the conditioning of the
-contrast and the expected number of informative fragments. It refuses to proceed
-only when no depth could rescue the comparison, and says "weakly identifiable, and
+contrast and the expected number of informative fragments. It withholds a pass when the
+contrast lies outside the row space of that system, and says "weakly identifiable, and
 here is why" in the large middle ground where the honest answer is neither yes nor no.
 
 # State of the field
@@ -179,21 +179,25 @@ evaluated exactly over all start positions and averaged over a truncated-normal
 fragment-length distribution, then converted to a counting-noise floor on the log2
 class ratio.
 
-*The compatibility system is built on windows, and the guarantee that gives is
-one-directional.* A read spans many windows and its compatibility set is their
-intersection, hence never larger than any single window's — so reads are *more*
-discriminating than windows, the read-level classes are finer, and the read-level row
-space contains this one. What follows is that anything this system declares
-**estimable is estimable from reads too**. The converse does not follow and is false: a
-contrast this system rejects may still be recoverable from reads longer than the
-window, because the construction uses window membership only and discards adjacency,
-so two transcripts carrying the same windows in a different order are not separated
-here although a read spanning the difference separates them. A `not_identifiable`
-verdict at `window = k` therefore means "not identifiable from k-mer compatibility",
-and raising `window` toward the read length is what sharpens it. Estimability is
-otherwise the textbook condition — the functional lies in the row space of the design
-matrix — reported with a structural conditioning factor, because a full-rank system
-with a near-degenerate contrast direction passes a rank test and still yields nothing.
+*The compatibility system is a sequence-derived surrogate, not the observation model
+of a sequencing run.* It collapses windows carried by the same set of transcripts, at a
+window length the user sets; what an actual paired-end run observes is decided by read
+length, the fragment-length distribution, and the fact that only the two ends of a
+fragment are sequenced.
+
+We make no claim relating the two — not that a verdict here transfers to reads, and not
+that it is conservative in either direction. Several attempts to state such a relation
+failed in development, and the counterexample that ended the last of them is now a
+regression test: four short transcripts whose class contrast is estimable at window 3
+and 4, *not* estimable at 5 and 6, and estimable again at 7 and 8. A longer `window` is
+a different system, not a sharper one.
+
+What the verdict is, exactly: `c` lies in the row space of a compatibility system built
+from sequence at a stated window length, reported with a structural conditioning factor
+because a full-rank system with a near-degenerate contrast direction passes a rank test
+and still yields nothing. Whether that predicts what a quantifier recovers is an
+empirical question this paper does not answer; calibration by simulation is planned
+work, tracked in the repository issues.
 
 That conditioning factor, `sqrt(c' (A'A)^+ c)`, is deliberately not called a variance —
 note the square root: the variance factor is `c'(A'A)^+ c` and this is its

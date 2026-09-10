@@ -138,11 +138,34 @@ def test_coverage_stats_counts_bases_not_kmers():
 
 
 def test_coverage_stats_splits_blocks():
-    flags = [True, True, False, False, True]
+    # a genuine split needs a gap of at least k between the spans, not just between
+    # the start-runs: runs (0,2) and (6,1) at k=3 span bases 0-3 and 6-8
+    flags = [True, True, False, False, False, False, True]
     st = I.coverage_stats(flags, 3)
     assert st["n_blocks"] == 2
     assert st["max_block_length"] == 4          # 2 starts + 3 - 1
     assert st["unique_length"] == 4 + 3
+
+
+def test_coverage_stats_unions_overlapping_spans():
+    """Bases under two nearby unique runs must be counted once, not twice.
+
+    A base is uniquely attributable when *some* unique k-mer covers it. Two start-runs
+    separated by fewer than k positions have spans that overlap or touch, and summing
+    their lengths double-counts the shared bases. Left unfixed this drives
+    `unique_fraction` above 1 on sequence with alternating unique and shared windows.
+    """
+    # k=3, unique starts at 0 and 2 (start 1 is not unique): spans 0-2 and 2-4
+    st = I.coverage_stats([True, False, True], 3)
+    assert st["unique_length"] == 5              # bases 0,1,2,3,4 -- not 3 + 3
+    assert st["n_blocks"] == 1                   # one contiguous unique stretch
+    assert st["max_block_length"] == 5
+
+    # alternating unique/shared starts cannot exceed the transcript length
+    flags = [i % 2 == 0 for i in range(200)]
+    st = I.coverage_stats(flags, 31)
+    assert st["unique_length"] <= len(flags) + 31 - 1
+    assert st["n_blocks"] == 1
 
 
 def test_unique_region_is_contiguous_for_an_alternative_terminal_exon():
@@ -366,7 +389,7 @@ def test_report_keeps_the_v21_public_keys():
         assert key in res["groups"]["short"]
 
 
-def test_window_may_exceed_k_for_a_sharper_system():
+def test_window_may_exceed_k_for_a_different_system():
     res = I.analyze(_cfg(), k=31, sequences=_seqs(), window=100,
                     background_gene_transcripts=False)
     assert res["window"] == 100
@@ -431,3 +454,68 @@ def test_full_column_rank_does_not_bound_the_conditioning_factor():
 
     well_posed = np.eye(3)
     assert I.estimability(well_posed, c)["conditioning_factor"] < 2.0
+
+
+def test_a_longer_window_is_a_different_system_not_a_sharper_one():
+    """The counterexample that ended five attempts to relate this system to a read system.
+
+    Each attempt inferred something about row spaces, or about the mechanism, from
+    something weaker: that a verdict transfers to reads (twice, in both directions);
+    that refining the classes enlarges the row space; that the per-transcript
+    normalisation breaks monotonicity; that the surviving-signature count explains it.
+    The paper now claims none of that -- only that a longer window is a different
+    system. These assertions are what actually holds, and every one of them is
+    falsifiable: a mutation sweep over the fixture flips each of them.
+    """
+    T = {"t0": "AAAAAAAACACAACAC", "t1": "CCACCACACCAAAC",
+         "t2": "AAAAAAACAC", "t3": "CAACACAACA"}
+    ids = ["t0", "t1", "t2", "t3"]
+    c = np.array([1.0, 0.0, -1.0, 0.0])          # t0 - t2
+
+    est, nsig, rank, incidence = {}, {}, {}, {}
+    for w in (3, 4, 5, 6, 7, 8):
+        tracks = {t: I.kmer_track(s, w, True) for t, s in T.items()}
+        A, classes = I.compatibility_matrix(tracks, ids)
+        # every transcript here is longer than every window, so A is column-stochastic
+        assert A.sum(axis=0) == pytest.approx([1.0] * 4)
+        est[w] = I.estimability(A, c)["estimable"]
+        nsig[w] = len(classes)
+        rank[w] = int(np.linalg.matrix_rank(A))
+        n = np.array([max(1, len(tracks[t])) for t in ids], dtype=float)
+        counts = A * n
+        # the normalisation is a positive column scaling and cannot change a rank
+        assert int(np.linalg.matrix_rank(counts)) == rank[w]
+        incidence[w] = int(np.linalg.matrix_rank((counts > 0).astype(float)))
+
+    # nothing here is monotone in the window length
+    assert nsig == {3: 4, 4: 7, 5: 4, 6: 3, 7: 5, 8: 5}
+    assert rank == {3: 4, 4: 4, 5: 3, 6: 3, 7: 4, 8: 4}
+    assert est == {3: True, 4: True, 5: False, 6: False, 7: True, 8: True}
+
+    # and the rank falls for more than one reason, which is why no single mechanism
+    # sentence survived. At window 6 the surviving-signature count alone caps it.
+    assert rank[6] <= nsig[6] < len(ids)
+    # At window 5 there are enough signatures AND the 0/1 incidence pattern is full
+    # rank -- only the position multiplicities under those signatures are dependent.
+    assert nsig[5] == len(ids) and incidence[5] == len(ids)
+    assert rank[5] < incidence[5]
+
+    # the partition of positions does not refine either: signatures separated at
+    # window 3 merge at window 6, which is why the class count falls
+    def owners(w):
+        tracks = {t: I.kmer_track(s, w, True) for t, s in T.items()}
+        own = {}
+        for t in ids:
+            for x in tracks[t]:
+                own.setdefault(x, set()).add(t)
+        return tracks, own
+
+    tr3, o3 = owners(3)
+    tr6, o6 = owners(6)
+    positions = [(t, i) for t in ids for i in range(len(tr6[t]))]
+    merged = [(a, b) for a in positions for b in positions
+              if a < b
+              and o6[tr6[a[0]][a[1]]] == o6[tr6[b[0]][b[1]]]
+              and o3[tr3[a[0]][a[1]]] != o3[tr3[b[0]][b[1]]]]
+    assert merged, "fixture no longer exhibits merging; the refinement claim is untested"
+    assert nsig[6] < nsig[3]

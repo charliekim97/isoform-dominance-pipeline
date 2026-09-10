@@ -80,8 +80,9 @@ isoform-dominance identifiability --config config.json \
 ```
 
 Exit codes: **0** identifiable · **3** weakly identifiable (estimable, but ill-conditioned or
-starved of informative fragments at the stated design) · **2** not identifiable (no depth fixes
-it) · **1** config error.
+starved of informative fragments at the stated design) · **2** not identifiable (a class total
+or the contrast lies outside the row space of the compatibility surrogate at this
+window length) · **1** config error.
 
 > **Why not just count unique k-mers?** Because that proxy — used by this package up to
 > v2.1.1 — is wrong in both directions. A class whose only unique sequence is the ~30 k-mers

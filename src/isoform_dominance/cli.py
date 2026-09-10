@@ -11,8 +11,9 @@ middle one is the interesting case and a boolean cannot carry it:
   0   identifiable
   3   weakly identifiable -- estimable, but ill-conditioned or
       starved of informative fragments at the stated design
-  2   not identifiable -- no depth fixes this; regroup, or use
-      long reads
+  2   not identifiable -- a class total or the contrast lies
+      outside the row space of the compatibility surrogate at
+      this window length
 ===== ==============================================================
 """
 import argparse
@@ -134,9 +135,15 @@ def cmd_identifiability(a):
     for reason in res["reasons"]:
         print("    - %s" % reason, file=sys.stderr)
     if res["verdict"] == "not_identifiable":
-        print("  No sequencing depth fixes this: the class contrast is outside the "
-              "row space of the compatibility system. Regroup, or use long reads.",
-              file=sys.stderr)
+        failed = [g for g in res["groups"] if not res["groups"][g].get("estimable")]
+        if not res["contrast"].get("estimable"):
+            failed.append("the class contrast")
+        print("  Outside the row space of the compatibility surrogate at this window "
+              "length: %s. That surrogate is built from sequence, not from the "
+              "observation model of a sequencing run, so this is a screening verdict "
+              "rather than a statement about the data: a longer --window, a different "
+              "grouping, or long reads may change it."
+              % (", ".join(failed) or "an estimand"), file=sys.stderr)
     return _VERDICT_EXIT[res["verdict"]]
 
 
@@ -212,8 +219,9 @@ def build_parser():
     s.add_argument("--config", required=True)
     s.add_argument("--k", type=int, default=identifiability.DEFAULT_K)
     s.add_argument("--window", type=int, default=None,
-                   help="window length for the compatibility system (default: k; "
-                        "set to the read length for a sharper, still conservative, system)")
+                   help="window length for the compatibility system (default: k). A "
+                        "different window gives a different system, not a uniformly "
+                        "sharper one: the rank is not monotone in it.")
     s.add_argument("--sequences", help="optional JSON {transcript_id: cdna} (offline)")
     s.add_argument("--background-sequences", help="optional JSON {transcript_id: cdna} of background transcripts")
     s.add_argument("--background-fasta",

@@ -100,15 +100,62 @@ versioning.
   `conditioning_factor: inf`, `rank: 0`. Reachable from a config whose two groups name the
   same transcripts, where the tool refused the self-comparison — correctly — for a reason
   that was not true.
-- **The "conservative by construction" argument was stated backwards**, in `paper.md` and
-  in the `compatibility_matrix` docstring. Its premise (a read's compatibility set is the
-  intersection of its windows', hence never larger) says reads are *more* discriminating,
-  so the read-level classes are finer and the read-level row space *contains* this one.
-  What follows is that anything declared **estimable** here is estimable from reads; the
-  stated converse — that anything declared unidentifiable here is unidentifiable for reads
-  — is false, because the construction uses window membership only and discards adjacency.
-  Two transcripts can carry the same windows in a different order and be separated by a
-  read that spans the difference.
+- **Every claim ordering the window system against a real read system is withdrawn.**
+  The sentence was wrong four times, in four different forms, each inferring something
+  about *row spaces* from something about the *partition*: (1) "anything this system
+  declares unidentifiable is unidentifiable for real reads too", stated backwards; (2)
+  "anything declared estimable here is estimable from reads", which ignores that reads
+  omit; (3) "refining the classes enlarges the row space", which refinement does not
+  give; (4) "the per-transcript normalisation re-weights every column, so the rank is
+  not monotone", where the normalisation is a positive column scaling and provably
+  cannot change the rank at all. What actually holds: a longer window shrinks each
+  *position's* compatibility set, but nothing about the resulting matrix is monotone,
+  and two distinct things cost the rank rather than one. Four short transcripts now in
+  the test suite have surviving-signature counts 4, 7, 4, 3, 5, 5 at windows 3 through 8
+  and ranks 4, 4, 3, 3, 4, 4; the contrast is estimable at 3 and 4, not at 5 and 6,
+  estimable again at 7 and 8. At window 6 only three signatures survive four
+  transcripts, so the count alone caps the rank. At window 5 four survive and the 0/1
+  incidence pattern is full rank, yet the matrix is rank three -- the position
+  multiplicities are linearly dependent. The normalisation causes neither, and the raw
+  count matrix gives the same ranks. The partition of positions also does **not**
+  refine: signatures separated at a short window merge at a long one, and the class
+  count can fall. The two systems come apart
+  both ways: a window no sequenced end can reach contributes a row a real design never
+  produces, so a contrast estimable here can be lost; and this construction discards
+  adjacency, so two transcripts carrying the same k-mers in a different order are one
+  class here while a read spanning the difference separates them. `c in Row(A)` therefore
+  neither implies nor is implied by `c in Row(A_observed)` outside `span{1}` -- the
+  multiples of the grand total, estimable in any column-stochastic system, `c = 0`
+  included. The construction is described as what it is, a sequence-derived screening
+  surrogate at a stated window, and whether it predicts what a quantifier recovers is
+  handed to the simulation study rather than asserted. Pinned by
+  `test_a_longer_window_is_a_different_system_not_a_sharper_one` and
+  `test_the_grand_total_is_estimable_in_any_column_stochastic_system`.
+- **`--window` is no longer advertised as a sharpness dial.** Its help text said "set to
+  the read length for a sharper, still conservative, system" -- both halves of which are
+  the withdrawn guarantee, and the first is falsified by the fixture above.
+  `_verdict`'s docstring said a functional outside the row space "cannot be recovered at
+  any depth"; it now says that of the surrogate system, which is the only thing it is a
+  statement about.
+- **`informative_fraction` is no longer described as quantifying the omission effect.**
+  It reads the group-unique flags and never inspects the shared multi-transcript
+  classes, which are also rows of `A`; it quantifies one consequence -- the loss of
+  unambiguously assignable fragments -- not the omission of rows.
+- **The CLI, README and Statement of Need no longer say "no depth fixes this".** With the
+  guarantee withdrawn, exit code 2 cannot claim anything about sequencing depth. It now
+  says the contrast lies outside the row space of the compatibility surrogate at this
+  window length, and that a longer `--window`, a different grouping or long reads may
+  change the verdict.
+- **`coverage_stats` double-counted bases where two unique runs were closer than `k`.**
+  A run of `r` unique k-mer starts spans `r + k - 1` bases, which is right per run and
+  wrong when summed: two runs separated by a gap of fewer than `k` positions have spans
+  that overlap or touch. At `k = 3` with unique starts at 0 and 2 the spans are bases
+  0-2 and 2-4 — five bases, reported as six. On alternating unique/shared sequence this
+  drove `unique_fraction` above 1. `unique_length` and `n_blocks` now come from the union
+  of the spans, so a `block` is a maximal run of contiguous unique *bases* — what a read
+  has to sit on — rather than a maximal run of unique k-mer starts. `informative_fraction`
+  reads the start flags directly and was never affected. Pinned by
+  `test_coverage_stats_unions_overlapping_spans`.
 - **`sqrt(c'(A'A)^+ c)` was described as the variance factor.** It is its square root, the
   standard-deviation factor; and under `Var(y) = sigma^2 I` there is nothing generalised
   about it, since GLS is OLS there.
