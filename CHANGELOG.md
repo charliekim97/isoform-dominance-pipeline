@@ -14,58 +14,6 @@ versioning.
 > and per-donor TPM summation — is unchanged in 2.2.0, and the bundled self-test still
 > reproduces the same reference numbers.
 
-## [2.2.0] - 2026-09-09
-
-### Added
-- **Group-level estimability.** `identifiability` now builds the fragment-compatibility
-  system for the gene and reports whether each class total, and the contrast between the
-  two class totals, is an estimable function of it — the textbook row-space condition —
-  together with a structural conditioning factor. That factor is `sqrt(c'(A'A)^+c)` and is
-  deliberately not called a variance: it is the GLS variance factor under `Var(y)=sigma^2 I`,
-  which a quantifier does not satisfy. Its thresholds are provisional. A full-rank system with a
-  near-degenerate contrast direction passes a rank test and still yields nothing, so
-  both are reported. Formalises at the *class* level what @hiller2009 and
-  @ferrerbonsoms2022 established at the transcript level.
-- **Background-aware uniqueness.** Uniqueness is judged against the gene's remaining
-  transcripts by default (`--no-gene-background` restores the old behaviour), and
-  against an arbitrary FASTA via `--background-fasta` — ideally the one the Salmon index
-  was built from. The FASTA is streamed, so a whole-transcriptome background costs
-  memory proportional to the query rather than the file.
-- **Canonical k-mers**, matching what the index actually stores and what an unstranded
-  library requires. `--strand-aware` restores the old behaviour.
-- **A read/fragment model.** `unique_length`, `unique_fraction`, block structure,
-  `informative_fraction` and `expected_informative_reads` at a stated read length,
-  fragment-length distribution, depth and class TPM, plus the resulting counting-noise
-  floor on the log2 class ratio. Informativeness is evaluated on the *sequenced ends*,
-  not the whole fragment: a unique region in the middle of a long fragment is never
-  observed.
-- **Graded verdicts with reasons**: `identifiable`, `weakly_identifiable`,
-  `not_identifiable`, exposed as exit codes 0 / 3 / 2 and as a `reasons` list.
-- **`--json` on every subcommand**, emitting the full result object.
-- **Statistics**: `min_achievable_p` (the exact-test floor — at n = 5 the two-sided
-  floor is 0.0625, so five donors can never reach 0.05), donor-bootstrap confidence
-  intervals on the median fold-change, tie accounting and an explicit `zero_method`, and
-  two stratified cohort combinations — weighted Stouffer over the per-cohort exact tests
-  and van Elteren's design-free stratified signed-rank — reported beside the pooled test.
-
-### Changed
-- `identifiability`'s verdict is no longer "does each class own a unique k-mer". That
-  proxy erred in both directions and both errors are now regression-tested: a class
-  whose only unique sequence is a splice junction passed while being practically
-  unmeasurable, and a class nested inside another failed while being perfectly
-  estimable. `primary_distinguishable` is retained for callers written against v2.1 but
-  is superseded by `verdict`.
-- `stats` reports the pooled combination *and* the stratified ones. Pooling donors
-  across independent cohorts ranks one cohort's differences against another's; the
-  stratified figures are the ones to quote. The `combined` key and the self-test's
-  reference numbers are unchanged.
-- Package description now leads with the identifiability question rather than with
-  quantification.
-
-### Notes
-- Public API additions are additive: `paired_stat`, `analyze`, `kmers` and the shape of
-  the `stats.run` return value all keep their v2.1 behaviour.
-
 ## [Unreleased]
 
 ### Changed
@@ -124,6 +72,98 @@ versioning.
   distinguishes three outcomes: **0** groups distinguishable, **1** invalid config,
   **2** a primary group has no unique k-mers. Previously a config error surfaced as
   an uncaught traceback, and the two failure kinds were not separable by exit code.
+- **`estimability` took its rank and its conditioning factor from two different
+  tolerances.** The rank test truncated on `sigma(A)`; the conditioning factor went
+  through `pinv(A'A)`, whose `rcond` is relative to `sigma(A)**2`. The two thresholds sit
+  five decades apart, and every direction in the band between them was declared estimable
+  by the rank test while having its conditioning direction projected away by the
+  pseudo-inverse — so the reported factor collapsed to `0.0`, the best possible score, for
+  the worst-conditioned contrasts there are. `estimability(diag(1, 1e-7), e2)` returned
+  `conditioning_factor = 0.0` where the true value is `1e7`, and `_verdict` graded it
+  `identifiable` with no reasons. That inverts the reason the quantity exists. The factor
+  is now computed from the SVD the rank test already holds, as
+  `sum_i (v_i'c)^2 / sigma_i^2` over the retained directions, so the two cannot disagree;
+  a contrast outside the row space reports `inf` rather than a finite number computed on
+  its projection. Pinned by `test_conditioning_is_truncated_on_the_same_tolerance_as_the_rank`.
+- **`compatibility_matrix` counted distinct window sequences where it needed positions.**
+  `A[c, t]` is documented as the probability that a window drawn uniformly from `t` falls
+  in class `c`, so each column must sum to 1; with any repeated window it did not. The
+  error is one-directional — repetitive shared classes were under-weighted by their repeat
+  multiplicity, which is exactly the classes that absorb the most fragments — and repeated
+  windows are the rule in cDNA rather than an edge case (A-rich 3' ends, tandem repeats,
+  Alu in long UTRs). No estimability verdict moves, because the row space is unaffected,
+  but the conditioning factor is a direct function of these numbers. Pinned by
+  `test_compatibility_matrix_counts_positions_not_distinct_windows`; the older invariant
+  test used a fixture whose windows were all distinct and so could not fail.
+- **The zero functional is estimable.** `0'theta = 0` lies in every row space and is
+  estimated by the constant `0` with no error; it was reported as `estimable: False`,
+  `conditioning_factor: inf`, `rank: 0`. Reachable from a config whose two groups name the
+  same transcripts, where the tool refused the self-comparison — correctly — for a reason
+  that was not true.
+- **The "conservative by construction" argument was stated backwards**, in `paper.md` and
+  in the `compatibility_matrix` docstring. Its premise (a read's compatibility set is the
+  intersection of its windows', hence never larger) says reads are *more* discriminating,
+  so the read-level classes are finer and the read-level row space *contains* this one.
+  What follows is that anything declared **estimable** here is estimable from reads; the
+  stated converse — that anything declared unidentifiable here is unidentifiable for reads
+  — is false, because the construction uses window membership only and discards adjacency.
+  Two transcripts can carry the same windows in a different order and be separated by a
+  read that spans the difference.
+- **`sqrt(c'(A'A)^+ c)` was described as the variance factor.** It is its square root, the
+  standard-deviation factor; and under `Var(y) = sigma^2 I` there is nothing generalised
+  about it, since GLS is OLS there.
+
+## [2.2.0] - 2026-09-09
+
+### Added
+- **Group-level estimability.** `identifiability` now builds the fragment-compatibility
+  system for the gene and reports whether each class total, and the contrast between the
+  two class totals, is an estimable function of it — the textbook row-space condition —
+  together with a structural conditioning factor. That factor is `sqrt(c'(A'A)^+c)` and is
+  deliberately not called a variance: it is the GLS variance factor under `Var(y)=sigma^2 I`,
+  which a quantifier does not satisfy. Its thresholds are provisional. A full-rank system with a
+  near-degenerate contrast direction passes a rank test and still yields nothing, so
+  both are reported. Formalises at the *class* level what @hiller2009 and
+  @ferrerbonsoms2022 established at the transcript level.
+- **Background-aware uniqueness.** Uniqueness is judged against the gene's remaining
+  transcripts by default (`--no-gene-background` restores the old behaviour), and
+  against an arbitrary FASTA via `--background-fasta` — ideally the one the Salmon index
+  was built from. The FASTA is streamed, so a whole-transcriptome background costs
+  memory proportional to the query rather than the file.
+- **Canonical k-mers**, matching what the index actually stores and what an unstranded
+  library requires. `--strand-aware` restores the old behaviour.
+- **A read/fragment model.** `unique_length`, `unique_fraction`, block structure,
+  `informative_fraction` and `expected_informative_reads` at a stated read length,
+  fragment-length distribution, depth and class TPM, plus the resulting counting-noise
+  floor on the log2 class ratio. Informativeness is evaluated on the *sequenced ends*,
+  not the whole fragment: a unique region in the middle of a long fragment is never
+  observed.
+- **Graded verdicts with reasons**: `identifiable`, `weakly_identifiable`,
+  `not_identifiable`, exposed as exit codes 0 / 3 / 2 and as a `reasons` list.
+- **`--json` on every subcommand**, emitting the full result object.
+- **Statistics**: `min_achievable_p` (the exact-test floor — at n = 5 the two-sided
+  floor is 0.0625, so five donors can never reach 0.05), donor-bootstrap confidence
+  intervals on the median fold-change, tie accounting and an explicit `zero_method`, and
+  two stratified cohort combinations — weighted Stouffer over the per-cohort exact tests
+  and van Elteren's design-free stratified signed-rank — reported beside the pooled test.
+
+### Changed
+- `identifiability`'s verdict is no longer "does each class own a unique k-mer". That
+  proxy erred in both directions and both errors are now regression-tested: a class
+  whose only unique sequence is a splice junction passed while being practically
+  unmeasurable, and a class nested inside another failed while being perfectly
+  estimable. `primary_distinguishable` is retained for callers written against v2.1 but
+  is superseded by `verdict`.
+- `stats` reports the pooled combination *and* the stratified ones. Pooling donors
+  across independent cohorts ranks one cohort's differences against another's; the
+  stratified figures are the ones to quote. The `combined` key and the self-test's
+  reference numbers are unchanged.
+- Package description now leads with the identifiability question rather than with
+  quantification.
+
+### Notes
+- Public API additions are additive: `paired_stat`, `analyze`, `kmers` and the shape of
+  the `stats.run` return value all keep their v2.1 behaviour.
 
 ## [2.1.1] - 2026-06-16
 
