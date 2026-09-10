@@ -160,16 +160,32 @@ claiming the idea:
 The first two address **transcript-level** identifiability of the full deconvolution;
 `terminus` chooses its groups after seeing the data. Neither answers the question a biologist
 arrives with: *is the contrast between two classes I defined on biological grounds estimable?*
-Those are different questions with different answers — two transcripts with identical sequence
-make each abundance unidentifiable while their **sum** is perfectly identifiable, and
-conversely a set of individually identifiable transcripts can define a contrast that is not.
 
-`isoform-dominance` targets that narrower question: *for one gene, which functional isoform
-class predominates?* Its specific contributions are (1) going from a **gene symbol** straight
-to a reviewed isoform-group proposal, (2) evaluating the **estimability of the user's own
-class contrast, before quantification**, and (3) a scriptable Python CLI with a download-free
-self-test meant to ship alongside a manuscript. Group proposals are presented for review, not
-treated as final.
+Two different questions hide under the same word, and keeping them apart is the whole reason
+this package exists. A contrast is **estimable** when it lies in the row space of the
+compatibility system — a yes/no in exact arithmetic. It is **measurable** when it can actually
+be recovered at a finite sequencing depth. Transcript-level identifiability settles the first
+in one direction only, and is silent on the second.
+
+- **It is not necessary for estimability.** Two transcripts with identical sequence make each
+  abundance unidentifiable while their **sum** is perfectly estimable. A transcript-level
+  verdict can reject a comparison that is in fact sound.
+- **It is sufficient for estimability — and that is the problem.** If every transcript is
+  identifiable the design matrix has full column rank, so *every* contrast is estimable. The
+  row-space condition is then satisfied trivially and stops discriminating exactly where you
+  need it to.
+- **It is not sufficient for measurability.** Full rank says nothing about finite depth: the
+  class direction can be so weakly observed that a formally estimable contrast is
+  unrecoverable. `identifiability` therefore reports a **conditioning factor beside the
+  row-space verdict**, and neither on its own.
+
+`isoform-dominance` targets that question: *for one gene, which functional isoform class
+predominates?* The contribution is evaluating the **estimability of the user's own class
+contrast, before quantification** — a check none of the tools above performs, and none takes a
+bare gene symbol as input. Around that sit two conveniences rather than claims: `annotate` goes
+from a gene symbol to a reviewed isoform-group proposal (presented for review, not treated as
+final), and the whole thing is a scriptable Python CLI with a download-free self-test, meant to
+ship alongside a manuscript.
 
 More documentation: a step-by-step [NTRK2 walkthrough](docs/tutorial_NTRK2.md), a
 [gallery of further example genes](docs/example_genes.md) (NTRK2/NTRK3 kinase

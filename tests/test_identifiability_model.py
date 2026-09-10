@@ -314,3 +314,58 @@ def test_window_may_exceed_k_for_a_sharper_system():
 def test_empty_groups_rejected():
     with pytest.raises(ValueError, match="empty"):
         I.analyze({"groups": {}, "primary_comparison": []}, sequences={})
+
+
+# --------------------------------------------------------------------------- #
+# The README and paper claim that transcript-level identifiability is neither
+# necessary nor sufficient for a class contrast to be measurable.  The
+# "not necessary" half is covered by
+# test_identical_transcripts_break_each_class_but_not_their_sum above.  These two
+# pin the "not sufficient" half, and pin it precisely, because the obvious
+# statement of it is false: full column rank does imply that every contrast is
+# estimable.  What it does not imply is that any of them is recoverable.
+def test_full_column_rank_makes_every_contrast_estimable():
+    """Individually identifiable transcripts cannot yield a non-estimable contrast.
+
+    If every unit vector lies in the row space then the row space is the whole
+    space, so no functional is left out.  Stating otherwise -- that identifiable
+    transcripts can define a contrast that is not estimable -- is wrong, and a
+    reviewer refutes it in one line.  The insufficiency is about conditioning,
+    not about the row-space condition; the next test carries that.
+    """
+    A = np.array([[1.0, 0.0, 0.0],
+                  [0.0, 1.0, 0.0],
+                  [0.0, 0.0, 1.0],
+                  [1.0, 1.0, 1.0]])
+    assert I.estimability(A, np.array([1.0, 1.0, 1.0]))["rank"] == 3
+    for t in range(3):
+        assert I.estimability(A, np.eye(3)[t])["estimable"] is True
+    rng = np.random.default_rng(0)
+    for _ in range(50):
+        c = rng.normal(size=3)
+        assert I.estimability(A, c)["estimable"] is True
+
+
+def test_full_column_rank_does_not_bound_the_conditioning_factor():
+    """Every transcript identifiable, the contrast estimable, and still unusable.
+
+    Here the class direction is observed only through a difference of nearly
+    identical rows, so the contrast is estimable in exact arithmetic and its
+    conditioning factor is three orders of magnitude worse than a well-posed
+    design.  This is why the rank verdict is reported with the conditioning
+    factor rather than on its own.
+    """
+    eps = 1e-3
+    A = np.array([[1.0, 1.0, 1.0],
+                  [1.0, 1.0, 1.0 + eps],
+                  [1.0, 1.0 - eps, 1.0]])
+    c = np.array([1.0, 1.0, -1.0])
+    got = I.estimability(A, c)
+    assert got["rank"] == 3
+    for t in range(3):
+        assert I.estimability(A, np.eye(3)[t])["estimable"] is True
+    assert got["estimable"] is True
+    assert got["conditioning_factor"] > 1e3
+
+    well_posed = np.eye(3)
+    assert I.estimability(well_posed, c)["conditioning_factor"] < 2.0

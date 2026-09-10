@@ -113,14 +113,30 @@ support.
 in. The classes here are defined *a priori and on biological grounds* — a
 signalling-competent receptor against a truncated one — and the estimand is the class
 total and the contrast between two class totals, not the individual transcript
-abundances. Those are different questions with different answers: two transcripts with
-identical sequence make each abundance unidentifiable while their sum is perfectly
-identifiable, and conversely a set of individually identifiable transcripts can define
-a contrast that is not. `terminus` will not answer it because it chooses the groups
-itself, after seeing the data, and so cannot say whether *the comparison the
-investigator came with* is supported; the transcript-level criteria will not answer it
-because a verdict on individual transcripts does not transfer to a functional in that
-transcript space. `isoform-dominance` evaluates the estimability of the user's own
+abundances. Two questions hide under one word here, and separating them is the point. A
+contrast is *estimable* when it lies in the row space of the compatibility system — a
+yes/no in exact arithmetic. It is *measurable* when it can be recovered at a finite
+sequencing depth. Transcript-level identifiability settles the first in one direction
+only, and is silent on the second.
+
+It is not necessary for estimability: two transcripts with identical sequence make each
+abundance unidentifiable while their sum is perfectly estimable, so a transcript-level
+verdict can reject a comparison that is in fact sound.
+
+It is sufficient for estimability, and that is the problem rather than the reassurance
+it sounds like. If every transcript is identifiable the design matrix has full column
+rank, so *every* contrast is estimable; the row-space condition is satisfied trivially
+and a rank verdict stops discriminating exactly where it is needed. It is not sufficient
+for measurability: full rank carries no statement about finite depth, and the class
+direction can be so weakly observed that a formally estimable contrast is unrecoverable
+in practice. That is why the estimability verdict is reported together with a
+conditioning factor, and why neither is reported alone.
+
+`terminus` will not answer the question because it chooses the groups itself, after
+seeing the data, and so cannot say whether *the comparison the investigator came with*
+is supported; the transcript-level criteria will not answer it because their failing
+verdict does not transfer — a gene they declare non-identifiable may still determine the
+class contrast exactly. `isoform-dominance` evaluates the estimability of the user's own
 class contrast, before quantification, and none of the DTU tools above takes a bare
 gene symbol as input or performs such a check. It is deliberately narrow and
 complementary rather than competing: it does not attempt genome-wide discovery,
