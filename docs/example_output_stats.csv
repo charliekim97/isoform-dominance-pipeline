@@ -1,4 +1,6 @@
-cohort,n,short>long,median_fold,paired_wilcoxon_P
-GSE228458,5,5/5,25.93,0.0625
-GSE137619,6,6/6,37.68,0.03125
-COMBINED,11,11/11,32.26,0.0009766
+cohort,n,short>long,median_fold,fold_CI_low,fold_CI_high,paired_wilcoxon_P,resolution_floor_P,underpowered
+GSE228458,5,5/5,25.93,4.93,32.76,0.0625,0.0625,yes
+GSE137619,6,6/6,37.68,29.60,54.32,0.03125,0.03125,no
+COMBINED_POOLED,11,11/11,32.26,25.93,41.46,0.0009766,0.0009766,no
+COMBINED_STOUFFER,11,,,,,0.004419,,
+COMBINED_STRATIFIED_SIGNED_RANK,11,,,,,0.002795,,

@@ -6,8 +6,10 @@ versioning.
 
 > **Provenance note.** Version 2.1.1 is the version cited for LEPR isoform
 > quantification and aggregation in the leptin-receptor/LRP1 choroid-plexus study, and
-> is archived at Zenodo DOI 10.5281/zenodo.20738150. That archive is immutable and its
-> tag and release are permanent; nothing in this or any later version alters it. The
+> is archived at Zenodo DOI 10.5281/zenodo.20738150. That version DOI resolves to its own
+> Zenodo record, which a later release does not touch, and the `v2.1.1` tag and release
+> are left in place as a matter of policy: they are never retagged, replaced or deleted.
+> Nothing in this or any later version alters that record's files. The
 > `extract` aggregation behaviour those results depend on — transcript-to-group mapping
 > and per-donor TPM summation — is unchanged in 2.2.0, and the bundled self-test still
 > reproduces the same reference numbers.
@@ -65,6 +67,46 @@ versioning.
   the `stats.run` return value all keep their v2.1 behaviour.
 
 ## [Unreleased]
+
+### Changed
+- Redesigned the `stats` figure. The per-cohort numbers used to float above the axes at
+  a fixed offset and collided with the figure title; they now sit in each panel's own
+  title block, in reading order (figure title -> combined result -> cohort -> that
+  cohort's numbers -> plot). Panels share one y axis, so the slopes are comparable
+  across cohorts rather than each panel being independently scaled. Colour now follows
+  the isoform **class** and is identical in every panel -- it previously indexed the
+  *cohort* on one side of the slope and left the other side grey, so the same class was
+  drawn in different hues from panel to panel. The two class colours are a validated
+  categorical pair (CVD dE 24.7) and both classes are direct-labelled on the x axis, so
+  identity never rests on colour alone. The figure now also shows the bootstrap
+  fold-change interval and spells out the exact-test floor when a cohort is
+  underpowered.
+- The header carries **one** combined P — the default combination, named — instead of
+  two competing numbers; the other two combinations are given in a footnote and all
+  three remain in the stats CSV. `DEFAULT_COMBINATION` stays Stouffer's, and now says
+  why: its inputs are the exact per-cohort tests, so it is never anti-conservative,
+  whereas the stratified signed-rank P comes from a normal approximation that is not
+  validated at the stratum sizes this package targets. It is reported alongside the
+  default, never in place of it.
+- Regenerated `docs/example_output.{png,pdf,svg}` and `docs/example_output_stats.csv`,
+  which still showed v2.1.1 output (the old 5-column stats table with a single
+  `COMBINED` row).
+- Added `scripts/make_docs_example.py`, so the committed example figure and stats table
+  can be regenerated from the bundled self-test data with no data access. It refuses to
+  overwrite the committed files if the reference result does not reproduce, and its
+  output is byte-reproducible for a given Matplotlib and font set (`SOURCE_DATE_EPOCH`
+  suppresses the embedded timestamp, a fixed `svg.hashsalt` stabilises element ids).
+  Previously the committed artefacts had no committed way to rebuild them, which is how
+  they came to be a minor version out of date.
+- `stats.FONT_STACK` exposes the figure font stack (`["Arial", "DejaVu Sans"]`, unchanged
+  by default). Pinning it to one family makes a figure reproduce identically across
+  machines; the docs-example script pins DejaVu Sans, which ships with Matplotlib, so
+  the committed example is the same file whether it is rebuilt on a machine that has
+  Arial or one that does not.
+- CI now regenerates the example and fails if `docs/example_output_stats.csv` has
+  drifted from what the code produces; a figure difference is reported for review
+  rather than failing the build, since fonts and renderers differ across machines.
+  `ruff` now covers `scripts/` as well as `src` and `tests`.
 
 ### Fixed
 - `identifiability` no longer reports `primary_distinguishable: True` for a

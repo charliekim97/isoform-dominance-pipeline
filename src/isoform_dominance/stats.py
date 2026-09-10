@@ -39,6 +39,18 @@ from scipy.stats import norm, wilcoxon
 
 from .io import primary_pair
 
+#: Class colours. Identity follows the isoform class, not the panel index -- the
+#: cohort is already encoded by which panel a donor is in, so reusing the colour
+#: channel for cohort would leave the same class drawn in different hues from one
+#: panel to the next. Validated as a categorical pair against a light surface
+#: (CVD dE 24.7, normal-vision dE 33.6), and both classes are direct-labelled on the
+#: x axis, so identity never rests on colour alone.
+CLASS_COLORS = ("#2a78d6", "#eb6834")
+INK = "#3d3d38"
+INK_MUTED = "#84837b"
+HAIRLINE = "#d4d3cc"
+
+#: Retained for callers written against v2.1.
 PALETTE = ["#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B3", "#937860"]
 
 #: Bootstrap replicates for the fold-change interval, and the seed that makes the
@@ -46,8 +58,28 @@ PALETTE = ["#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B3", "#937860"]
 DEFAULT_N_BOOT = 10_000
 DEFAULT_SEED = 0
 
-#: How cohorts are combined by default in the reported summary.
+#: How cohorts are combined by default in the reported summary.  Stouffer's is the
+#: conservative choice: its inputs are the exact per-cohort tests, so it is never
+#: anti-conservative, and when a cohort sits at its resolution floor the combination
+#: inherits that floor rather than papering over it.  The stratified signed-rank
+#: alternative uses more of the within-cohort information but reaches its P through a
+#: normal approximation, which is not validated at the stratum sizes this package is
+#: built for; it is reported alongside, never in place of, the default.
 DEFAULT_COMBINATION = "stouffer"
+
+#: Font stack for the figures, first match wins.  Arial leads because it is what most
+#: journals ask for; DejaVu Sans is Matplotlib's bundled fallback and is what a machine
+#: without Arial will use.  Set this to a single family before calling :func:`run` to
+#: make a figure reproduce identically across machines -- ``scripts/make_docs_example.py``
+#: pins DejaVu Sans for exactly that reason.
+FONT_STACK = ["Arial", "DejaVu Sans"]
+
+#: Display names for the combination methods, used in the figure and the CLI.
+COMBINATION_LABELS = {
+    "stouffer": "Stouffer",
+    "stratified_signed_rank": "stratified signed-rank",
+    "pooled": "donor-pooled",
+}
 
 
 def load_perdonor(path, condition, gA, gB):
@@ -274,11 +306,15 @@ def run(config, condition, cohorts, out, n_boot=DEFAULT_N_BOOT, seed=DEFAULT_SEE
     import matplotlib.pyplot as plt
     gene = config.get("gene", "gene")
     gA, gB = primary_pair(config)
-    mpl.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["Arial", "DejaVu Sans"],
+    mpl.rcParams.update({"font.family": "sans-serif", "font.sans-serif": list(FONT_STACK),
                          "font.size": 9, "pdf.fonttype": 42, "svg.fonttype": "none"})
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     names = list(cohorts)
-    fig, axes = plt.subplots(1, len(names), figsize=(3.6 * len(names), 3.6), squeeze=False)
+    # shared y across panels: these are small multiples of the same measurement, and
+    # an independent scale per panel makes the slopes look comparable when they are not
+    fig, axes = plt.subplots(1, len(names), figsize=(3.6 * len(names), 4.0),
+                             squeeze=False, sharey=True)
+    fig.subplots_adjust(top=0.80, bottom=0.16, wspace=0.10)
     allA, allB, statrows, details, diffs = [], [], [], [], []
     for i, name in enumerate(names):
         don, A, B = load_perdonor(cohorts[name], condition, gA, gB)
@@ -293,19 +329,53 @@ def run(config, condition, cohorts, out, n_boot=DEFAULT_N_BOOT, seed=DEFAULT_SEE
         diffs.append(A - B)
         n, ngt, p, fold = det["n"], det["n_greater"], det["p"], det["median_fold"]
         statrows.append((name, n, ngt, p, fold))
-        ax = axes[0, i]; c = PALETTE[i % len(PALETTE)]; fl = 1e-3
+
+        ax = axes[0, i]
+        fl = 1e-3
         for k in range(n):
-            ax.plot([0, 1], [max(A[k], fl), max(B[k], fl)], color="#999", lw=0.8, zorder=1)
-        ax.scatter(np.zeros(n), np.clip(A, fl, None), s=34, c=c, edgecolor="white", lw=0.5, zorder=3)
-        ax.scatter(np.ones(n), np.clip(B, fl, None), s=34, c="#9aa0a6", edgecolor="white", lw=0.5, zorder=3)
-        ax.set_yscale("log"); ax.set_xlim(-0.4, 1.4); ax.set_xticks([0, 1]); ax.set_xticklabels([gA, gB])
-        ax.set_ylabel("%s TPM (log)" % gene); ax.set_title("%s (%s n=%d)" % (name, condition, n), fontsize=9.5)
-        label = "%d/%d  %.0fx  P=%.3f" % (ngt, n, fold, p)
+            ax.plot([0, 1], [max(A[k], fl), max(B[k], fl)],
+                    color=HAIRLINE, lw=1.0, zorder=1, solid_capstyle="round")
+        ax.scatter(np.zeros(n), np.clip(A, fl, None), s=46, c=CLASS_COLORS[0],
+                   edgecolor="white", lw=1.2, zorder=3)
+        ax.scatter(np.ones(n), np.clip(B, fl, None), s=46, c=CLASS_COLORS[1],
+                   edgecolor="white", lw=1.2, zorder=3)
+
+        ax.set_yscale("log")
+        ax.set_xlim(-0.45, 1.45)
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels([gA, gB], fontsize=9.5, color=INK)
+        ax.tick_params(axis="both", which="major", colors=INK_MUTED, length=3, width=0.8)
+        ax.tick_params(axis="both", which="minor", colors=INK_MUTED, length=1.8, width=0.6)
+        if i > 0:
+            # sharey already suppresses the labels; the orphaned tick marks are noise.
+            # which="both" matters here: a log axis carries minor ticks as well.
+            ax.tick_params(axis="y", which="both", left=False, right=False)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+        for side in ("left", "bottom"):
+            ax.spines[side].set_color(HAIRLINE)
+            ax.spines[side].set_linewidth(0.8)
+        ax.grid(axis="y", color=HAIRLINE, lw=0.6, alpha=0.6)
+        ax.set_axisbelow(True)
+        if i == 0:
+            ax.set_ylabel("%s TPM  (log scale)" % gene, fontsize=9, color=INK)
+
+        # the per-cohort numbers belong to the panel, so they live in its title --
+        # floating them above the axes collided with the figure title
+        sub = "%d/%d donors  ·  %.0fx" % (ngt, n, fold)
+        lo, hi = det["fold_ci"]
+        if np.isfinite(lo) and np.isfinite(hi):
+            sub += " [%.0f-%.0f]" % (lo, hi)
+        sub += "  ·  P = %.3g" % p
+        ax.set_title("%s   (%s, n = %d)" % (name, condition, n),
+                     fontsize=10, color=INK, pad=20, loc="center")
+        ax.annotate(sub, xy=(0.5, 1.012), xycoords="axes fraction",
+                    ha="center", va="bottom", fontsize=8.3, color=INK_MUTED)
         if det["underpowered"]:
-            label += "  (floor %.3f)" % det["p_floor"]
-        ax.text(0.5, 1.16, label, transform=ax.transAxes,
-                ha="center", va="top", fontsize=8, color="#333")
-        ax.spines[["top", "right"]].set_visible(False)
+            ax.annotate("the exact test cannot go below P = %.3g at n = %d"
+                        % (det["p_floor"], det["n_effective"]),
+                        xy=(0.5, -0.115), xycoords="axes fraction", ha="center",
+                        va="top", fontsize=7.6, color=INK_MUTED, style="italic")
 
     pooled = paired_stat_detail(np.array(allA), np.array(allB), n_boot=n_boot,
                                seed=seed, zero_method=zero_method)
@@ -318,12 +388,24 @@ def run(config, condition, cohorts, out, n_boot=DEFAULT_N_BOOT, seed=DEFAULT_SEE
         "stratified_signed_rank": stratified_signed_rank(diffs),
         "pooled": {"z": float("nan"), "p": cp, "k": len(details)},
     }
-    headline = combo.get(DEFAULT_COMBINATION, combo["pooled"])
+    headline_key = DEFAULT_COMBINATION if DEFAULT_COMBINATION in combo else "pooled"
+    fig.suptitle("%s: %s vs %s  ·  %d cohorts, %s donors"
+                 % (gene, gA, gB, len(names), condition),
+                 fontsize=11.5, fontweight="bold", color=INK, y=0.985)
+    # one headline number in the header; the alternatives are named in a footnote so
+    # they are available without three P values competing for the same slot
+    fig.text(0.5, 0.925,
+             "combined n = %d, %d/%d concordant  ·  %s P = %.3g"
+             % (cn, cgt, cn, COMBINATION_LABELS.get(headline_key, headline_key),
+                combo[headline_key]["p"]),
+             ha="center", va="center", fontsize=8.6, color=INK_MUTED)
+    alts = ["%s P = %.3g" % (COMBINATION_LABELS.get(k, k), combo[k]["p"])
+            for k in ("stratified_signed_rank", "stouffer")
+            if k != headline_key and np.isfinite(combo[k]["p"])]
+    alts.append("donor-pooled P = %.3g" % cp)
+    fig.text(0.995, 0.005, "also: " + "  ·  ".join(alts), ha="right", va="bottom",
+             fontsize=7.4, color=INK_MUTED)
 
-    fig.suptitle("%s: %s vs %s - combined %s n=%d, %d/%d, P=%.4g (%s P=%.4g)"
-                 % (gene, gA, gB, condition, cn, cgt, cn, cp,
-                    DEFAULT_COMBINATION, headline["p"]),
-                 fontsize=10.5, fontweight="bold", y=1.04)
     for ext in ("png", "pdf", "svg"):
         fig.savefig("%s.%s" % (out, ext), dpi=300, bbox_inches="tight")
     plt.close(fig)

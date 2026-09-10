@@ -56,4 +56,26 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install ruff
-      - run: ruff check src tests
+      - run: ruff check src tests scripts
+
+  docs-example:
+    name: committed example matches the code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: python scripts/make_docs_example.py
+      # The stats table is the hard gate: it is plain text with no font or renderer
+      # dependence, so a difference here means the committed example no longer matches
+      # what the code produces. This is exactly how it went a minor version stale.
+      - name: stats table must be current
+        run: git diff --exit-code -- docs/example_output_stats.csv
+      # The figure is byte-reproducible for a given Matplotlib and font set, but not
+      # across them, so a difference is reported for a human to look at rather than
+      # failing the build on an unrelated Matplotlib release.
+      - name: report any figure difference
+        if: always()
+        run: git diff --stat -- docs/example_output.png docs/example_output.pdf docs/example_output.svg

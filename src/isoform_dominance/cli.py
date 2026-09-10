@@ -167,8 +167,9 @@ def cmd_stats(a):
     for key in ("stouffer", "stratified_signed_rank"):
         c = res["combination"][key]
         print("  %-12s k=%d cohorts  P=%.4g" % (key.upper(), c["k"], c["p"]))
-    print("  headline combination: %s (pooling donors across independent cohorts "
-          "ignores the cohort factor)" % res["headline_combination"])
+    print("  headline combination: %s. POOLED above is reported for continuity only: "
+          "it pools donors across independent cohorts and so ignores the cohort factor."
+          % res["headline_combination"])
     print("wrote %s.{png,pdf,svg} + %s_stats.csv" % (a.out, a.out))
     return EXIT_OK
 
