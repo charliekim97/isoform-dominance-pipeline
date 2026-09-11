@@ -33,11 +33,17 @@ subcommands that never plot (``--version``, ``annotate``, ``identifiability``).
 import csv
 import math
 import os
+import warnings
 
 import numpy as np
+import scipy
+import scipy.stats
 from scipy.stats import norm, wilcoxon
 
 from .io import primary_pair
+
+#: SciPy 1.15 changed how ``wilcoxon(method="auto")`` chooses its p-value computation.
+_SCIPY_1_15 = tuple(int(x) for x in scipy.__version__.split(".")[:2]) >= (1, 15)
 
 #: Class colours. Identity follows the isoform class, not the panel index -- the
 #: cohort is already encoded by which panel a donor is in, so reusing the colour
@@ -149,6 +155,46 @@ def paired_stat(A, B):
     return d["n"], d["n_greater"], d["p"], d["median_fold"]
 
 
+def _wilcoxon_auto_method(d):
+    """The computation ``wilcoxon(method="auto")`` selects for differences ``d``.
+
+    SciPy does not report which one it used, so its dispatch is mirrored here, for the
+    installed version.  ``n`` counts every pair, zeros included, as SciPy's does.
+
+    SciPy < 1.15
+        ``"exact"`` when n <= 50 and no difference is zero, else ``"asymptotic"``.
+        Ties among ``|d|`` do not change the choice, so ``"exact"`` here is SciPy's
+        exact distribution applied to a tied statistic -- see ``exact_null_clean``.
+    SciPy >= 1.15
+        ``"asymptotic"`` when n > 50; otherwise ``"exact"`` when there are neither ties
+        nor zeros, an exhaustive ``"permutation"`` test when n <= 13, and
+        ``"asymptotic"`` above that.
+
+    ``"asymptotic"`` is the normal approximation, without continuity correction.
+    """
+    d = np.asarray(d, dtype=float)
+    n = d.size
+    has_zeros = bool(np.any(d == 0))
+    if not _SCIPY_1_15:
+        return "exact" if n <= 50 and not has_zeros else "asymptotic"
+    if n > 50:
+        return "asymptotic"
+    nz = np.abs(d[d != 0])
+    has_ties = np.unique(nz).size != nz.size
+    if not (has_ties or has_zeros):
+        return "exact"
+    return "permutation" if n <= 13 else "asymptotic"
+
+
+def _wilcoxon_method_arg(label):
+    """The explicit SciPy ``method=`` argument a method label stands for."""
+    if label == "permutation":
+        return scipy.stats.PermutationMethod()
+    if label == "asymptotic" and not _SCIPY_1_15:
+        return "approx"
+    return label
+
+
 def paired_stat_detail(A, B, n_boot=DEFAULT_N_BOOT, seed=DEFAULT_SEED,
                        zero_method="wilcox", ci=0.95):
     """Paired comparison with its floor, effect-size interval and tie accounting.
@@ -157,6 +203,15 @@ def paired_stat_detail(A, B, n_boot=DEFAULT_N_BOOT, seed=DEFAULT_SEED,
     explicitly rather than left to the SciPy default, because the choice changes the
     effective ``n`` -- ``"wilcox"`` discards tied pairs -- and therefore changes the
     achievable floor.
+
+    The p-value is SciPy's ``method="auto"`` one, unchanged, and ``auto`` does not
+    always mean exact: with a zero difference, or (from SciPy 1.15) a tie, it can fall
+    back to the normal approximation.  ``wilcoxon_method`` names the computation that
+    actually produced ``p`` -- ``"exact"``, ``"permutation"`` or ``"asymptotic"``.  The
+    name comes from :func:`_wilcoxon_auto_method` and is reported only if re-running
+    SciPy with that method named explicitly reproduces ``p`` bit for bit; otherwise it
+    is ``"unresolved"``, so a SciPy release that changes its rule shows up as that
+    rather than as a wrong label.  It is ``None`` when no test was run.
     """
     A = np.asarray(A, dtype=float)
     B = np.asarray(B, dtype=float)
@@ -164,7 +219,8 @@ def paired_stat_detail(A, B, n_boot=DEFAULT_N_BOOT, seed=DEFAULT_SEED,
     out = {"n": n, "n_greater": 0, "p": float("nan"), "median_fold": float("nan"),
            "fold_ci": (float("nan"), float("nan")), "n_ties": 0,
            "n_effective": 0, "p_floor": float("nan"),
-           "underpowered": False, "zero_method": zero_method}
+           "underpowered": False, "zero_method": zero_method,
+           "wilcoxon_method": None}
     if n == 0:
         return out
 
@@ -174,9 +230,9 @@ def paired_stat_detail(A, B, n_boot=DEFAULT_N_BOOT, seed=DEFAULT_SEED,
     n_eff = n - out["n_ties"] if zero_method == "wilcox" else n
     out["n_effective"] = int(n_eff)
     nz = d[d != 0]
-    # ties among |d| leave the floor alone but do change the null's shape, and some
-    # SciPy versions decline to compute an exact p in their presence; record it so a
-    # reader is not left assuming the reported p is the permutation one
+    # ties among |d| leave the floor alone but do change the null's shape; record it so
+    # a reader is not left assuming the reported p is the permutation one.
+    # `wilcoxon_method` below says which computation SciPy actually ran.
     out["exact_null_clean"] = bool(nz.size and
                                    np.unique(np.abs(nz)).size == nz.size)
     out["p_floor"] = signed_rank_resolution_floor(n_eff)
@@ -187,9 +243,24 @@ def paired_stat_detail(A, B, n_boot=DEFAULT_N_BOOT, seed=DEFAULT_SEED,
     else:
         try:
             out["p"] = float(wilcoxon(A, B, alternative="two-sided",
-                                      zero_method=zero_method).pvalue)
+                                      zero_method=zero_method, method="auto").pvalue)
         except ValueError:
             out["p"] = float("nan")
+        if np.isfinite(out["p"]):
+            label = _wilcoxon_auto_method(d)
+            try:
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always")   # kept out of the user's stream
+                    again = float(wilcoxon(A, B, alternative="two-sided",
+                                           zero_method=zero_method,
+                                           method=_wilcoxon_method_arg(label)).pvalue)
+            except ValueError:
+                again = float("nan")
+            # SciPy < 1.15 answers method="exact" with the normal approximation when a
+            # difference is zero, with a warning; a match then confirms nothing
+            if any("Switching to normal approximation" in str(w.message) for w in caught):
+                again = float("nan")
+            out["wilcoxon_method"] = label if again == out["p"] else "unresolved"
 
     with np.errstate(divide="ignore", invalid="ignore"):
         ratios = A / B
@@ -412,21 +483,25 @@ def run(config, condition, cohorts, out, n_boot=DEFAULT_N_BOOT, seed=DEFAULT_SEE
 
     with open(out + "_stats.csv", "w", newline="") as f:
         w = csv.writer(f)
+        # wilcoxon_method is appended last so that a reader indexing the older columns
+        # by position is unaffected; the combination rows are not Wilcoxon tests
         w.writerow(["cohort", "n", "%s>%s" % (gA, gB), "median_fold",
                     "fold_CI_low", "fold_CI_high", "paired_wilcoxon_P",
-                    "resolution_floor_P", "underpowered"])
+                    "resolution_floor_P", "underpowered", "wilcoxon_method"])
         for d in details:
             w.writerow([d["cohort"], d["n"], "%d/%d" % (d["n_greater"], d["n"]),
                         "%.2f" % d["median_fold"], "%.2f" % d["fold_ci"][0],
                         "%.2f" % d["fold_ci"][1], "%.4g" % d["p"],
-                        "%.4g" % d["p_floor"], "yes" if d["underpowered"] else "no"])
+                        "%.4g" % d["p_floor"], "yes" if d["underpowered"] else "no",
+                        d["wilcoxon_method"] or ""])
         w.writerow(["COMBINED_POOLED", cn, "%d/%d" % (cgt, cn), "%.2f" % cfold,
                     "%.2f" % pooled["fold_ci"][0], "%.2f" % pooled["fold_ci"][1],
                     "%.4g" % cp, "%.4g" % pooled["p_floor"],
-                    "yes" if pooled["underpowered"] else "no"])
+                    "yes" if pooled["underpowered"] else "no",
+                    pooled["wilcoxon_method"] or ""])
         for key in ("stouffer", "stratified_signed_rank"):
             w.writerow(["COMBINED_%s" % key.upper(), cn, "", "", "", "",
-                        "%.4g" % combo[key]["p"], "", ""])
+                        "%.4g" % combo[key]["p"], "", "", ""])
 
     return {"per_cohort": statrows, "combined": (cn, cgt, cp, cfold),
             "detail": details, "pooled": pooled, "combination": combo,

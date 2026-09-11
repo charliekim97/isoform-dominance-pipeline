@@ -163,14 +163,17 @@ def cmd_stats(a):
         _emit(res)
         return EXIT_OK
     for det in res["detail"]:
-        line = ("  %-12s n=%d  %d/%d  fold=%.1fx [%.1f-%.1f]  P=%.4g"
+        line = ("  %-12s n=%d  %d/%d  fold=%.1fx [%.1f-%.1f]  P=%.4g (%s)"
                 % (det["cohort"], det["n"], det["n_greater"], det["n"],
-                   det["median_fold"], det["fold_ci"][0], det["fold_ci"][1], det["p"]))
+                   det["median_fold"], det["fold_ci"][0], det["fold_ci"][1], det["p"],
+                   det["wilcoxon_method"] or "no test"))
         if det["underpowered"]:
             line += "  (floor %.4g: cannot reach 0.05)" % det["p_floor"]
         print(line)
     cn, cgt, cp, cfold = res["combined"]
-    print("  %-12s n=%d  %d/%d  fold=%.1fx  P=%.4g" % ("POOLED", cn, cgt, cn, cfold, cp))
+    print("  %-12s n=%d  %d/%d  fold=%.1fx  P=%.4g (%s)"
+          % ("POOLED", cn, cgt, cn, cfold, cp,
+             res["pooled"]["wilcoxon_method"] or "no test"))
     for key in ("stouffer", "stratified_signed_rank"):
         c = res["combination"][key]
         print("  %-12s k=%d cohorts  P=%.4g" % (key.upper(), c["k"], c["p"]))
@@ -195,6 +198,10 @@ def cmd_qc(a):
 
 def cmd_selftest(a):
     from . import _selftest
+    if a.json:
+        res = _selftest.result()
+        _emit(res)
+        return EXIT_OK if res["ok"] else 1
     return _selftest.main()
 
 
@@ -265,7 +272,7 @@ def build_parser():
     s.add_argument("--target", action="append", required=True, help="NAME=perdonor.csv")
     s.add_argument("--out", required=True); s.set_defaults(func=cmd_qc)
 
-    s = sub.add_parser("selftest", help="run the download-free reproducibility test")
+    s = _json(sub.add_parser("selftest", help="run the download-free reproducibility test"))
     s.set_defaults(func=cmd_selftest)
     return p
 

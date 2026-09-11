@@ -1,10 +1,13 @@
 """The v2.2 statistics layer: exact-test floor, effect-size interval, cohort combination."""
 import csv
+import json
 
 import numpy as np
 import pytest
+import scipy
+import scipy.stats
 
-from isoform_dominance import stats
+from isoform_dominance import cli, stats
 
 
 # --------------------------------------------------------------------------- #
@@ -209,3 +212,133 @@ def test_run_reports_pooled_and_stratified_side_by_side(tmp_path):
     assert "COMBINED_STOUFFER" in body
     assert "COMBINED_STRATIFIED_SIGNED_RANK" in body
     assert "fold_CI_low" in body
+
+
+# --------------------------------------------------------------------------- #
+# which Wilcoxon method produced the p-value
+# --------------------------------------------------------------------------- #
+# SciPy's method="auto" picks the p-value computation from the data, and the rule
+# changed in 1.15: before, ties were ignored and only zeros forced the normal
+# approximation; from 1.15, ties or zeros select an exhaustive permutation test at
+# n <= 13 and the normal approximation above that.
+SCIPY_1_15 = tuple(int(x) for x in scipy.__version__.split(".")[:2]) >= (1, 15)
+
+# 14 pairs, one zero difference, the rest distinct: every supported SciPy falls back to
+# the normal approximation here, and the approximation is visibly not the exact value
+ZERO14_B = np.full(14, 10.0)
+ZERO14_A = ZERO14_B + np.array([0.0, 1.1, 2.3, -0.4, 3.7, 4.2, -1.9,
+                                5.5, 6.1, 2.8, 7.3, -0.9, 8.6, 3.1])
+# 6 pairs, no zeros, distinct |d|: exact on every supported SciPy
+CLEAN6_B = np.full(6, 5.0)
+CLEAN6_A = CLEAN6_B + np.array([1.5, 2.5, -0.5, 3.5, 4.5, 5.5])
+# 6 pairs, no zeros, tied |d| with mixed signs: exact before 1.15, permutation after
+TIED6_A = np.array([3.0, 4.0, 1.0, 6.0, 7.0, 8.0])
+TIED6_B = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+
+
+def _explicit(label):
+    """The SciPy `method=` argument that a reported label stands for."""
+    if label == "permutation":
+        return scipy.stats.PermutationMethod()
+    if label == "asymptotic" and not SCIPY_1_15:
+        return "approx"
+    return label
+
+
+@pytest.mark.parametrize("A,B,expected", [
+    (ZERO14_A, ZERO14_B, "asymptotic"),
+    (CLEAN6_A, CLEAN6_B, "exact"),
+    (TIED6_A, TIED6_B, "permutation" if SCIPY_1_15 else "exact"),
+])
+def test_wilcoxon_method_names_the_computation_that_produced_p(A, B, expected):
+    det = stats.paired_stat_detail(A, B, n_boot=0)
+    assert det["wilcoxon_method"] == expected
+    # the value is still SciPy's own "auto" p, untouched ...
+    auto = scipy.stats.wilcoxon(A, B, zero_method="wilcox", method="auto").pvalue
+    assert det["p"] == auto
+    # ... and the label is the explicit method that reproduces it
+    named = scipy.stats.wilcoxon(A, B, zero_method="wilcox",
+                                 method=_explicit(expected)).pvalue
+    assert det["p"] == named
+
+
+def _enumerated_exact_p(A, B):
+    """Two-sided signed-rank p from every sign assignment of the non-zero differences.
+
+    Computed here rather than asked of SciPy, because SciPy < 1.15 answers
+    method="exact" with the normal approximation whenever a difference is zero.
+    """
+    d = np.asarray(A, dtype=float) - np.asarray(B, dtype=float)
+    d = d[d != 0]
+    ranks = scipy.stats.rankdata(np.abs(d))
+    assert np.unique(ranks).size == ranks.size          # untied, so ranks are 1..n
+    obs = ranks[d > 0].sum()
+    signs = (np.arange(2 ** d.size)[:, None] >> np.arange(d.size)) & 1
+    w = signs @ ranks
+    return min(1.0, 2.0 * min(np.mean(w <= obs), np.mean(w >= obs)))
+
+
+def test_enumerated_exact_p_agrees_with_scipy_where_scipy_is_exact():
+    exact = scipy.stats.wilcoxon(CLEAN6_A, CLEAN6_B, method="exact").pvalue
+    assert _enumerated_exact_p(CLEAN6_A, CLEAN6_B) == pytest.approx(exact, rel=1e-12)
+
+
+def test_the_zero_difference_case_is_not_the_exact_p():
+    """Why the label matters: here the reported p is not the exact one, silently."""
+    det = stats.paired_stat_detail(ZERO14_A, ZERO14_B, n_boot=0)
+    exact = _enumerated_exact_p(ZERO14_A, ZERO14_B)
+    assert det["n_ties"] == 1
+    assert det["p"] != pytest.approx(exact, rel=1e-3)
+    assert det["wilcoxon_method"] != "exact"
+
+
+def test_an_unconfirmed_method_label_is_not_reported(monkeypatch):
+    """If SciPy's rule drifts from the one mirrored here, say so rather than guess."""
+    monkeypatch.setattr(stats, "_wilcoxon_auto_method", lambda *a, **k: "exact")
+    det = stats.paired_stat_detail(ZERO14_A, ZERO14_B, n_boot=0)
+    assert det["wilcoxon_method"] == "unresolved"
+    assert det["p"] == scipy.stats.wilcoxon(ZERO14_A, ZERO14_B).pvalue
+
+
+def test_undefined_test_has_no_method():
+    det = stats.paired_stat_detail([1.0, 2.0], [1.0, 2.0], n_boot=0)
+    assert np.isnan(det["p"])
+    assert det["wilcoxon_method"] is None
+
+
+def _two_cohort_run(tmp_path):
+    p1, p2 = tmp_path / "zero14.csv", tmp_path / "clean6.csv"
+    _perdonor(p1, [("z%d" % i, a, b)
+                   for i, (a, b) in enumerate(zip(ZERO14_A, ZERO14_B, strict=True))])
+    _perdonor(p2, [("c%d" % i, a, b)
+                   for i, (a, b) in enumerate(zip(CLEAN6_A, CLEAN6_B, strict=True))])
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({"gene": "G", "groups": {"short": ["T1"], "long": ["T2"]},
+                               "primary_comparison": ["short", "long"]}))
+    return str(cfg), {"zero14": str(p1), "clean6": str(p2)}
+
+
+def test_stats_csv_has_a_wilcoxon_method_column(tmp_path):
+    cfg, cohorts = _two_cohort_run(tmp_path)
+    stats.run(json.loads(open(cfg).read()), "control", cohorts,
+              str(tmp_path / "out"), n_boot=0)
+    with open(tmp_path / "out_stats.csv") as f:
+        rows = {r["cohort"]: r for r in csv.DictReader(f)}
+    assert rows["zero14"]["wilcoxon_method"] == "asymptotic"
+    assert rows["clean6"]["wilcoxon_method"] == "exact"
+    # 20 pooled pairs with one zero: the approximation on every supported SciPy
+    assert rows["COMBINED_POOLED"]["wilcoxon_method"] == "asymptotic"
+
+
+def test_stats_cli_prints_the_wilcoxon_method(tmp_path, capsys):
+    cfg, cohorts = _two_cohort_run(tmp_path)
+    rc = cli.main(["stats", "--config", cfg, "--n-boot", "0",
+                   "--perdonor", "zero14=%s" % cohorts["zero14"],
+                   "--perdonor", "clean6=%s" % cohorts["clean6"],
+                   "--out", str(tmp_path / "out")])
+    assert rc == 0
+    lines = capsys.readouterr().out.splitlines()
+    line = {ln.split()[0]: ln for ln in lines if ln.strip()}
+    assert "(asymptotic)" in line["zero14"]
+    assert "(exact)" in line["clean6"]
+    assert "(asymptotic)" in line["POOLED"]

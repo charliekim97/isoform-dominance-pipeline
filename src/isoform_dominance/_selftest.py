@@ -4,7 +4,7 @@ Generates synthetic Salmon quant.sf files from the per-transcript LEPR TPM value
 choroid-plexus reanalysis, runs extract + stats (+ contamination), and asserts the reference
 result is reproduced: combined n=11, 11/11 short>long, paired Wilcoxon P ~= 9.77e-4.
 """
-import tempfile, os, csv, shutil
+import tempfile, os, csv, math, shutil
 from . import extract, stats, contamination
 
 # donor: (ENST00000371060, ENST00000616738, ENST00000349533) TPM  (control choroid plexus)
@@ -59,8 +59,18 @@ def generate(base):
     return out
 
 
-def run(base):
-    """Run the pipeline on synthetic data under `base`. Returns (ok, messages)."""
+#: Order in which the cohort combinations are reported.
+COMBINATIONS = ("pooled", "stouffer", "stratified_signed_rank")
+
+
+def evaluate(base):
+    """Run the pipeline on synthetic data under `base` and return the structured result.
+
+    ``{"ok": bool, "checks": [...], "combinations": {...}, "headline_combination": str}``.
+    Each check is ``{"name", "ok", "message", ...}`` plus the values it compared.  The
+    three cohort combinations are reported, not checked: only the donor-pooled P is
+    the reference result, and it is already a check.
+    """
     info = generate(base)
     perdonor = {}
     for cohort, p in info.items():
@@ -68,34 +78,78 @@ def run(base):
         extract.run(CONFIG, p["quantdir"], p["samplemap"], cohort, out)
         perdonor[cohort] = out
     res = stats.run(CONFIG, "control", perdonor, os.path.join(base, "result"))
-    msgs, ok = [], True
-    by = {r[0]: r for r in res["per_cohort"]}
-    for coh, (n, ngt) in [("GSE228458", EXPECT["GSE228458"]), ("GSE137619", EXPECT["GSE137619"])]:
-        gn, gng = by[coh][1], by[coh][2]
-        good = gn == n and gng == ngt; ok &= good
-        msgs.append("[%s] %s %d/%d short>long" % ("OK" if good else "FAIL", coh, gng, gn))
+    checks = []
+
+    def check(name, good, message, **values):
+        checks.append(dict(name=name, ok=bool(good),
+                           message="[%s] %s" % ("OK" if good else "FAIL", message), **values))
+
+    by = {d["cohort"]: d for d in res["detail"]}
+    for coh in ("GSE228458", "GSE137619"):
+        n, ngt = EXPECT[coh]
+        d = by[coh]
+        check(coh, d["n"] == n and d["n_greater"] == ngt,
+              "%s %d/%d short>long  P=%.4g (%s)"
+              % (coh, d["n_greater"], d["n"], d["p"], d["wilcoxon_method"]),
+              n=d["n"], n_greater=d["n_greater"], expect=[n, ngt], p=d["p"],
+              wilcoxon_method=d["wilcoxon_method"])
     cn, cgt, cp, _ = res["combined"]
     en, eng, ep = EXPECT["COMBINED"]
-    cgood = cn == en and cgt == eng and abs(cp - ep) < 1e-4; ok &= cgood
-    msgs.append("[%s] COMBINED %d/%d P=%.4g (expect %.4g)" % ("OK" if cgood else "FAIL", cgt, cn, cp, ep))
-    fig_ok = os.path.exists(os.path.join(base, "result.png")); ok &= fig_ok
-    msgs.append("[%s] dominance figure produced" % ("OK" if fig_ok else "FAIL"))
+    check("COMBINED", cn == en and cgt == eng and abs(cp - ep) < 1e-4,
+          "COMBINED %d/%d P=%.4g (expect %.4g)" % (cgt, cn, cp, ep),
+          n=cn, n_greater=cgt, p=cp, expect=[en, eng, ep],
+          wilcoxon_method=res["pooled"]["wilcoxon_method"])
+    fig_ok = os.path.exists(os.path.join(base, "result.png"))
+    check("figure", fig_ok, "dominance figure produced")
     rows = contamination.run(CONFIG, {c: info[c]["markers"] for c in info},
                              {c: perdonor[c] for c in info}, os.path.join(base, "qc"))
     ratios = [r[4] for r in rows]
-    qc_ok = os.path.exists(os.path.join(base, "qc.png")) and all(x < 0.2 for x in ratios); ok &= qc_ok
-    msgs.append("[%s] contamination-QC purity ratios %s < 0.2"
-                % ("OK" if qc_ok else "FAIL", [round(x, 3) for x in ratios]))
-    return ok, msgs
+    qc_ok = os.path.exists(os.path.join(base, "qc.png")) and all(x < 0.2 for x in ratios)
+    check("contamination_qc", qc_ok, "contamination-QC purity ratios %s < 0.2"
+          % [round(x, 3) for x in ratios], ratios=ratios, threshold=0.2)
+
+    combinations = {}
+    for key in COMBINATIONS:
+        c = res["combination"][key]
+        combinations[key] = {"label": stats.COMBINATION_LABELS[key], "k": c["k"],
+                             "p": c["p"],
+                             "z": c["z"] if math.isfinite(c["z"]) else None}
+    combinations["pooled"]["wilcoxon_method"] = res["pooled"]["wilcoxon_method"]
+    return {"ok": all(c["ok"] for c in checks), "checks": checks,
+            "combinations": combinations,
+            "headline_combination": res["headline_combination"]}
+
+
+def run(base):
+    """Run the pipeline on synthetic data under `base`. Returns (ok, messages).
+
+    The v2.1 shape, kept for callers; :func:`evaluate` returns the structure.
+    """
+    r = evaluate(base)
+    return r["ok"], [c["message"] for c in r["checks"]]
+
+
+def result():
+    """Run the self-test in a temporary directory and return :func:`evaluate`'s dict."""
+    work = tempfile.mkdtemp(prefix="idp_selftest_")
+    try:
+        return evaluate(work)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def main():
-    work = tempfile.mkdtemp(prefix="idp_selftest_")
-    try:
-        ok, msgs = run(work)
-        for m in msgs:
-            print("  " + m)
-        print("\n%s" % ("PASS - reproduces the reference LEPR result." if ok else "FAIL"))
-        return 0 if ok else 1
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+    r = result()
+    for c in r["checks"]:
+        print("  " + c["message"])
+    print("\n  cohort combinations (reported; only donor-pooled is checked above):")
+    for key in COMBINATIONS:
+        c = r["combinations"][key]
+        line = "    %-24s k=%d  P=%.4g" % (c["label"], c["k"], c["p"])
+        if key == "pooled":
+            line += "  (paired Wilcoxon, %s)" % c["wilcoxon_method"]
+        if key == r["headline_combination"]:
+            line += "  <- headline"
+        print(line)
+    print("\n%s" % ("PASS - reproduces the reference LEPR result." if r["ok"] else "FAIL"))
+    return 0 if r["ok"] else 1

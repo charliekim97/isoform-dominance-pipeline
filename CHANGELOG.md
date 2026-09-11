@@ -61,6 +61,30 @@ versioning.
   `ruff` now covers `scripts/` as well as `src` and `tests`.
 
 ### Fixed
+- **`selftest` did not accept `--json`**, although the CLI's module docstring (and the
+  paper) say every subcommand does; argparse rejected it with `unrecognized arguments`.
+  It now writes `{"ok", "checks", "combinations", "headline_combination"}` to stdout.
+  Each check names what it compared and the values it saw. Exit codes are unchanged:
+  0 pass, 1 fail. `_selftest.result()` returns that object; `_selftest.run()` keeps its
+  `(ok, messages)` shape.
+- **The self-test reported one of the three cohort combinations.** It printed the
+  donor-pooled P only; the Stouffer and stratified signed-rank P existed solely in a CSV
+  inside a temporary directory deleted on exit. All three are now printed (and are in
+  the JSON), with the headline one marked. They are reported, not checked: the pooled P
+  is the reference result and remains the only combination under test.
+- **The Wilcoxon p-value's method was hidden.** `wilcoxon` ran with SciPy's default
+  `method="auto"`, which is not always exact: a zero difference sends it to the normal
+  approximation, and from SciPy 1.15 so does a tie at n > 13 (at n <= 13 a tie selects
+  an exhaustive permutation test). Nothing said which. The p-values are unchanged — the
+  call still uses `auto`, now named explicitly — and `paired_stat_detail` reports the
+  computation that produced them as `wilcoxon_method` (`exact`, `permutation` or
+  `asymptotic`). SciPy does not expose that choice, so its rule is mirrored per version
+  and the label is kept only if re-running SciPy with the method named explicitly
+  reproduces the p-value bit for bit, else `unresolved`. The stats CSV gains a
+  `wilcoxon_method` column (appended last, empty on the two combination rows, which are
+  not Wilcoxon tests), and the `stats` summary prints it beside each P. Example: 14
+  pairs with one zero difference report P = 0.00713 (`asymptotic`); the exact P is
+  0.00464.
 - `identifiability` no longer reports `primary_distinguishable: True` for a
   `primary_comparison` that names a group missing from `groups` (the unknown label
   was silently skipped, so an all-unknown pair reduced to a vacuously true `all()`),
