@@ -30,10 +30,10 @@ donors — and, before any of that, establishing that short reads can resolve th
 comparison at all.
 
 `isoform-dominance` packages these steps behind a single Python command-line interface.
-Given a gene symbol it proposes isoform groups from Ensembl by clustering
-protein-coding transcripts on their 3' terminal-exon splice acceptor [@frankish2021].
-It then answers the measurability question in three layers, all computed from sequence
-alone and before a single read is quantified: how much sequence is unique to each class
+Given a gene symbol it proposes isoform groups by clustering the annotation's
+protein-coding transcripts [@frankish2021] on their 3' terminal-exon splice acceptor.
+It then answers the measurability question in three layers, before a single read is
+quantified: how much sequence is unique to each class
 once the rest of the gene — or an arbitrary background FASTA, such as the one a Salmon
 index was built from — is taken into account; how many fragments would actually be
 sequenced across that unique sequence at a stated depth, read length and
@@ -41,7 +41,7 @@ fragment-length distribution, and hence what counting-noise floor the class rati
 carries; and whether each class total, and the contrast between the two class totals,
 is an *estimable* function of the fragment-class system at all. Quantification is then
 read from `Salmon` `quant.sf` files [@patro2017] and summarised per donor; the class
-contrast is tested with a donor-level exact Wilcoxon signed-rank test [@virtanen2020],
+contrast is tested with a donor-level Wilcoxon signed-rank test [@wilcoxon1945],
 reported per cohort with a bootstrap interval on the effect size, the finest p-value the
 design could have resolved, and a stratified combination across cohorts. A bundled,
 download-free self-test reproduces the reference result on a clean machine in seconds.
@@ -87,9 +87,10 @@ here is why" in the large middle ground where the honest answer is neither yes n
 # State of the field
 
 **Differential transcript usage.** DTU is a mature area with strong tools that target a
-different task and audience. `DEXSeq` [@anders2012], `DRIMSeq` [@nowicka2016] and
-`satuRn` [@gilis2022] perform genome-wide DTU testing and assume the user has already
-produced a transcript-by-sample count matrix and defined the transcript groups.
+different task and audience. `DEXSeq` [@anders2012] tests differential *exon* usage from
+exon-bin counts and ships its own counting scripts; `DRIMSeq` [@nowicka2016] and
+`satuRn` [@gilis2022] perform genome-wide transcript-level DTU testing and assume the
+user has already produced a transcript-by-sample count matrix and defined the groups.
 `IsoformSwitchAnalyzeR` [@vittingseerup2019] adds rich functional annotation of isoform
 switches but is an R/Bioconductor workflow in which transcript grouping and import are
 configured by the analyst. `fishpond`/`swish` [@zhu2019] rigorously propagates
@@ -100,8 +101,13 @@ by `tximport` [@soneson2016].
 **Identifiability.** The identifiability of the isoform deconvolution problem is itself
 a studied question, and this package builds on that literature rather than
 rediscovering it. @hiller2009 gave criteria under which isoform abundances are uniquely
-determined by junction-array and RNA-seq observations, and reported that most
-alternatively spliced human genes are identifiable from RNA-seq. @ferrerbonsoms2022
+determined by junction-array and RNA-seq observations, and reported up to 97% of 2,256
+alternatively spliced human RefSeq genes identifiable from RNA-seq. @zheng2022 measured
+the consequence when those criteria fail: across the Human Body Map, 35-50% of
+transcripts carry quantification error from nonidentifiability, and for 20-47% the error
+is large enough that "the ranking of expression between the transcript and other
+isoforms from the same gene cannot be determined" -- which is precisely the comparison
+this package is asked to certify. @ferrerbonsoms2022
 extended this to a read-length- and fragment-length-aware criterion, applied it genome
 wide, and used it to choose library fragment lengths. Both address *transcript-level*
 identifiability of the full deconvolution. `terminus` [@sarkar2020] approaches the same
@@ -132,13 +138,16 @@ direction can be so weakly observed that a formally estimable contrast is unreco
 in practice. That is why the estimability verdict is reported together with a
 conditioning factor, and why neither is reported alone.
 
-`terminus` will not answer the question because it chooses the groups itself, after
-seeing the data, and so cannot say whether *the comparison the investigator came with*
-is supported; the transcript-level criteria will not answer it because their failing
+`terminus` answers a neighbouring question: it chooses the groups itself, after
+seeing the data, so it reports the resolution the data happen to support rather than
+certifying *the comparison the investigator came with* -- and it cannot be consulted
+before quantification, which is when the design decision is made; the transcript-level criteria will not answer it because their failing
 verdict does not transfer — a gene they declare non-identifiable may still determine the
 class contrast exactly. `isoform-dominance` evaluates the estimability of the user's own
-class contrast, before quantification, and none of the DTU tools above takes a bare
-gene symbol as input or performs such a check. It is deliberately narrow and
+class contrast, before quantification. `fishpond` quantifies the uncertainty that
+remains after quantification, per transcript; none of these tools takes a bare gene
+symbol as input, and none returns a yes/no on a user-specified class contrast from
+sequence alone. It is deliberately narrow and
 complementary rather than competing: it does not attempt genome-wide discovery,
 delegates quantification to Salmon rather than re-implementing it, and presents group
 proposals for review rather than as final calls.
@@ -166,15 +175,18 @@ sits rather than its plumbing.
 *Uniqueness is judged against a background, not against the configured groups.* A
 k-mer absent from the other class but present in an unlisted retained-intron transcript
 of the same gene, or in a paralogue, is not unique to anything as far as the quantifier
-is concerned. The gene's remaining transcripts are used by default, and an arbitrary
-FASTA — ideally the one the index was built from — can be streamed as background in
-memory proportional to the query rather than the file. k-mers are folded to their
+is concerned. The gene's remaining transcripts are fetched as background whenever the tool
+retrieves sequence itself; when sequences are supplied offline, background transcripts
+must be supplied with them. An arbitrary FASTA — ideally the one the index was built
+from — can be streamed as background without ever materialising the background's own
+k-mer set. k-mers are folded to their
 canonical form, because that is what the index stores and what an unstranded library
 requires.
 
-*The read model counts reads, not fragments.* A unique stretch is informative only if a
-sequenced end covers it; with 200 nt fragments and 100 nt reads a unique region in the
-middle of the fragment is never observed. The expected informative-fragment count is
+*The read model counts reads, not fragments.* A unique k-mer is informative only when
+it falls entirely inside a sequenced end, so a unique stretch that straddles the gap
+between the two reads of a pair, or lies beyond them in a longer fragment, contributes
+nothing. The expected informative-fragment count is
 evaluated exactly over all start positions and averaged over a truncated-normal
 fragment-length distribution, then converted to a counting-noise floor on the log2
 class ratio.
@@ -212,7 +224,7 @@ question, addressed by simulation rather than asserted here, and the thresholds
 separating the three verdicts are provisional until that calibration is done.
 
 On the statistics, cohorts are combined two ways beside the donor-pooled test that
-earlier releases reported alone: a weighted Stouffer combination of the per-cohort exact
+earlier releases reported alone: a weighted Stouffer combination [@stouffer1949; @liptak1958] of the per-cohort exact
 tests [@stouffer1949], and a weighted combination of the within-stratum signed-rank
 statistics using van Elteren's design-free `1/(n+1)` weights [@vanelteren1960] -- the
 weighting scheme only, since van Elteren's test is a stratified *two-sample* procedure
@@ -220,14 +232,16 @@ and these data are paired within donor. Stouffer is the default of the two, beca
 these sample sizes each stratum's exact p-value is trustworthy and the normal
 approximation behind a combined rank statistic is not. Pooling donors from independent
 studies ranks one cohort's differences against another's and lets depth or tissue
-handling drive the result. Every test is reported with the finest p-value its own design could have resolved: under
+handling drive the result. Every per-cohort and pooled test is reported with the finest p-value its own design
+could have resolved: under
 the exhaustive sign-permutation null exactly one assignment puts every difference on the
 same side, so a two-sided test on n non-zero pairs cannot report below 2^(1-n), and at
 n = 5 that is 0.0625. Ties among the absolute differences do not raise this bound. Every
 effect size is reported with a donor bootstrap interval.
 
-Network-dependent steps accept offline inputs to keep the test suite deterministic and
-to allow use on compute nodes without internet access. Dependencies are kept minimal:
+`identifiability` accepts transcript sequences and background offline, which keeps the
+test suite deterministic and allows use on compute nodes without internet access;
+`annotate` queries Ensembl and has no offline mode. Dependencies are kept minimal:
 the annotation and sequence queries use the Ensembl REST API [@yates2015], numerical
 work uses NumPy [@harris2020] and SciPy [@virtanen2020], and figures use Matplotlib
 [@hunter2007].
@@ -251,7 +265,7 @@ Second, reproducibility: the bundled, download-free self-test regenerates the
 per-cohort result that study reports — short-isoform predominance in control human
 choroid plexus in each of two independent public cohorts, 5/5 and 6/6 donors
 [@gse228458; @gse137619] — on a clean machine in seconds, and additionally reports the
-pooled and stratified combinations across those cohorts, which that study does not
+pooled, Stouffer and stratified combinations across those cohorts, which that study does not
 (it analyses the cohorts separately). The study's standalone reproducibility repository
 runs its analysis through this package, so the result is regenerated by the software
 itself rather than by separate one-off code.
