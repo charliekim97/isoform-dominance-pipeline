@@ -94,6 +94,19 @@ versioning.
   `URLError`, so it slipped past the `except (URLError, HTTPError)` in `annotate` and
   `identifiability`. It is now reported through the same "Ensembl request failed"
   message, exit 1.
+- **README's LEPR `identifiability` example could not be reproduced.** It was captioned
+  `--background-fasta gencode.v44… --tpm 5` with nine same-gene background transcripts,
+  but its 3399 unique k-mers for `iso_896aa` equal, on the Ensembl release-116 sequences,
+  the count with *no* gene background. The silently-partial background fetch above would
+  produce exactly that. It is replaced with a default-flag run against release 116,
+  2026-09-11: with the complete nine-transcript background, `iso_896aa` has 356 unique
+  k-mers, conditioning 115.05, `weakly_identifiable` (exit 3). The drop comes from the
+  gene's other transcripts: ENST00001037957 (nonsense-mediated decay) alone takes the
+  class to 1125 and `weakly_identifiable`. The README also no longer calls the gallery
+  genes "verified short-read separable". Run with defaults on release 116 the same day,
+  NTRK2 and NTRK3 are `not_identifiable` and FLT1 is `weakly_identifiable`.
+  `docs/example_genes.md`, `docs/tutorial_NTRK2.md` and `docs/index.md` still show the
+  earlier output and are not updated here.
 - **`selftest` did not accept `--json`**, although the CLI's module docstring (and the
   paper) say every subcommand does; argparse rejected it with `unrecognized arguments`.
   It now writes `{"ok", "checks", "combinations", "headline_combination"}` to stdout.

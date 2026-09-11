@@ -69,15 +69,25 @@ by solving a linear inverse problem; a class total is recoverable only when it i
 system, and **refuses to pretend** a comparison is measurable when it isn't.
 
 ```bash
-isoform-dominance identifiability --config config.json \
-    --background-fasta gencode.v44.transcripts.fa.gz --read-length 100 --tpm 5
-#   background: 9 same-gene transcript(s), FASTA gencode.v44.transcripts.fa.gz
-#   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 5, n=1
-#   [identifiable] iso_896aa : 3399 unique k-mers, 3429 bp in 1 block(s), ~412 informative reads, conditioning 1.9
-#   [identifiable] iso_1165aa: 5369 unique k-mers, 5399 bp in 1 block(s), ~688 informative reads, conditioning 2.0
-#   contrast iso_896aa vs iso_1165aa: identifiable (conditioning 3.5)
-#   VERDICT: identifiable
+isoform-dominance identifiability --config config.json
+# Identifiability (window=31, k=31, canonical k-mers)
+#   background: 9 same-gene transcript(s)
+#   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
+#   [identifiable] iso_1165aa: 5369 unique k-mers, 5399 bp in 1 block(s), ~1072 informative reads, conditioning 3.62
+#   [weakly_identifiable] iso_896aa: 356 unique k-mers, 208 bp in 2 block(s), ~63 informative reads, conditioning 115.05
+#   contrast iso_896aa vs iso_1165aa: weakly_identifiable (conditioning 117.68)
+#   counting-noise floor on log2 ratio: SE 0.187 per donor, min resolvable |log2FC| 0.366 at n=1
+#   VERDICT: weakly_identifiable
+# on stderr, with the background NOTE:
+#     - conditioning factor 115.1 exceeds tau=10.0
+#     - conditioning factor 117.7 exceeds tau=10.0
+# exit status 3
 ```
+
+Default flags, run on 2026-09-11 against the Ensembl release 116 annotation; transcript and
+k-mer counts move as the annotation does. The block this replaces showed 3399 unique k-mers
+for `iso_896aa`: on the same release-116 sequences that is the count with *no* gene
+background, not with the nine background transcripts it was captioned with.
 
 Exit codes: **0** identifiable · **3** weakly identifiable (estimable, but ill-conditioned or
 starved of informative fragments at the stated design) · **2** not identifiable (a class total
@@ -190,8 +200,7 @@ ship alongside a manuscript.
 
 More documentation: a step-by-step [NTRK2 walkthrough](docs/tutorial_NTRK2.md), a
 [gallery of further example genes](docs/example_genes.md) (NTRK2/NTRK3 kinase
-truncations and the FLT1 soluble-decoy receptor, all verified short-read
-separable), and an [API reference](docs/api.md).
+truncations and the FLT1 soluble-decoy receptor), and an [API reference](docs/api.md).
 
 ## Statistical notes
 
