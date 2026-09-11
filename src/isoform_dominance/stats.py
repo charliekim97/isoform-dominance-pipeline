@@ -36,14 +36,10 @@ import os
 import warnings
 
 import numpy as np
-import scipy
 import scipy.stats
 from scipy.stats import norm, wilcoxon
 
 from .io import primary_pair
-
-#: SciPy 1.15 changed how ``wilcoxon(method="auto")`` chooses its p-value computation.
-_SCIPY_1_15 = tuple(int(x) for x in scipy.__version__.split(".")[:2]) >= (1, 15)
 
 #: Class colours. Identity follows the isoform class, not the panel index -- the
 #: cohort is already encoded by which panel a donor is in, so reusing the colour
@@ -158,25 +154,19 @@ def paired_stat(A, B):
 def _wilcoxon_auto_method(d):
     """The computation ``wilcoxon(method="auto")`` selects for differences ``d``.
 
-    SciPy does not report which one it used, so its dispatch is mirrored here, for the
-    installed version.  ``n`` counts every pair, zeros included, as SciPy's does.
+    SciPy does not report which one it used, so its dispatch (SciPy >= 1.15, the
+    declared floor) is mirrored here: ``"asymptotic"`` when n > 50; otherwise
+    ``"exact"`` when there are neither ties nor zeros, an exhaustive ``"permutation"``
+    test when n <= 13, and ``"asymptotic"`` above that.  ``n`` counts every pair, zeros
+    included, as SciPy's does.  ``"asymptotic"`` is the normal approximation, without
+    continuity correction.
 
-    SciPy < 1.15
-        ``"exact"`` when n <= 50 and no difference is zero, else ``"asymptotic"``.
-        Ties among ``|d|`` do not change the choice, so ``"exact"`` here is SciPy's
-        exact distribution applied to a tied statistic -- see ``exact_null_clean``.
-    SciPy >= 1.15
-        ``"asymptotic"`` when n > 50; otherwise ``"exact"`` when there are neither ties
-        nor zeros, an exhaustive ``"permutation"`` test when n <= 13, and
-        ``"asymptotic"`` above that.
-
-    ``"asymptotic"`` is the normal approximation, without continuity correction.
+    Earlier SciPy used the normal approximation for any zero difference at any n, which
+    is why the floor is 1.15.
     """
     d = np.asarray(d, dtype=float)
     n = d.size
     has_zeros = bool(np.any(d == 0))
-    if not _SCIPY_1_15:
-        return "exact" if n <= 50 and not has_zeros else "asymptotic"
     if n > 50:
         return "asymptotic"
     nz = np.abs(d[d != 0])
@@ -190,8 +180,6 @@ def _wilcoxon_method_arg(label):
     """The explicit SciPy ``method=`` argument a method label stands for."""
     if label == "permutation":
         return scipy.stats.PermutationMethod()
-    if label == "asymptotic" and not _SCIPY_1_15:
-        return "approx"
     return label
 
 
@@ -205,8 +193,9 @@ def paired_stat_detail(A, B, n_boot=DEFAULT_N_BOOT, seed=DEFAULT_SEED,
     achievable floor.
 
     The p-value is SciPy's ``method="auto"`` one, unchanged, and ``auto`` does not
-    always mean exact: with a zero difference, or (from SciPy 1.15) a tie, it can fall
-    back to the normal approximation.  ``wilcoxon_method`` names the computation that
+    always mean exact: with a zero difference or a tie it runs an exhaustive
+    permutation test at n <= 13 and the normal approximation above that.
+    ``wilcoxon_method`` names the computation that
     actually produced ``p`` -- ``"exact"``, ``"permutation"`` or ``"asymptotic"``.  The
     name comes from :func:`_wilcoxon_auto_method` and is reported only if re-running
     SciPy with that method named explicitly reproduces ``p`` bit for bit; otherwise it
@@ -249,16 +238,12 @@ def paired_stat_detail(A, B, n_boot=DEFAULT_N_BOOT, seed=DEFAULT_SEED,
         if np.isfinite(out["p"]):
             label = _wilcoxon_auto_method(d)
             try:
-                with warnings.catch_warnings(record=True) as caught:
-                    warnings.simplefilter("always")   # kept out of the user's stream
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")   # already raised by the call above
                     again = float(wilcoxon(A, B, alternative="two-sided",
                                            zero_method=zero_method,
                                            method=_wilcoxon_method_arg(label)).pvalue)
             except ValueError:
-                again = float("nan")
-            # SciPy < 1.15 answers method="exact" with the normal approximation when a
-            # difference is zero, with a warning; a match then confirms nothing
-            if any("Switching to normal approximation" in str(w.message) for w in caught):
                 again = float("nan")
             out["wilcoxon_method"] = label if again == out["p"] else "unresolved"
 

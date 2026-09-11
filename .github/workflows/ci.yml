@@ -32,6 +32,34 @@ jobs:
       - name: Self-test through the installed console script
         run: isoform-dominance selftest
 
+  floor:
+    name: tests at the declared dependency floors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      # The matrix above installs the newest release of everything, so it can never
+      # notice a floor in pyproject.toml that is too low -- which is how `scipy>=1.10`
+      # stood while SciPy < 1.15 returned an anti-conservative Wilcoxon p. Here every
+      # runtime dependency is pinned to exactly its declared minimum, read out of
+      # pyproject.toml so that the floor and this job cannot drift apart.
+      - name: pin runtime dependencies to their floors
+        run: |
+          python - > floors.txt <<'PY'
+          import re
+          text = open("pyproject.toml").read()
+          deps = re.search(r"^dependencies = \[(.*?)\]", text, re.S | re.M).group(1)
+          for name, version in re.findall(r'"([A-Za-z0-9_.-]+)>=([0-9.]+)"', deps):
+              print("%s==%s" % (name, version))
+          PY
+          cat floors.txt
+      - run: pip install -c floors.txt -e ".[dev]"
+      - run: python -c "import numpy, scipy, matplotlib; print(numpy.__version__, scipy.__version__, matplotlib.__version__)"
+      - run: pytest -q
+      - run: isoform-dominance selftest
+
   wheel:
     name: install from a built wheel
     runs-on: ubuntu-latest

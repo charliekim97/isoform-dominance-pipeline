@@ -1,7 +1,7 @@
 """CLI: argument parsing, exit codes, and an offline end-to-end run."""
 import json, os, random
 import pytest
-from isoform_dominance import cli, _selftest, annotate
+from isoform_dominance import cli, _selftest, annotate, identifiability
 
 
 def _seq(n, seed):
@@ -96,7 +96,7 @@ def test_identifiability_cli_background_fasta_changes_the_verdict(tmp_path):
 def test_annotate_cli_offline(tmp_path, monkeypatch):
     out = tmp_path / "auto.json"
 
-    def fake_run(gene, outpath, species="homo_sapiens"):
+    def fake_run(gene, outpath, species="homo_sapiens", **retry):
         cfg = {"gene": gene, "groups": {"iso_100aa": ["T1"], "iso_50aa": ["T2"]},
                "primary_comparison": ["iso_50aa", "iso_100aa"]}
         json.dump(cfg, open(outpath, "w"))
@@ -106,6 +106,25 @@ def test_annotate_cli_offline(tmp_path, monkeypatch):
     rc = cli.main(["annotate", "--gene", "FAKE", "--out", str(out)])
     assert (rc or 0) == 0
     assert json.load(open(out))["gene"] == "FAKE"
+
+
+@pytest.mark.parametrize("sub", ["annotate", "identifiability"])
+def test_a_read_timeout_is_a_reported_network_failure_not_a_traceback(
+        sub, tmp_path, monkeypatch, capsys):
+    """A read timeout raises TimeoutError, which is not a URLError, so it slipped past
+    `_net_fail` and reached the user as a traceback."""
+    def timed_out(*a, **k):
+        raise TimeoutError("The read operation timed out")
+
+    monkeypatch.setattr(annotate, "run", timed_out)
+    monkeypatch.setattr(identifiability, "analyze", timed_out)
+    cfg, _ = _write_case(tmp_path, {"A": ["A1"], "B": ["B1"]}, ["A", "B"], {})
+    argv = (["annotate", "--gene", "X", "--out", str(tmp_path / "o.json")]
+            if sub == "annotate" else ["identifiability", "--config", cfg])
+    assert cli.main(argv) == 1
+    err = capsys.readouterr().err
+    assert "Ensembl request failed" in err
+    assert "timed out" in err
 
 
 def test_extract_stats_qc_cli_end_to_end(tmp_path):

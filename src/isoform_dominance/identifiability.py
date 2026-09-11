@@ -42,11 +42,14 @@ conditioning factor.  Three layers are reported, cheapest first:
 All three are computed offline from sequence alone; nothing here needs the reads.
 """
 import math
-import urllib.request
+from urllib.error import HTTPError
 
 import numpy as np
 
-ENSEMBL = "https://rest.ensembl.org"
+from . import ensembl
+from .ensembl import DEFAULT_RETRIES, DEFAULT_RETRY_WAIT
+
+ENSEMBL = ensembl.SERVER
 
 #: Default k-mer length; matches the Salmon index default.
 DEFAULT_K = 31
@@ -76,30 +79,28 @@ _COMPLEMENT = str.maketrans("ACGTN", "TGCAN")
 # --------------------------------------------------------------------------- #
 # sequence retrieval
 # --------------------------------------------------------------------------- #
-def _get_text(path, timeout=30):
-    req = urllib.request.Request(ENSEMBL + path, headers={"Content-Type": "text/plain"})
-    return urllib.request.urlopen(req, timeout=timeout).read().decode().strip()
+def fetch_cdna(transcript_id, **retry):
+    """Fetch one transcript's cDNA sequence from the Ensembl REST API.
+
+    For more than one transcript use :func:`isoform_dominance.ensembl.fetch_cdna_batch`,
+    which asks for 50 per request.  ``retry`` (``retries``, ``retry_wait``, ``timeout``)
+    goes to :func:`isoform_dominance.ensembl.request`.
+    """
+    tid = transcript_id.split(".")[0]
+    got = ensembl.fetch_cdna_batch([tid], **retry)
+    if tid not in got:
+        raise ValueError("Ensembl returned no cDNA for %s" % tid)
+    return got[tid]
 
 
-def fetch_cdna(transcript_id):
-    """Fetch a transcript's cDNA sequence from the Ensembl REST API."""
-    return _get_text("/sequence/id/%s?type=cdna" % transcript_id.split(".")[0])
-
-
-def fetch_gene_transcript_ids(gene, species="homo_sapiens"):
+def fetch_gene_transcript_ids(gene, species="homo_sapiens", **retry):
     """Every transcript id annotated for ``gene`` (all biotypes), for use as background.
 
     Kept separate from :mod:`isoform_dominance.annotate`, which restricts itself to
     protein-coding transcripts: for identifiability the non-coding, retained-intron
     and NMD transcripts matter, because Salmon indexes them too.
     """
-    import json
-
-    req = urllib.request.Request(
-        ENSEMBL + "/lookup/symbol/%s/%s?expand=1" % (species, gene),
-        headers={"Content-Type": "application/json"},
-    )
-    info = json.load(urllib.request.urlopen(req, timeout=30))
+    info = ensembl.get_json("/lookup/symbol/%s/%s?expand=1" % (species, gene), **retry)
     return [t["id"].split(".")[0] for t in info.get("Transcript", [])]
 
 
@@ -522,7 +523,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             frag_sd=DEFAULT_FRAG_SD, paired=True, depth=DEFAULT_DEPTH,
             mean_efflen=DEFAULT_MEAN_EFFLEN, tpm=DEFAULT_TPM, n_donors=1,
             conditioning_tau=DEFAULT_CONDITIONING_TAU,
-            min_informative_reads=DEFAULT_MIN_INFORMATIVE_READS):
+            min_informative_reads=DEFAULT_MIN_INFORMATIVE_READS,
+            retries=DEFAULT_RETRIES, retry_wait=DEFAULT_RETRY_WAIT):
     """Assess whether the configured isoform classes are measurable by short reads.
 
     Parameters
@@ -544,11 +546,19 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         already relying on Ensembl for sequence, and skipped when sequences were
         supplied offline (so an offline call never blocks on the network).  ``True``
         forces the fetch, ``False`` restores the pre-v2.2 behaviour of comparing the
-        configured groups only.
+        configured groups only.  A gene symbol Ensembl does not know (HTTP 400/404)
+        leaves the gene background empty; any other failure to fetch it is raised,
+        because a background that is only partly fetched silently gives a different
+        answer.
     read_length, frag_mean, frag_sd, paired, depth, mean_efflen, tpm, n_donors
         The sequencing design the report should be conditioned on.
     conditioning_tau, min_informative_reads
         Thresholds separating ``identifiable`` from ``weakly_identifiable``.
+    retries, retry_wait
+        Each Ensembl request is retried up to ``retries`` times after the first
+        attempt, waiting ``retry_wait`` seconds and doubling each time (an HTTP 429
+        waits for its ``Retry-After``); defaults 5 and 1.0.  cDNA is fetched 50
+        transcripts per request.  See :mod:`isoform_dominance.ensembl`.
 
     Returns
     -------
@@ -585,18 +595,26 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     if background_gene_transcripts == "auto":
         # only reach for the network when we are already going there for sequence
         background_gene_transcripts = any(t not in seqs for t in needed)
+    net = {"retries": retries, "retry_wait": retry_wait}
     if background_gene_transcripts and config.get("gene") and not bg_seqs:
         try:
             all_ids = fetch_gene_transcript_ids(
-                config["gene"], species or config.get("species", "homo_sapiens"))
-            for tid in all_ids:
-                if tid not in needed and tid not in bg_seqs:
-                    bg_seqs[tid] = fetch_cdna(tid)
-        except Exception:      # offline, or symbol not found: fall back quietly
-            bg_seqs = dict(bg_seqs)
-    for tid in needed:
-        if tid not in seqs:
-            seqs[tid] = fetch_cdna(tid)
+                config["gene"], species or config.get("species", "homo_sapiens"), **net)
+        except HTTPError as e:
+            if e.code not in (400, 404):      # 400 is Ensembl's "no such symbol"
+                raise
+            all_ids = []                      # a symbol Ensembl does not know
+        # all or nothing: this used to swallow any error part-way through and carry
+        # on with whatever had arrived, which is a different answer, silently
+        bg_seqs.update(ensembl.fetch_cdna_batch(
+            [t for t in all_ids if t not in needed], **net))
+    missing = [t for t in needed if t not in seqs]
+    if missing:
+        got = ensembl.fetch_cdna_batch(missing, **net)
+        absent = [t for t in missing if t not in got]
+        if absent:
+            raise ValueError("Ensembl returned no cDNA for %s" % ", ".join(absent))
+        seqs.update(got)
     bg_seqs = {t: s for t, s in bg_seqs.items() if t not in needed}
 
     # ---- window tracks ---------------------------------------------------- #

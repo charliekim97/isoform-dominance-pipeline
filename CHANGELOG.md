@@ -61,6 +61,39 @@ versioning.
   `ruff` now covers `scripts/` as well as `src` and `tests`.
 
 ### Fixed
+- **`scipy>=1.10` was a false floor.** Before 1.15, SciPy's `wilcoxon(method="auto")`
+  answered *any* zero difference with the normal approximation, at any n. For the pairs
+  in `test_zeros_shrink_the_effective_n_and_raise_the_floor` (five pairs, one tied at
+  zero) SciPy 1.14.1 returns P = 0.0455 where the exact value is 0.125: an
+  anti-conservative per-cohort p, and the test fails there. The floor is now
+  `scipy>=1.15`. The CI matrix installs the newest release of everything, so it could
+  never have caught this. A new `floor` job pins every runtime dependency to exactly its
+  pyproject minimum and runs the suite and the self-test on Python 3.10. The pins are
+  read out of `pyproject.toml`, so the floor and the job cannot drift apart. The
+  `wilcoxon_method` code no longer carries the pre-1.15 dispatch rule.
+- **Ensembl was asked for one transcript per request, and one failure killed the run.**
+  `identifiability` fetched each configured and background transcript with its own GET
+  -- 20 to 60 requests for a typical gene -- and none of them was retried. On
+  2026-09-11 a degraded Ensembl (HTTP 500/503 and read timeouts) failed every attempt
+  at NTRK2, NTRK3 and FLT1. cDNA is now fetched with `POST /sequence/id`, 50 ids per
+  request, with results matched back to ids by the echoed `query` field rather than by
+  position. Every Ensembl request, including `annotate`'s lookup, is retried on HTTP
+  429/500/502/503/504, connection errors and read timeouts. The wait is 1 s before the
+  first retry, doubling each time; a 429 waits for its `Retry-After` instead. Other HTTP
+  statuses are not retried. Defaults: 5 retries, 1.0 s (up to 31 s of backoff per
+  request), 30 s timeout per attempt. The retry count and wait are
+  `--retries`/`--retry-wait` on `annotate` and `identifiability`, `retries=`/`retry_wait=`
+  in the API, and documented in `isoform_dominance.ensembl`.
+- **A background fetch that failed part-way was silently kept.** `analyze` wrapped the
+  gene-background fetch in `except Exception` and continued with whatever had arrived.
+  A flaky network therefore produced a *different answer* with no error. Observed live:
+  a LEPR run reported `background: 1 same-gene transcript(s)` after the lookup had
+  succeeded and one cDNA had arrived. Now a gene symbol Ensembl does not know (HTTP
+  400/404) still means an empty gene background, and any other failure is raised.
+- **A read timeout reached the user as a traceback.** `TimeoutError` is not a
+  `URLError`, so it slipped past the `except (URLError, HTTPError)` in `annotate` and
+  `identifiability`. It is now reported through the same "Ensembl request failed"
+  message, exit 1.
 - **`selftest` did not accept `--json`**, although the CLI's module docstring (and the
   paper) say every subcommand does; argparse rejected it with `unrecognized arguments`.
   It now writes `{"ok", "checks", "combinations", "headline_combination"}` to stdout.

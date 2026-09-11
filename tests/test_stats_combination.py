@@ -217,11 +217,9 @@ def test_run_reports_pooled_and_stratified_side_by_side(tmp_path):
 # --------------------------------------------------------------------------- #
 # which Wilcoxon method produced the p-value
 # --------------------------------------------------------------------------- #
-# SciPy's method="auto" picks the p-value computation from the data, and the rule
-# changed in 1.15: before, ties were ignored and only zeros forced the normal
-# approximation; from 1.15, ties or zeros select an exhaustive permutation test at
-# n <= 13 and the normal approximation above that.
-SCIPY_1_15 = tuple(int(x) for x in scipy.__version__.split(".")[:2]) >= (1, 15)
+# SciPy's method="auto" picks the p-value computation from the data: ties or zeros
+# select an exhaustive permutation test at n <= 13 and the normal approximation above
+# that (SciPy >= 1.15, the declared floor).
 
 # 14 pairs, one zero difference, the rest distinct: every supported SciPy falls back to
 # the normal approximation here, and the approximation is visibly not the exact value
@@ -231,7 +229,7 @@ ZERO14_A = ZERO14_B + np.array([0.0, 1.1, 2.3, -0.4, 3.7, 4.2, -1.9,
 # 6 pairs, no zeros, distinct |d|: exact on every supported SciPy
 CLEAN6_B = np.full(6, 5.0)
 CLEAN6_A = CLEAN6_B + np.array([1.5, 2.5, -0.5, 3.5, 4.5, 5.5])
-# 6 pairs, no zeros, tied |d| with mixed signs: exact before 1.15, permutation after
+# 6 pairs, no zeros, tied |d| with mixed signs: the permutation test
 TIED6_A = np.array([3.0, 4.0, 1.0, 6.0, 7.0, 8.0])
 TIED6_B = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
 
@@ -240,15 +238,13 @@ def _explicit(label):
     """The SciPy `method=` argument that a reported label stands for."""
     if label == "permutation":
         return scipy.stats.PermutationMethod()
-    if label == "asymptotic" and not SCIPY_1_15:
-        return "approx"
     return label
 
 
 @pytest.mark.parametrize("A,B,expected", [
     (ZERO14_A, ZERO14_B, "asymptotic"),
     (CLEAN6_A, CLEAN6_B, "exact"),
-    (TIED6_A, TIED6_B, "permutation" if SCIPY_1_15 else "exact"),
+    (TIED6_A, TIED6_B, "permutation"),
 ])
 def test_wilcoxon_method_names_the_computation_that_produced_p(A, B, expected):
     det = stats.paired_stat_detail(A, B, n_boot=0)

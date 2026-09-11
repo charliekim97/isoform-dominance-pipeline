@@ -61,7 +61,7 @@ LEPR_LIKE = {
 def offline_ensembl(monkeypatch):
     calls = []
 
-    def fake_get(path, timeout=30):
+    def fake_get(path, **kw):
         calls.append(path)
         return LEPR_LIKE
 
@@ -91,7 +91,7 @@ def test_fetch_transcripts_uses_the_minus_strand_terminal_exon(offline_ensembl):
 def test_plus_strand_uses_the_rightmost_exon_start(monkeypatch):
     payload = json.loads(json.dumps(LEPR_LIKE))
     payload["strand"] = 1
-    monkeypatch.setattr(annotate, "_get", lambda path, timeout=30: payload)
+    monkeypatch.setattr(annotate, "_get", lambda path, **kw: payload)
     info = annotate.fetch_transcripts("LEPR")
     by_id = {t["id"]: t for t in info["transcripts"]}
     assert by_id["ENST00000349533"]["terminal_acceptor"] == 65_650_000
@@ -148,7 +148,7 @@ def test_no_translated_transcripts_raises(monkeypatch):
     payload = {"strand": 1, "canonical_transcript": "",
                "Transcript": [{"id": "T1", "biotype": "lncRNA",
                                "Exon": [{"start": 1, "end": 100}]}]}
-    monkeypatch.setattr(annotate, "_get", lambda path, timeout=30: payload)
+    monkeypatch.setattr(annotate, "_get", lambda path, **kw: payload)
     with pytest.raises(ValueError, match="No protein-coding transcripts"):
         annotate.fetch_transcripts("NOPE")
 
@@ -163,7 +163,7 @@ def test_single_cluster_gene_proposes_one_group(monkeypatch):
                    {"id": "T2", "biotype": "protein_coding", "is_canonical": 0,
                     "Translation": {"length": 290},
                     "Exon": [{"start": 1, "end": 100}, {"start": 200, "end": 290}]}]}
-    monkeypatch.setattr(annotate, "_get", lambda path, timeout=30: payload)
+    monkeypatch.setattr(annotate, "_get", lambda path, **kw: payload)
     groups, primary, _ = annotate.propose_groups(annotate.fetch_transcripts("X"))
     assert len(groups) == 1
     assert len(primary) == 1
@@ -179,7 +179,7 @@ def test_duplicate_labels_are_disambiguated(monkeypatch):
                    {"id": "T2", "biotype": "protein_coding", "is_canonical": 0,
                     "Translation": {"length": 500},
                     "Exon": [{"start": 1, "end": 100}, {"start": 700, "end": 800}]}]}
-    monkeypatch.setattr(annotate, "_get", lambda path, timeout=30: payload)
+    monkeypatch.setattr(annotate, "_get", lambda path, **kw: payload)
     groups, primary, _ = annotate.propose_groups(annotate.fetch_transcripts("X"))
     assert len(groups) == 2                       # not one label overwriting the other
     assert len(set(groups)) == 2
@@ -198,7 +198,7 @@ def test_clustering_is_brittle_to_a_shifted_acceptor(monkeypatch):
     for t in payload["Transcript"]:
         if t["id"] == "ENST00000616738":
             t["Exon"][0]["end"] = 65_571_199          # one base off
-    monkeypatch.setattr(annotate, "_get", lambda path, timeout=30: payload)
+    monkeypatch.setattr(annotate, "_get", lambda path, **kw: payload)
     clusters = annotate.cluster_by_terminal_exon(annotate.fetch_transcripts("LEPR"))
     accs = sorted(c["acceptor"] for c in clusters)
     assert 65_571_199 in accs and 65_571_200 in accs   # split, not merged

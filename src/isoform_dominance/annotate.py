@@ -8,19 +8,26 @@ comparison (canonical-isoform cluster vs the largest alternative cluster) that t
 reviews and renames before use.
 """
 import json
-import urllib.request
 
-ENSEMBL = "https://rest.ensembl.org"
+from . import ensembl
+from .ensembl import DEFAULT_RETRIES, DEFAULT_RETRY_WAIT
 
-
-def _get(path, timeout=30):
-    req = urllib.request.Request(ENSEMBL + path, headers={"Content-Type": "application/json"})
-    return json.load(urllib.request.urlopen(req, timeout=timeout))
+ENSEMBL = ensembl.SERVER
 
 
-def fetch_transcripts(gene, species="homo_sapiens"):
-    """Return {gene, species, strand, transcripts:[{id, protein_aa, terminal_acceptor, is_canonical}]}."""
-    g = _get("/lookup/symbol/%s/%s?expand=1" % (species, gene))
+def _get(path, timeout=ensembl.DEFAULT_TIMEOUT, retries=DEFAULT_RETRIES,
+         retry_wait=DEFAULT_RETRY_WAIT):
+    return ensembl.get_json(path, timeout=timeout, retries=retries, retry_wait=retry_wait)
+
+
+def fetch_transcripts(gene, species="homo_sapiens", retries=DEFAULT_RETRIES,
+                      retry_wait=DEFAULT_RETRY_WAIT):
+    """Return {gene, species, strand, transcripts:[{id, protein_aa, terminal_acceptor, is_canonical}]}.
+
+    The lookup is retried as described in :mod:`isoform_dominance.ensembl`.
+    """
+    g = _get("/lookup/symbol/%s/%s?expand=1" % (species, gene),
+             retries=retries, retry_wait=retry_wait)
     strand = g["strand"]
     canonical = (g.get("canonical_transcript") or "").split(".")[0]
     out = []
@@ -75,9 +82,9 @@ def propose_groups(info):
     return groups, primary, clusters
 
 
-def build_config(gene, species="homo_sapiens"):
+def build_config(gene, species="homo_sapiens", **retry):
     """Build a reviewable config.json dict for `gene` from live Ensembl annotation."""
-    info = fetch_transcripts(gene, species)
+    info = fetch_transcripts(gene, species, **retry)
     groups, primary, clusters = propose_groups(info)
     return {
         "gene": gene, "species": species, "reference": "Ensembl REST (live annotation)",
@@ -92,8 +99,8 @@ def build_config(gene, species="homo_sapiens"):
     }
 
 
-def run(gene, out, species="homo_sapiens"):
-    cfg = build_config(gene, species)
+def run(gene, out, species="homo_sapiens", **retry):
+    cfg = build_config(gene, species, **retry)
     with open(out, "w") as f:
         json.dump(cfg, f, indent=2)
     return cfg

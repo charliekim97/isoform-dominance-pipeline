@@ -21,8 +21,8 @@ import json
 import sys
 from urllib.error import HTTPError, URLError
 
-from . import (__version__, annotate, contamination, extract, identifiability, io,
-               stats)
+from . import (__version__, annotate, contamination, ensembl, extract, identifiability,
+               io, stats)
 
 EXIT_OK = 0
 EXIT_NOT_IDENTIFIABLE = 2
@@ -60,8 +60,9 @@ def _net_fail(e):
 
 def cmd_annotate(a):
     try:
-        cfg = annotate.run(a.gene, a.out, species=a.species)
-    except (URLError, HTTPError) as e:
+        cfg = annotate.run(a.gene, a.out, species=a.species,
+                           retries=a.retries, retry_wait=a.retry_wait)
+    except (URLError, HTTPError, TimeoutError) as e:
         return _net_fail(e)
     if a.json:
         _emit(cfg)
@@ -88,8 +89,9 @@ def cmd_identifiability(a):
             background_gene_transcripts=False if a.no_gene_background else "auto",
             read_length=a.read_length, frag_mean=a.frag_mean, frag_sd=a.frag_sd,
             paired=not a.single_end, depth=a.depth, tpm=a.tpm, n_donors=a.donors,
-            conditioning_tau=a.tau, min_informative_reads=a.min_informative_reads)
-    except (URLError, HTTPError) as e:
+            conditioning_tau=a.tau, min_informative_reads=a.min_informative_reads,
+            retries=a.retries, retry_wait=a.retry_wait)
+    except (URLError, HTTPError, TimeoutError) as e:
         return _net_fail(e)
     except ValueError as e:
         print("config error: %s" % e, file=sys.stderr)
@@ -216,13 +218,24 @@ def build_parser():
                         help="emit the full result as JSON on stdout")
         return sp
 
-    s = _json(sub.add_parser("annotate", help="gene symbol -> proposed isoform groups (Ensembl)"))
+    def _net(sp):
+        sp.add_argument("--retries", type=int, default=ensembl.DEFAULT_RETRIES,
+                        help="retries per Ensembl request after the first attempt, on HTTP "
+                             "429/500/502/503/504, connection errors and read timeouts "
+                             "(default: %(default)s)")
+        sp.add_argument("--retry-wait", type=float, default=ensembl.DEFAULT_RETRY_WAIT,
+                        help="seconds before the first retry, doubling each time; an HTTP "
+                             "429 waits for its Retry-After instead (default: %(default)s)")
+        return sp
+
+    s = _net(_json(sub.add_parser("annotate",
+                                  help="gene symbol -> proposed isoform groups (Ensembl)")))
     s.add_argument("--gene", required=True); s.add_argument("--species", default="homo_sapiens")
     s.add_argument("--out", required=True); s.set_defaults(func=cmd_annotate)
 
-    s = _json(sub.add_parser(
+    s = _net(_json(sub.add_parser(
         "identifiability", aliases=["identify"],
-        help="are the classes measurable by short reads, and how precisely?"))
+        help="are the classes measurable by short reads, and how precisely?")))
     s.add_argument("--config", required=True)
     s.add_argument("--k", type=int, default=identifiability.DEFAULT_K)
     s.add_argument("--window", type=int, default=None,

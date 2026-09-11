@@ -53,8 +53,21 @@ cfg["primary_comparison"]   # ['iso_733aa', 'iso_1338aa']
 
 Check whether isoform groups can be distinguished by short reads.
 
-**`identifiability.fetch_cdna(transcript_id) -> str`**
-Fetch a transcript's cDNA sequence from Ensembl. Network access required.
+**`identifiability.fetch_cdna(transcript_id, **retry) -> str`**
+Fetch one transcript's cDNA sequence from Ensembl. Network access required.
+
+**`ensembl.fetch_cdna_batch(ids, **retry) -> dict`**
+`{id: cdna}` via `POST /sequence/id`, 50 ids per request, matched back to ids by the
+`query` field Ensembl echoes. `analyze` fetches all of its sequence this way.
+
+**Retries.** Every Ensembl request (`annotate`'s lookup included) goes through
+`ensembl.request`. It is retried on HTTP 429/500/502/503/504, connection errors and read
+timeouts, and not on any other HTTP status. `retry` is `retries=` (default
+`ensembl.DEFAULT_RETRIES = 5`, counted after the first attempt), `retry_wait=` (default
+`ensembl.DEFAULT_RETRY_WAIT = 1.0` s before the first retry, doubling each time; a 429
+waits for its `Retry-After` instead) and `timeout=` (default `ensembl.DEFAULT_TIMEOUT =
+30` s per attempt). `annotate.build_config`/`run` and `identifiability.analyze` take the
+same `retries`/`retry_wait`; on the CLI they are `--retries` and `--retry-wait`.
 
 **`identifiability.kmers(seq, k) -> set`**
 Return the set of length-`k` substrings (k-mers) of `seq` (upper-cased).
