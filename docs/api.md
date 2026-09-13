@@ -87,7 +87,8 @@ fetched from Ensembl. Returns:
 ```
 
 A group with zero unique k-mers is not separable by short reads and is flagged
-(`distinguishable: False`); the CLI exits non-zero in that case.
+(`distinguishable: False`). Neither this flag nor `verdict` sets the CLI's exit status:
+see the exit codes in the README.
 
 ---
 

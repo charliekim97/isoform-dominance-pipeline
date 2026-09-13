@@ -49,8 +49,9 @@ Identifiability (k=31):
 
 Both groups carry thousands of unique 31-mers, so short-read quantification can
 separate TrkB-FL from TrkB.T1. Had one group contained no unique sequence, the
-command would have flagged it (`NOT DISTINGUISHABLE`) and exited non-zero,
-stopping you from reporting a fold-change the data cannot support.
+command would have flagged it; pass `--min-log2fc` with the effect you need and it
+exits non-zero when that effect is not resolvable at your design, stopping you from
+reporting a fold-change the data cannot support.
 
 ## 3. From here
 

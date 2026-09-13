@@ -16,7 +16,16 @@ versioning.
 
 ## [Unreleased]
 
+Targets **2.3.0**, not a patch: the exit status of `identifiability` changes meaning.
+The version strings in `pyproject.toml`, `__init__.py` and `CITATION.cff` are bumped at
+release, once the remaining 2.3.0 items are in.
+
 ### Added
+- The `identifiability` report carries `gene_total` — the estimability of the sum of every
+  column of the compatibility system, with `transcripts_without_windows` listing any
+  transcript shorter than `window` — and `effect_resolvable`, which is `true` when both
+  class totals and the contrast resolve `--min-log2fc`, `false` when any of them does not
+  or has no finite figure, and `null` when no effect size was asked for.
 - `identifiability --min-log2fc`: the smallest |log2 fold change| in the class ratio you
   need to resolve. When given it replaces `--tau` in the verdict, and is the recommended
   way to run the command. `--tau` has no calibrated value: across a 49-gene survey the
@@ -45,6 +54,34 @@ versioning.
   value.
 
 ### Changed
+- **Breaking: the structural verdict no longer sets the exit status of
+  `identifiability`.** Up to 2.2.0 `not_identifiable` exited 2 and `weakly_identifiable`
+  exited 3. The verdict cannot gate a program: it is a function of the annotation
+  release — on NTRK3 the same comparison is `not_identifiable` against today's Ensembl and
+  `identifiable` against GENCODE v44, and 6 of 36 comparable verdicts in a 49-gene panel
+  move between the two — and across seven simulated coverage models the
+  `not_identifiable` group never differed from the estimable genes in realised error
+  (Mann-Whitney p = 0.08–0.96, with the sign of the difference inconsistent). The exit
+  status now answers the question the user asks with `--min-log2fc`:
+  **0** when no `--min-log2fc` is given or it is resolved; **3** when it is given and not
+  resolved; **2** only when the gene total itself is not estimable, because a transcript
+  shorter than `--window` has no windows and an all-zero column — a precondition of the
+  system, not a judgement, and independent of the grouping, the design and any threshold;
+  **1** for a config or network error, as before. The verdict is still printed and still
+  in the `--json` report, and without `--min-log2fc` the command now says on stderr what
+  it does and does not mean. A pipeline that branched on exit 2 or 3 to skip
+  "unmeasurable" genes should pass `--min-log2fc` with the effect it needs, or read
+  `verdict` from `--json`.
+- `cli.EXIT_WEAK` is renamed `cli.EXIT_EFFECT_NOT_RESOLVED`; the value is still 3.
+- **The conditioning factor is demoted from the headline to a diagnostic** in the CLI
+  output, the README and the paper. Each class and contrast line now leads with
+  `min |log2FC|`, and the README example is run with `--min-log2fc`. Against realised
+  quantification error in simulation, the conditioning factor was the weakest predictor
+  measured under both uniform and 5'-skewed coverage (Spearman +0.197 and −0.119, n = 40),
+  and it moves by up to two orders of magnitude with the annotation release alone
+  (PFKL 2182 → 12.2, TPI1 719 → 7.6, today's Ensembl against GENCODE v44). It is still
+  reported, with its `Var(y) = sigma^2 I` caveat, and `--tau` still grades the verdict
+  when no `--min-log2fc` is given.
 - The CLI no longer prints the counting-noise floor as though it were comparable to the
   per-class figures. It is the precision of `log2(n_a/n_b)` for the informative-read
   counts of each class's *best single transcript*, which equals the class ratio only when

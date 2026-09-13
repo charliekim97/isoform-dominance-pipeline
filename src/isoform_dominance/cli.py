@@ -4,16 +4,20 @@ Every subcommand accepts ``--json``, which writes the full result object to stdo
 instead of the human summary, so the tool composes inside a workflow manager without
 anyone having to parse its printed text.
 
-``identifiability`` distinguishes three outcomes in its exit status, because the
-middle one is the interesting case and a boolean cannot carry it:
+``identifiability`` does not put its structural verdict in the exit status. The verdict
+moves with the annotation release the transcripts come from, so it is reported as a
+field and a line of output, and the status answers only the question the user asked
+with ``--min-log2fc``:
 
 ===== ==============================================================
-  0   identifiable
-  3   weakly identifiable -- estimable, but ill-conditioned or
-      starved of informative fragments at the stated design
-  2   not identifiable -- a class total or the contrast lies
-      outside the row space of the compatibility surrogate at
-      this window length
+  0   no ``--min-log2fc`` given, or both class totals and the
+      contrast resolve it at the stated design
+  3   ``--min-log2fc`` given and not resolved -- including when an
+      estimand has no finite figure at all
+  2   precondition failure: the gene total itself is not estimable,
+      because a transcript shorter than ``--window`` has no windows
+      and an all-zero column. Not a verdict; checked first
+  1   config error or network failure
 ===== ==============================================================
 """
 import argparse
@@ -27,13 +31,16 @@ from . import (__version__, annotate, contamination, ensembl, extract, identifia
 
 EXIT_OK = 0
 EXIT_NOT_IDENTIFIABLE = 2
-EXIT_WEAK = 3
+EXIT_EFFECT_NOT_RESOLVED = 3
 
-_VERDICT_EXIT = {
-    "identifiable": EXIT_OK,
-    "weakly_identifiable": EXIT_WEAK,
-    "not_identifiable": EXIT_NOT_IDENTIFIABLE,
-}
+
+def _identifiability_exit(res):
+    """Exit status from the precondition and the requested effect size, never the verdict."""
+    if not res["gene_total"]["estimable"]:
+        return EXIT_NOT_IDENTIFIABLE
+    if res["effect_resolvable"] is False:
+        return EXIT_EFFECT_NOT_RESOLVED
+    return EXIT_OK
 
 
 def _kv(items):
@@ -101,7 +108,7 @@ def cmd_identifiability(a):
 
     if a.json:
         _emit(res)
-        return _VERDICT_EXIT[res["verdict"]]
+        return _identifiability_exit(res)
 
     bg = res["background"]
     print("Identifiability (window=%d, k=%d, %s k-mers)"
@@ -131,18 +138,18 @@ def cmd_identifiability(a):
 
     incoherent = []
     for g, r in res["groups"].items():
-        print("  [%s] %s: %d unique k-mers, %d bp in %d block(s), "
-              "~%.0f informative reads, conditioning %.2f, %s"
-              % (r["verdict"], g, r["n_unique_kmers"], r["unique_length"],
+        print("  [%s] %s: %s; %d unique k-mers, %d bp in %d block(s), "
+              "~%.0f informative reads, conditioning %.2f"
+              % (r["verdict"], g, _fc(r), r["n_unique_kmers"], r["unique_length"],
                  r["n_blocks"], r["expected_informative_reads"],
-                 r["conditioning_factor"], _fc(r)))
+                 r["conditioning_factor"]))
         coh = r.get("coherence") or {}
         if coh.get("min_jaccard") is not None and coh["min_jaccard"] < 0.05:
             incoherent.append((g, coh["min_jaccard"]))
     c = res["contrast"]
-    print("  contrast %s vs %s: %s (conditioning %.2f, %s)"
+    print("  contrast %s vs %s: %s; %s, conditioning %.2f"
           % (res["primary_comparison"][0], res["primary_comparison"][1],
-             c["verdict"], c["conditioning_factor"], _fc(c)))
+             _fc(c), c["verdict"], c["conditioning_factor"]))
     if any(r.get("beyond_linear") for r in list(res["groups"].values()) + [c]):
         print("  * first-order figure past the linearisation limit: read it as "
               "'not resolvable at this design', not as a value.", file=sys.stderr)
@@ -162,9 +169,32 @@ def cmd_identifiability(a):
           "classes have the same informative fraction, so it can read better than the "
           "class comparison actually is. The per-class figures above are for the class "
           "totals themselves.)", file=sys.stderr)
+    gt = res["gene_total"]
+    if not gt["estimable"]:
+        print("  PRECONDITION FAILED: the gene total is not estimable. %s shorter than "
+              "window=%d, so %s no windows and an all-zero column in the compatibility "
+              "system; no class total or contrast built on it is well posed. This does "
+              "not depend on the grouping, the design or any threshold. Exit status 2."
+              % (", ".join(gt["transcripts_without_windows"]) or "A transcript is",
+                 res["window"],
+                 "it has" if len(gt["transcripts_without_windows"]) == 1 else "they have"),
+              file=sys.stderr)
+    if d["min_log2fc"] is not None:
+        print("  EFFECT SIZE: |log2FC| %.3f %s at this design"
+              % (d["min_log2fc"],
+                 "resolved by both class totals and the contrast"
+                 if res["effect_resolvable"] else "NOT resolved"))
     print("  VERDICT:", res["verdict"])
     for reason in res["reasons"]:
         print("    - %s" % reason, file=sys.stderr)
+    if d["min_log2fc"] is None:
+        print("  The verdict is a screening flag, not the exit status. It says whether each "
+              "class total and the contrast lie in the row space of a sequence-derived "
+              "compatibility surrogate at window=%d, for exactly the transcripts in this "
+              "config. It does not say whether a quantifier will recover the comparison, "
+              "and it changes with the annotation release those transcripts came from. "
+              "Pass --min-log2fc <the smallest effect you need> for an exit status on the "
+              "resolvable effect size." % res["window"], file=sys.stderr)
     if res["verdict"] == "not_identifiable":
         failed = [g for g in res["groups"] if not res["groups"][g].get("estimable")]
         if not res["contrast"].get("estimable"):
@@ -175,7 +205,7 @@ def cmd_identifiability(a):
               "rather than a statement about the data: a longer --window, a different "
               "grouping, or long reads may change it."
               % (", ".join(failed) or "an estimand"), file=sys.stderr)
-    return _VERDICT_EXIT[res["verdict"]]
+    return _identifiability_exit(res)
 
 
 def cmd_extract(a):
@@ -291,12 +321,13 @@ def build_parser():
     s.add_argument("--donors", type=int, default=1)
     s.add_argument("--min-log2fc", type=float, default=None,
                    help="smallest |log2 fold change| in the class ratio you need to "
-                        "resolve; when given it replaces --tau in the verdict, which is "
-                        "the recommended way to run this (--tau has no calibrated value: "
-                        "over a 49-gene survey the median gene sat at conditioning 65 "
-                        "against the default 10)")
+                        "resolve; when given it replaces --tau in the verdict and sets the "
+                        "exit status (3 when not resolved), which is the recommended way "
+                        "to run this (--tau has no calibrated value: over a 49-gene survey "
+                        "the median gene sat at conditioning 65 against the default 10)")
     s.add_argument("--tau", type=float, default=identifiability.DEFAULT_CONDITIONING_TAU,
-                   help="structural conditioning factor above which a class is only weakly identifiable")
+                   help="structural conditioning factor above which a class is only weakly "
+                        "identifiable; a diagnostic that does not affect the exit status")
     s.add_argument("--min-informative-reads", type=float,
                    default=identifiability.DEFAULT_MIN_INFORMATIVE_READS)
     s.set_defaults(func=cmd_identifiability)

@@ -45,29 +45,100 @@ def test_identifiability_cli_ok(tmp_path):
     assert rc == cli.EXIT_OK
 
 
-def test_identifiability_cli_exit2_when_classes_are_indistinguishable(tmp_path):
-    # identical sequence: neither class total nor their contrast is estimable,
-    # and no amount of sequencing changes that
+def test_not_identifiable_without_min_log2fc_exits_zero(tmp_path, capsys):
+    """The structural verdict is a flag in the report, not the exit status.
+
+    It moves with the annotation release -- NTRK3 is `not_identifiable` on live Ensembl
+    and `identifiable` on GENCODE v44 -- so it cannot gate a program's exit code.
+    """
     dup = _SHARED + _ALT_A
     cfg, seqs = _write_case(
         tmp_path, {"one": ["D1"], "two": ["D2"]}, ["one", "two"],
         {"D1": dup, "D2": dup})
     rc = cli.main(["identify", "--config", cfg, "--sequences", seqs])
-    assert rc == cli.EXIT_NOT_IDENTIFIABLE
+    out = capsys.readouterr()
+    assert "VERDICT: not_identifiable" in out.out
+    assert "not the exit status" in out.err
+    assert rc == cli.EXIT_OK
 
 
-def test_identifiability_cli_exit3_when_estimable_but_starved(tmp_path):
+def test_not_identifiable_with_an_unmeetable_min_log2fc_exits_nonzero(tmp_path):
+    dup = _SHARED + _ALT_A
+    cfg, seqs = _write_case(
+        tmp_path, {"one": ["D1"], "two": ["D2"]}, ["one", "two"],
+        {"D1": dup, "D2": dup})
+    rc = cli.main(["identify", "--config", cfg, "--sequences", seqs,
+                   "--min-log2fc", "1.0"])
+    assert rc == cli.EXIT_EFFECT_NOT_RESOLVED
+    assert rc != cli.EXIT_OK
+
+
+def test_the_exit_status_follows_the_requested_effect_size(tmp_path):
+    """Same gene, same design: only --min-log2fc moves the exit status.
+
+    The contrast resolves |log2FC| 0.31 here, so 1.0 is met and 0.1 is not; without
+    the flag the status is 0 either way.
+    """
+    cfg, seqs = _write_case(
+        tmp_path, {"A": ["A1"], "B": ["B1"]}, ["A", "B"],
+        {"A1": _SHARED + _ALT_A, "B1": _SHARED + _ALT_B})
+    base = ["identify", "--config", cfg, "--sequences", seqs]
+    assert cli.main(base) == cli.EXIT_OK
+    assert cli.main(base + ["--min-log2fc", "1.0"]) == cli.EXIT_OK
+    assert cli.main(base + ["--min-log2fc", "0.1"]) == cli.EXIT_EFFECT_NOT_RESOLVED
+
+
+def test_estimable_but_starved_exits_zero_unless_an_effect_size_is_asked_for(tmp_path):
     """Nested classes: no unique k-mer, still estimable, but short of evidence.
 
-    v2.1 exited 2 here on the strength of the zero unique-k-mer count alone.  The
-    contrast is in fact recoverable, so the honest answer is the middle one.
+    v2.1 exited 2 here on the strength of the zero unique-k-mer count alone, and
+    v2.2 exited 3 on the verdict. The status now answers only the question asked.
     """
     cfg, seqs = _write_case(
         tmp_path, {"sub": ["S1"], "sup": ["P1"]}, ["sub", "sup"],
         {"S1": _SHARED, "P1": _SHARED + _ALT_B})
-    rc = cli.main(["identify", "--config", cfg, "--sequences", seqs,
-                   "--tpm", "0.01"])
-    assert rc == cli.EXIT_WEAK
+    base = ["identify", "--config", cfg, "--sequences", seqs, "--tpm", "0.01"]
+    assert cli.main(base) == cli.EXIT_OK
+    assert cli.main(base + ["--min-log2fc", "1.0"]) == cli.EXIT_EFFECT_NOT_RESOLVED
+
+
+def test_a_transcript_shorter_than_the_window_still_exits_2(tmp_path, capsys):
+    """The one case left on exit 2: a precondition, not a judgement.
+
+    A transcript shorter than ``window`` has no windows and an all-zero column, so the
+    gene total itself is outside the row space and nothing below it is well posed.
+    The control drops only the short transcript, so the assertion depends on it.
+    """
+    seqs = {"A1": _SHARED + _ALT_A, "A2": _seq(20, 5), "B1": _SHARED + _ALT_B}
+    cfg, sq = _write_case(tmp_path, {"A": ["A1", "A2"], "B": ["B1"]}, ["A", "B"], seqs)
+    assert cli.main(["identify", "--config", cfg, "--sequences", sq]) == \
+        cli.EXIT_NOT_IDENTIFIABLE
+    assert "gene total" in capsys.readouterr().err
+
+    assert cli.main(["identify", "--config", cfg, "--sequences", sq, "--json"]) == \
+        cli.EXIT_NOT_IDENTIFIABLE
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["gene_total"]["estimable"] is False
+    assert payload["gene_total"]["transcripts_without_windows"] == ["A2"]
+
+    ctrl = tmp_path / "ctrl"
+    ctrl.mkdir()
+    cfg, sq = _write_case(ctrl, {"A": ["A1"], "B": ["B1"]}, ["A", "B"],
+                          {t: s for t, s in seqs.items() if t != "A2"})
+    assert cli.main(["identify", "--config", cfg, "--sequences", sq]) == cli.EXIT_OK
+
+
+def test_an_inestimable_contrast_is_not_a_precondition_failure(tmp_path, capsys):
+    """Identical classes are `not_identifiable`, but the gene total is estimable."""
+    dup = _SHARED + _ALT_A
+    cfg, seqs = _write_case(
+        tmp_path, {"one": ["D1"], "two": ["D2"]}, ["one", "two"],
+        {"D1": dup, "D2": dup})
+    cli.main(["identify", "--config", cfg, "--sequences", seqs, "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["verdict"] == "not_identifiable"
+    assert payload["gene_total"]["estimable"] is True
+    assert payload["effect_resolvable"] is None
 
 
 def test_identifiability_cli_json(tmp_path, capsys):
@@ -82,15 +153,17 @@ def test_identifiability_cli_json(tmp_path, capsys):
     assert payload["contrast"]["estimable"] is True
 
 
-def test_identifiability_cli_background_fasta_changes_the_verdict(tmp_path):
+def test_identifiability_cli_background_fasta_changes_the_verdict(tmp_path, capsys):
     fa = tmp_path / "bg.fa"
     fa.write_text(">DECOY\n%s\n" % (_SHARED + _ALT_A))
     cfg, seqs = _write_case(
         tmp_path, {"A": ["A1"], "B": ["B1"]}, ["A", "B"],
         {"A1": _SHARED + _ALT_A, "B1": _SHARED + _ALT_B})
-    assert cli.main(["identify", "--config", cfg, "--sequences", seqs]) == cli.EXIT_OK
-    assert cli.main(["identify", "--config", cfg, "--sequences", seqs,
-                     "--background-fasta", str(fa)]) != cli.EXIT_OK
+    base = ["identify", "--config", cfg, "--sequences", seqs, "--json"]
+    cli.main(base)
+    assert json.loads(capsys.readouterr().out)["verdict"] == "identifiable"
+    cli.main(base + ["--background-fasta", str(fa)])
+    assert json.loads(capsys.readouterr().out)["verdict"] != "identifiable"
 
 
 def test_annotate_cli_offline(tmp_path, monkeypatch):

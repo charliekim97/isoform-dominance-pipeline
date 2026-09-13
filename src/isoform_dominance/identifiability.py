@@ -728,7 +728,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     dict
         ``groups`` (per-class sequence, read-model and estimability numbers),
         ``primary_comparison``, ``contrast`` (estimability of ``s_A - s_B``),
-        ``verdict`` with its ``reasons``, and -- for callers written against v2.1 --
+        ``verdict`` with its ``reasons``, ``gene_total`` (estimability of the sum of
+        every column, with the transcripts that have no window at all),
+        ``effect_resolvable`` (whether both class totals and the contrast resolve
+        ``min_log2fc``; None without it), and -- for callers written against v2.1 --
         ``primary_distinguishable``.  Note that ``verdict`` supersedes
         ``primary_distinguishable``: a class with no unique k-mer of its own is still
         estimable when a class it is nested inside has unique sequence, and a class
@@ -890,6 +893,22 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         report[pc[1]]["expected_informative_reads"],
         n_donors=n_donors)
 
+    # The gene total -- every column of the system -- is estimable exactly when no
+    # column is all zero, which happens when a transcript is shorter than ``window``.
+    # That is a precondition of the system, not a judgement about the classes: it does
+    # not depend on the grouping, the design or a threshold.
+    gene_total = estimability(A, np.ones(len(all_tids)))
+    gene_total["transcripts_without_windows"] = [
+        t for t in all_tids if not A[:, idx[t]].any()]
+
+    # The exit status of the CLI hangs on this, not on ``verdict``: the structural
+    # verdict moves with the annotation release, while a resolvable effect size is the
+    # question the experimenter actually asked.  None when no effect size was asked for.
+    primary = [report[g] for g in pc] + [contrast]
+    effect_resolvable = None if min_log2fc is None else all(
+        math.isfinite(e["min_resolvable_log2fc"])
+        and e["min_resolvable_log2fc"] <= min_log2fc for e in primary)
+
     verdicts = [report[g]["verdict"] for g in pc] + [contrast["verdict"]]
     all_reasons = sorted({r for g in pc for r in report[g]["reasons"]}
                          | set(contrast["reasons"]))
@@ -914,6 +933,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         "primary_comparison": list(pc),
         "contrast": contrast,
         "counting_noise": noise,
+        "gene_total": gene_total,
+        "effect_resolvable": effect_resolvable,
         "n_compatibility_classes": len(classes),
         "primary_distinguishable": all(report[g]["distinguishable"] for g in pc),
         "verdict": overall,

@@ -66,33 +66,37 @@ isoform-dominance annotate --gene LEPR --out config.json
 **2. Identifiability guardrail (`identify`).** A short-read quantifier apportions fragments
 by solving a linear inverse problem; a class total is recoverable only when it is an
 *estimable* function of that system. This checks the condition directly, on the class-collapsed
-system, and **refuses to pretend** a comparison is measurable when it isn't.
+system, and reports the smallest fold change the stated design can resolve for each class total
+and for the contrast between them. Ask it for the effect size you need:
 
 ```bash
-isoform-dominance identifiability --config config.json
+isoform-dominance identifiability --config config.json --min-log2fc 0.5
 # Identifiability (window=31, k=31, canonical k-mers)
 #   background: 9 same-gene transcript(s)
 #   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
-#   [identifiable] iso_1165aa: 5369 unique k-mers, 5399 bp in 1 block(s), ~1072 informative reads, conditioning 3.62
-#   [weakly_identifiable] iso_896aa: 356 unique k-mers, 208 bp in 2 block(s), ~63 informative reads, conditioning 115.05
-#   contrast iso_896aa vs iso_1165aa: weakly_identifiable (conditioning 117.68)
-#   counting-noise floor on log2 ratio: SE 0.187 per donor, min resolvable |log2FC| 0.366 at n=1
-#   VERDICT: weakly_identifiable
-# on stderr, with the background NOTE:
-#     - conditioning factor 115.1 exceeds tau=10.0
-#     - conditioning factor 117.7 exceeds tau=10.0
-# exit status 3
+#   [identifiable] iso_1165aa: min |log2FC| 0.064; 5369 unique k-mers, 5399 bp in 1 block(s), ~1072 informative reads, conditioning 3.62
+#   [identifiable] iso_896aa: min |log2FC| 0.216; 356 unique k-mers, 208 bp in 2 block(s), ~63 informative reads, conditioning 115.05
+#   contrast iso_896aa vs iso_1165aa: min |log2FC| 0.234; identifiable, conditioning 117.68
+#   unique-read counting floor on log2 ratio: SE 0.187 per donor, min resolvable |log2FC| 0.366 at n=1
+#   EFFECT SIZE: |log2FC| 0.500 resolved by both class totals and the contrast at this design
+#   VERDICT: identifiable
+# exit status 0; with --min-log2fc 0.1 the same run reports NOT resolved and exits 3
 ```
 
-Default flags, run on 2026-09-11 against the Ensembl release 116 annotation; transcript and
-k-mer counts move as the annotation does. The block this replaces showed 3399 unique k-mers
-for `iso_896aa`: on the same release-116 sequences that is the count with *no* gene
-background, not with the nine background transcripts it was captioned with.
+The release-116 sequences behind the 2026-09-11 block this replaces, run offline through
+`--sequences` and `--background-sequences` with the nine same-gene background transcripts;
+transcript and k-mer counts move as the annotation does. Read the `min |log2FC|` figures first:
+they are what the verdict and the exit status are built on. `conditioning` is a diagnostic.
+Without `--min-log2fc` the verdict falls back to `--tau` on the conditioning factor, which has
+no calibrated value — the same run then reads `weakly_identifiable` — and the command says on
+stderr that the verdict is a screening flag, not the exit status.
 
-Exit codes: **0** identifiable · **3** weakly identifiable (estimable, but ill-conditioned or
-starved of informative fragments at the stated design) · **2** not identifiable (a class total
-or the contrast lies outside the row space of the compatibility surrogate at this
-window length) · **1** config error.
+Exit codes: **0** no `--min-log2fc` given, or it is resolved · **3** `--min-log2fc` given and
+not resolved at the stated design · **2** precondition failure: the gene total itself is not
+estimable, because a transcript shorter than `--window` has no windows · **1** config or
+network error. The structural verdict is never the exit status: it changes with the
+annotation release the transcripts came from, so it is reported in the output and in the
+`--json` report (`verdict`, with `gene_total` and `effect_resolvable` beside it).
 
 > **Why not just count unique k-mers?** Because that proxy — used by this package up to
 > v2.1.1 — is wrong in both directions. A class whose only unique sequence is the ~30 k-mers
@@ -117,11 +121,14 @@ window length) · **1** config error.
 |---|---|---|
 | Sequence uniqueness | unique k-mers, bases covered, block structure | judged against a background — the gene's other transcripts by default, the whole index with `--background-fasta` — not just the configured classes |
 | Read model | `informative_fraction`, `expected_informative_reads`, counting-noise floor on log2 ratio | informativeness is scored on the **sequenced ends**, not the fragment: a unique region mid-fragment is never observed |
-| Estimability | row-space residual, rank, structural conditioning factor, for each class total **and** their contrast | a full-rank system with a near-degenerate contrast passes a rank test and still yields nothing |
+| Estimability | row-space residual, rank, and `min_resolvable_log2fc` from the Poisson-weighted GLS covariance, for each class total **and** their contrast; the structural conditioning factor as a diagnostic | a full-rank system with a near-degenerate contrast passes a rank test and still yields nothing |
 
-The conditioning factor is a **geometry proxy, not a standard error** — it assumes
-`Var(y) = sigma^2 I`, which a quantifier does not satisfy. Its thresholds are provisional
-pending the simulation study. The three layers answer different questions and can disagree. Structural estimability is
+The headline figure is `min_resolvable_log2fc`: the smallest |log2 fold change| a 95% interval
+excludes zero for at the stated design, under Poisson counting error only. The conditioning
+factor is kept as a **diagnostic**, not a headline — a **geometry proxy, not a standard
+error** — it assumes `Var(y) = sigma^2 I`, which a quantifier does not satisfy, and it moves by
+up to two orders of magnitude with the annotation release. Its thresholds are provisional. The three
+layers answer different questions and can disagree. Structural estimability is
 not precision, and neither is a promise that a quantifier's optimiser will land on the
 right answer — an EM returns numbers for a non-identifiable model too. What the
 estimability layer asserts is narrower and checkable: whether the class contrast is a
@@ -187,8 +194,8 @@ in one direction only, and is silent on the second.
   need it to.
 - **It is not sufficient for measurability.** Full rank says nothing about finite depth: the
   class direction can be so weakly observed that a formally estimable contrast is
-  unrecoverable. `identifiability` therefore reports a **conditioning factor beside the
-  row-space verdict**, and neither on its own.
+  unrecoverable. `identifiability` therefore reports the **smallest resolvable effect size
+  beside the row-space verdict**, and neither on its own.
 
 `isoform-dominance` targets that question: *for one gene, which functional isoform class
 predominates?* The contribution is evaluating the **estimability of the user's own class

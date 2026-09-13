@@ -71,10 +71,10 @@ reproduced as tests here.
 
 `isoform-dominance` replaces the proxy with the estimability condition itself, evaluated
 on the class-collapsed system and reported beside the two quantities that say whether an
-estimable comparison is also a usable one: the conditioning of the contrast and the
-expected number of informative fragments. It withholds a pass when the contrast lies
-outside the row space, and says "weakly identifiable, and here is why" in the large
-middle ground where the honest answer is neither yes nor no.
+estimable comparison is also a usable one: the smallest log2 fold change the stated
+design resolves and the expected number of informative fragments. It withholds a pass
+when the contrast lies outside the row space, and says "weakly identifiable, and here is
+why" in the large middle ground where the honest answer is neither yes nor no.
 
 # State of the field
 
@@ -110,7 +110,7 @@ unidentifiable while their sum is perfectly estimable, so a transcript-level ver
 reject a comparison that is sound. Nor does it discriminate when it holds: full column
 rank makes *every* contrast estimable, so the test stops separating cases exactly where
 separation is needed. And it is silent on the second. That is why this package reports
-an estimability verdict and a conditioning factor together, on the user's own contrast,
+an estimability verdict and a resolvable effect size together, on the user's own contrast,
 before quantification — and why neither is reported alone.
 
 # Software design
@@ -150,11 +150,15 @@ and 4, *not* at 5 and 6, and estimable again at 7 and 8. A longer `window` is a 
 system, not a sharper one. Whether the surrogate predicts what a quantifier recovers is
 an empirical question this paper does not answer; calibration by simulation is tracked in
 the repository issues, and the three verdict thresholds are provisional until it is done.
-The conditioning factor `sqrt(c' (A'A)^+ c)` is reported with it: a standard-deviation
-factor, not a variance, and the value it would take under `Var(y) = sigma^2 I`, which a
-short-read quantifier does not satisfy. What it captures is geometry — a contrast
-direction nearly degenerate in the observable classes is poorly determined however the
-noise is distributed.
+The figure reported with each verdict is the smallest |log2 fold change| a 95% interval excludes
+zero for, from the delta-method standard error of the log class ratio under the
+Poisson-weighted GLS covariance of the whole system; the user states the effect size they
+need, and that comparison, not the verdict, sets the exit status. A structural
+conditioning factor `sqrt(c' (A'A)^+ c)` is kept as a diagnostic only: a
+standard-deviation factor, not a variance, and the value it would take under
+`Var(y) = sigma^2 I`, which a short-read quantifier does not satisfy. What it captures is
+geometry — a contrast direction nearly degenerate in the observable classes is poorly
+determined however the noise is distributed.
 
 Cohorts are combined two ways beside the donor-pooled test earlier releases reported
 alone: a weighted Stouffer combination [@stouffer1949; @liptak1958] of the per-cohort
@@ -207,7 +211,8 @@ documentation, and copy-editing of this paper. All AI-assisted outputs were revi
 edited, and validated by the author, who made the core design decisions — the
 terminal-exon grouping approach; the decision to evaluate estimability of the
 class-collapsed system rather than transcript-level identifiability; the choice of
-conditioning and expected-informative-read thresholds, and their provisional status
+gating on a resolvable effect size rather than on conditioning and
+expected-informative-read thresholds, and the provisional status of those thresholds
 pending simulation; the read-level rather than
 fragment-level informativeness model; the stratified cohort combination; and the
 package architecture — and is fully responsible for the correctness, originality, and
