@@ -145,6 +145,15 @@ release, once the remaining 2.3.0 items are in.
 - `annotate` no longer writes `"reference": "Ensembl REST (live annotation)"`. The string
   named no release, and `ensembl_release` replaces it. Nothing read the field, so configs
   that carry it load unchanged.
+- **`min_resolvable_log2fc` is documented as a bound on spread, not on accuracy.** It is
+  built from the delta-method SE of the log class ratio under the Poisson-GLS covariance,
+  which assumes uniform coverage and a correctly specified compatibility model. In
+  simulation (49 genes, 30 replicates, 39 estimable with a finite predicted SE in all seven
+  coverage models), |bias| exceeds the predicted SE in 0 of 39 genes at uniform coverage
+  and in 20–24 of 39 at a 2.3× first/last-decile coverage ratio, while the replicate SD
+  stays below the predicted SE in 34–37 of 39 (35 of 39 at uniform). NTRK3 holds an SD of
+  0.016–0.025 while its bias runs from 0.002 to 2.82. The README says, next to the figure,
+  that replicate agreement does not detect this failure.
 
 ### Fixed
 - The `identifiability` step of the weekly `Ensembl live check` workflow

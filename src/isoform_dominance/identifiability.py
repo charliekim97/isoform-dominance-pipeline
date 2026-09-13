@@ -473,6 +473,10 @@ def min_resolvable_log2fc(relative_se, n_donors=1):
     describes -- the two numbers in a report have always belonged to different estimators.
 
     Still a floor: Poisson counting error only, biological and technical variation on top.
+    And a bound on spread, not on accuracy: it assumes uniform coverage and a correctly
+    specified compatibility model.  Under positional coverage skew the estimate can be
+    biased well past it while the replicate SD stays below the predicted SE, so replicate
+    agreement does not reveal the bias; the README gives the simulation numbers.
     A figure past :data:`LINEARISATION_LIMIT` on the log scale reads as "not resolvable at
     this design", not as a calibrated value; ``analyze`` flags those as ``beyond_linear``.
 

@@ -137,8 +137,23 @@ annotation release the transcripts came from, so it is reported in the output an
 | Estimability | row-space residual, rank, and `min_resolvable_log2fc` from the Poisson-weighted GLS covariance, for each class total **and** their contrast; the structural conditioning factor as a diagnostic | a full-rank system with a near-degenerate contrast passes a rank test and still yields nothing |
 
 The headline figure is `min_resolvable_log2fc`: the smallest |log2 fold change| a 95% interval
-excludes zero for at the stated design, under Poisson counting error only. The conditioning
-factor is kept as a **diagnostic**, not a headline — a **geometry proxy, not a standard
+excludes zero for at the stated design, under Poisson counting error only.
+
+**It bounds spread, not accuracy.** The figure is built from the delta-method standard error
+of the log class ratio, so it describes replicate scatter under uniform coverage and a
+correctly specified compatibility model. It says nothing about bias when coverage is not
+uniform. In simulation (Salmon, 49 genes, 30 replicates each; 39 genes estimable with a
+finite predicted SE in all seven coverage models, each a monotone positional skew), no
+gene's |bias| reaches its own predicted SE at uniform coverage: 0 of 39. At a 2.3× ratio
+between first- and last-decile gene-body coverage, a routine mildly degraded sample, 20–24
+of 39 exceed it, depending on the direction of the skew. The replicate SD meanwhile stays
+below the predicted SE in 34–37 of 39, as it did in 35 of 39 at uniform coverage, so the
+scatter gives no sign of the bias. NTRK3 holds a replicate SD of 0.016–0.025 while its bias
+runs from 0.002 to 2.82 log2. **Replicate agreement does not detect this failure.**
+Measure your own libraries' gene-body coverage (RSeQC `geneBody_coverage.py`) before reading
+the figure as an error bar.
+
+The conditioning factor is kept as a **diagnostic**, not a headline — a **geometry proxy, not a standard
 error** — it assumes `Var(y) = sigma^2 I`, which a quantifier does not satisfy, and it moves by
 up to two orders of magnitude with the annotation release. Its thresholds are provisional. The three
 layers answer different questions and can disagree. Structural estimability is
