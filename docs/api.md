@@ -95,6 +95,22 @@ fetched from Ensembl. Returns:
 }
 ```
 
+**`identifiability.class_efflen_ratio(lengths_a, lengths_b, frag_mean=200.0) -> (mean_a, mean_b, log2_ratio)`**
+Plain mean over each class's transcripts of `effective_length(L, frag_mean) = max(1, L -
+frag_mean + 1)`, and the log2 ratio of the two means. Transcript count does not enter; the
+docstring records the four alternatives that were scored against simulated bias and why
+each lost.
+
+**`identifiability.window_positions(flags) -> list`** and **`position_summary(positions) -> dict`**
+Start positions of the flagged windows as fractions of the transcript's own length (0 = 5'
+end, 1 = 3' end), and `{n, q1, median, q3}` of them pooled over a class.
+
+The report's `contrast` carries `class_mean_efflen` (`{class: mean}`), `log2_efflen_ratio`
+(first class of `primary_comparison` over the second), `efflen_direction_in_band` (whether
+`|log2_efflen_ratio| >= DIRECTION_MIN_ABS_LOG2_EFFLEN_RATIO = 0.3`, the band in which a skew
+direction was measured) and `distinguishing_window_position` (`{class: position_summary}`
+over the windows counted in `n_unique_kmers`).
+
 The full report also carries `annotation`: `{"ensembl_release": <from the config, or
 None>, "fetched_release": <the release sequence was fetched from in this run, or None>}`.
 

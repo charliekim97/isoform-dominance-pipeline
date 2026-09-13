@@ -168,6 +168,38 @@ def cmd_identifiability(a):
     print("  contrast %s vs %s: %s; %s, conditioning %.2f"
           % (res["primary_comparison"][0], res["primary_comparison"][1],
              _fc(c), c["verdict"], c["conditioning_factor"]))
+    a_name, b_name = res["primary_comparison"][:2]
+    ratio = c.get("log2_efflen_ratio")
+    if ratio is not None:
+        eff = c["class_mean_efflen"]
+        print("  effective length: %s %.0f bp vs %s %.0f bp (mean per transcript), "
+              "log2 ratio %.2f" % (a_name, eff[a_name], b_name, eff[b_name], ratio))
+
+        def _pos(g):
+            p = c["distinguishing_window_position"][g]
+            if not p["n"]:
+                return "%s none" % g
+            return ("%s median %.2f [%.2f-%.2f], %d positions over %d transcript(s)"
+                    % (g, p["median"], p["q1"], p["q3"], p["n"],
+                       res["groups"][g]["n_transcripts"]))
+        print("  distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): "
+              "%s; %s" % (_pos(a_name), _pos(b_name)))
+        if c["efflen_direction_in_band"]:
+            shorter, longer = (a_name, b_name) if ratio < 0 else (b_name, a_name)
+            print("  NOTE: the classes differ %.1f-fold in mean effective length. Under "
+                  "positional coverage skew a 5'-skewed library tends to inflate the "
+                  "shorter class (%s) and a 3'-skewed one the longer (%s): in a 49-gene "
+                  "simulation (Salmon, one quantifier, monotone positional skew) the 5' "
+                  "direction held for 35-36 of the 39 genes with a ratio above 1.23x, and "
+                  "the 3' direction for 30-32 of them, against 20 of 39 at uniform "
+                  "coverage. No other quantifier, gene panel or form of skew was tested. "
+                  "Measure your libraries' gene-body coverage (RSeQC geneBody_coverage.py) "
+                  "to know which direction applies. This tendency assumes the classes are "
+                  "ambiguous where the skew concentrates reads. When the shorter class is "
+                  "itself distinguished at that end -- see its distinguishing-window "
+                  "position above -- the direction can reverse; the interaction was not "
+                  "measured." % (2 ** abs(ratio), shorter, longer),
+                  file=sys.stderr)
     if any(r.get("beyond_linear") for r in list(res["groups"].values()) + [c]):
         print("  * first-order figure past the linearisation limit: read it as "
               "'not resolvable at this design', not as a value.", file=sys.stderr)

@@ -65,6 +65,22 @@ release, once the remaining 2.3.0 items are in.
   verdicts moved. `--background-fasta` alone does not pin a run, because the configured
   transcripts' cDNA and the gene background are still fetched live; `--sequences` with
   `--background-fasta`, both from the config's release, makes no request at all.
+- **The report says how exposed a comparison is to coverage skew.** The contrast carries
+  `log2_efflen_ratio`, the log2 ratio of the classes' plain mean effective lengths
+  (`max(1, L - frag_mean + 1)` per transcript), with `class_mean_efflen`, and
+  `distinguishing_window_position`: median and quartiles of where each class's
+  distinguishing windows start, as a fraction of each transcript's own length. The CLI prints
+  both. When `|log2_efflen_ratio| >= 0.3` (`efflen_direction_in_band`) it also says on stderr
+  which class a 5'- or 3'-skewed library tends to inflate, with the evidence: in a 49-gene
+  simulation (Salmon, one quantifier, monotone positional skew) the 5' direction held for
+  35–36 of the 39 genes with a ratio above 1.23x and the 3' direction for 30–32, against 20
+  of 39 at uniform coverage. Below the band nothing was measured, so nothing is said. Five
+  summaries of class length were scored on that simulation: plain mean (Spearman −0.547 at
+  b = +2.0, +0.169 at b = −2.0, sign 35/39), harmonic mean (−0.541, +0.164, 36/41), class
+  total (−0.369, +0.285, 35/47), minimum (−0.398, +0.101, 32/39), sum of 1/efflen (−0.369,
+  −0.058, 24/45). The plain mean is best or tied. The class total weights by transcript count,
+  reads −0.344 at b = 0 where the answer has to be null, and is excluded for that reason. The
+  table is kept in the `class_efflen_ratio` docstring.
 
 ### Changed
 - **Breaking: the structural verdict no longer sets the exit status of

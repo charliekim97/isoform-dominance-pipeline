@@ -78,19 +78,39 @@ isoform-dominance identifiability --config config.json --min-log2fc 0.5
 #   [identifiable] iso_1165aa: min |log2FC| 0.064; 5369 unique k-mers, 5399 bp in 1 block(s), ~1072 informative reads, conditioning 3.62
 #   [identifiable] iso_896aa: min |log2FC| 0.216; 356 unique k-mers, 208 bp in 2 block(s), ~63 informative reads, conditioning 115.05
 #   contrast iso_896aa vs iso_1165aa: min |log2FC| 0.234; identifiable, conditioning 117.68
+#   effective length: iso_896aa 5103 bp vs iso_1165aa 8072 bp (mean per transcript), log2 ratio -0.66
+#   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_896aa median 0.07 [0.05-0.12], 372 positions over 7 transcript(s); iso_1165aa median 0.67 [0.51-0.84], 10738 positions over 2 transcript(s)
 #   unique-read counting floor on log2 ratio: SE 0.187 per donor, min resolvable |log2FC| 0.366 at n=1
 #   EFFECT SIZE: |log2FC| 0.500 resolved by both class totals and the contrast at this design
 #   VERDICT: identifiable
 # exit status 0; with --min-log2fc 0.1 the same run reports NOT resolved and exits 3
 ```
 
+This example is a counterexample to the skew direction the command states (see below):
+iso_896aa is the shorter class but is distinguished at its 5' end (median 0.07), and in the
+simulation its bias ran against that direction under 5 of the 6 skews.
+
 The release-116 sequences behind the 2026-09-11 block this replaces, run offline through
 `--sequences` and `--background-sequences` with the nine same-gene background transcripts;
-transcript and k-mer counts move as the annotation does. Read the `min |log2FC|` figures first:
+transcript and k-mer counts move as the annotation does. The `effective length` and
+`distinguishing windows` lines were added from a live run against the same release on
+2026-09-13, in which every other line reproduced unchanged. Read the `min |log2FC|` figures first:
 they are what the verdict and the exit status are built on. `conditioning` is a diagnostic.
 Without `--min-log2fc` the verdict falls back to `--tau` on the conditioning factor, which has
 no calibrated value — the same run then reads `weakly_identifiable` — and the command says on
 stderr that the verdict is a screening flag, not the exit status.
+
+`effective length` and `distinguishing windows` say how exposed the comparison is to
+positional coverage skew, which none of the figures above models (see *It bounds spread, not
+accuracy* below). In simulation, Salmon split ambiguous fragments between the classes by
+effective length under skew, so the class effective-length ratio tracked the size of the error
+and, with the direction of the skew, its sign. Positions are fractions of each transcript's own length, 0 at
+the 5' end, because skew acts on each molecule in its own coordinates. When the classes differ
+at least 1.23-fold (|log2 ratio| >= 0.3) the command says on stderr which class each direction
+of skew tends to inflate, with the evidence: in a 49-gene simulation (Salmon, one quantifier,
+monotone positional skew) the 5' direction held for 35–36 of the 39 genes above that ratio, the
+3' direction for 30–32, against 20 of 39 at uniform coverage. No other quantifier, gene panel
+or form of skew was tested, and below that ratio nothing was measured, so nothing is said.
 
 Exit codes: **0** no `--min-log2fc` given, or it is resolved · **3** `--min-log2fc` given and
 not resolved at the stated design · **2** precondition failure: the gene total itself is not

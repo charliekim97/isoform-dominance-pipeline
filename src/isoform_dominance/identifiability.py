@@ -327,9 +327,90 @@ def expected_informative_reads(informative_frac, tpm, transcript_length,
     TPM-weighted mean effective length of the library and is exposed because it is the
     one term that cannot be derived from the gene alone.
     """
-    efflen = max(1.0, transcript_length - frag_mean + 1.0)
+    efflen = effective_length(transcript_length, frag_mean)
     reads = depth * (tpm * efflen) / (1e6 * max(1.0, mean_efflen))
     return float(reads * informative_frac)
+
+
+def effective_length(transcript_length, frag_mean=DEFAULT_FRAG_MEAN):
+    """``max(1, L - frag_mean + 1)``: the start positions a fragment of mean length has."""
+    return max(1.0, transcript_length - frag_mean + 1.0)
+
+
+#: Smallest ``|log2_efflen_ratio|`` for which the CLI states a skew direction.  In the
+#: 49-gene simulation the direction was scored on the genes whose class effective lengths
+#: differ by more than 1.23x (log2 0.2987); 0.3 selects the same 39 genes there.  Below it
+#: nothing was measured, so nothing is said.
+DIRECTION_MIN_ABS_LOG2_EFFLEN_RATIO = 0.3
+
+
+def class_efflen_ratio(lengths_a, lengths_b, frag_mean=DEFAULT_FRAG_MEAN):
+    """``(mean_efflen_a, mean_efflen_b, log2(mean_efflen_a / mean_efflen_b))``.
+
+    The mean is the plain mean over each class's transcripts of
+    :func:`effective_length`.  ``None`` for all three when either class is empty.
+
+    In a 49-gene simulation (Salmon, monotone positional coverage skew) the quantifier
+    split the ambiguous mass between the classes by effective length, so this ratio
+    tracked the size of the error and, with the direction of the skew, its sign: a
+    5'-skewed library tended to inflate the shorter class, a 3'-skewed one the longer.
+    No other quantifier, panel or form of skew was tested.  The tendency assumes the
+    classes are ambiguous where the skew concentrates reads; a shorter class distinguished
+    at that end is an untested interaction under which it can reverse -- LEPR, shorter
+    class distinguished at its 5' end, ran against it under 5 of 6 skews.  The mechanism
+    is about each transcript's effective length, so the transcript count must not enter.
+    Five summaries were scored against realised bias on that simulation (Spearman at the
+    two extreme skews, and how often the 5' sign came out right among genes whose ratio
+    exceeds 1.23x):
+
+    ===================  ==========  ==========  =====
+    summary              b = +2.0    b = -2.0    sign
+    ===================  ==========  ==========  =====
+    plain mean           -0.547      +0.169      35/39
+    harmonic mean        -0.541      +0.164      36/41
+    class total          -0.369      +0.285      35/47
+    minimum efflen       -0.398      +0.101      32/39
+    sum of 1/efflen      -0.369      -0.058      24/45
+    ===================  ==========  ==========  =====
+
+    The plain mean is best or tied.  The class total, which weights by transcript count,
+    is worse at the extremes and reads -0.344 at b = 0, where the answer has to be null:
+    it is picking up class size.
+    """
+    if not lengths_a or not lengths_b:
+        return None, None, None
+    mean_a = sum(effective_length(n, frag_mean) for n in lengths_a) / len(lengths_a)
+    mean_b = sum(effective_length(n, frag_mean) for n in lengths_b) / len(lengths_b)
+    return float(mean_a), float(mean_b), math.log2(mean_a / mean_b)
+
+
+def window_positions(flags):
+    """Where the flagged windows start, as a fraction of the transcript's own length.
+
+    ``flags[i]`` is True when the window starting at ``i`` distinguishes the class.  The
+    result runs from 0 (the window at the 5' end) to 1 (the last window, at the 3' end):
+    ``i / (len(flags) - 1)``.
+
+    Each transcript is measured in its own coordinates, not the gene's.  Positional
+    coverage skew acts on each transcript separately -- reads pile up toward each
+    molecule's own end -- so that is the coordinate system the mechanism runs in.  A
+    window 500 nt from the 3' end of a 700-nt transcript and one 500 nt from the 3' end of
+    a 3.2-kb transcript are in very different places as far as the skew is concerned.
+    """
+    last = max(1, len(flags) - 1)
+    return [i / last for i, f in enumerate(flags) if f]
+
+
+def position_summary(positions):
+    """``{n, q1, median, q3}`` of :func:`window_positions` pooled over a class.
+
+    ``n`` counts positions, not distinct windows: a distinguishing window carried by two
+    of the class's transcripts has a position in each, and counts twice.
+    """
+    if not positions:
+        return {"n": 0, "q1": None, "median": None, "q3": None}
+    q1, med, q3 = np.percentile(positions, [25, 50, 75])
+    return {"n": len(positions), "q1": float(q1), "median": float(med), "q3": float(q3)}
 
 
 def counting_noise_floor(n_informative_a, n_informative_b, n_donors=1):
@@ -732,7 +813,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     -------
     dict
         ``groups`` (per-class sequence, read-model and estimability numbers),
-        ``primary_comparison``, ``contrast`` (estimability of ``s_A - s_B``),
+        ``primary_comparison``, ``contrast`` (estimability of ``s_A - s_B``, with
+        ``log2_efflen_ratio`` and ``class_mean_efflen`` from :func:`class_efflen_ratio`,
+        ``efflen_direction_in_band``, and ``distinguishing_window_position`` per class
+        from :func:`position_summary`),
         ``verdict`` with its ``reasons``, ``annotation`` (the config's
         ``ensembl_release``, and ``fetched_release``, the release any sequence was
         fetched from in this run -- None for both when absent), ``gene_total``
@@ -816,6 +900,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
 
     # ---- per-group report ------------------------------------------------- #
     report = {}
+    positions = {}
     for g, ids in group_ids.items():
         others = set()
         for g2, ws in group_windows.items():
@@ -825,8 +910,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         uniq = group_windows[g] - shared
 
         best = None
+        positions[g] = []
         for t in ids:
             flags = [w in uniq for w in tracks[t]]
+            positions[g].extend(window_positions(flags))
             stats = coverage_stats(flags, window)
             frac = informative_fraction(
                 flags, len(seqs[t]), window, read_length=read_length,
@@ -903,6 +990,16 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     contrast["beyond_linear"] = raw > LINEARISATION_LIMIT
     contrast["verdict"], contrast["reasons"] = _verdict(
         contrast, conditioning_tau, None, min_log2fc)
+    mean_a, mean_b, efflen_ratio = class_efflen_ratio(
+        [len(seqs[t]) for t in group_ids[pc[0]]],
+        [len(seqs[t]) for t in group_ids[pc[1]]], frag_mean)
+    contrast["class_mean_efflen"] = {pc[0]: mean_a, pc[1]: mean_b}
+    contrast["log2_efflen_ratio"] = efflen_ratio
+    contrast["efflen_direction_in_band"] = (
+        efflen_ratio is not None
+        and abs(efflen_ratio) >= DIRECTION_MIN_ABS_LOG2_EFFLEN_RATIO)
+    contrast["distinguishing_window_position"] = {
+        g: position_summary(positions[g]) for g in pc[:2]}
 
     noise = counting_noise_floor(
         report[pc[0]]["expected_informative_reads"],
