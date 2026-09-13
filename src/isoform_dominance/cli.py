@@ -113,6 +113,24 @@ def cmd_identifiability(a):
     bg = res["background"]
     print("Identifiability (window=%d, k=%d, %s k-mers)"
           % (res["window"], res["k"], "canonical" if res["canonical"] else "strand-aware"))
+    rel = res["annotation"]["ensembl_release"]
+    got = res["annotation"]["fetched_release"]
+    print("  annotation: %s%s"
+          % ("Ensembl release %s" % rel if rel is not None
+             else "release not recorded in the config",
+             "; sequence fetched from release %s" % got
+             if got is not None and got != rel else ""))
+    if rel is None:
+        print("  NOTE: the config records no Ensembl release, and the verdict is a function "
+              "of the release its transcripts came from, so this verdict is not "
+              "reproducible. Re-run `annotate` to record one, or set \"ensembl_release\" in "
+              "the config.", file=sys.stderr)
+    elif got is not None and got != rel:
+        print("  NOTE: the config was annotated against Ensembl release %s, but the server "
+              "now serves release %s and the sequence used here came from it. The groups may "
+              "name transcripts whose sequence has changed, and the gene may have gained "
+              "transcripts they do not name. To pin release %s, pass --sequences and "
+              "--background-fasta built from it." % (rel, got, rel), file=sys.stderr)
     print("  background: %d same-gene transcript(s)%s"
           % (bg["n_background_transcripts"],
              ", FASTA %s" % bg["fasta"] if bg["fasta"] else ""))

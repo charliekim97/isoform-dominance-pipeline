@@ -86,6 +86,24 @@ def get_json(path, **retry):
     return json.loads(request(path, **retry))
 
 
+def release_number(info):
+    """The release in an ``/info/data`` response, which lists the releases a server holds.
+
+    ``rest.ensembl.org`` holds one.  Anything else is raised rather than guessed at,
+    because the number is recorded as the release a verdict was computed on.
+    """
+    releases = info.get("releases") or []
+    if len(releases) != 1:
+        raise ValueError("Ensembl /info/data listed releases %r; expected exactly one"
+                         % (releases,))
+    return int(releases[0])
+
+
+def fetch_release(**retry):
+    """The Ensembl release the server is serving; ``retry`` goes to :func:`request`."""
+    return release_number(get_json("/info/data", **retry))
+
+
 def fetch_cdna_batch(ids, **retry):
     """``{id: cdna}`` for Ensembl transcript ids, :data:`MAX_POST_IDS` per request.
 

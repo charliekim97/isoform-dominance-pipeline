@@ -52,6 +52,19 @@ release, once the remaining 2.3.0 items are in.
   delta-method figure matched at 0.99-1.03x, outside it the two part company by up to
   twofold. Past the limit the figure reads as "not resolvable at this design", not as a
   value.
+- **The annotation release is recorded and reported (issue #5).** `annotate` writes
+  `ensembl_release`, taken from Ensembl's `/info/data`. `identifiability` prints it in its
+  header and carries it in the `--json` report as `annotation.ensembl_release`, beside
+  `annotation.fetched_release`: the release any sequence was fetched from in that run, and
+  `null` when none was. The two are different facts. `rest.ensembl.org` serves only its
+  current release, so a config annotated against one release and re-run later can fetch
+  sequence from another, and the command then says so on stderr. A config without a
+  release still runs; the command prints one line saying the verdict is not reproducible.
+  The verdict is a function of the release: between GENCODE v44 and Ensembl 116, 960 of
+  1911 transcripts across 49 genes are new, 47 of the 49 genes changed, and 6 of 36
+  verdicts moved. `--background-fasta` alone does not pin a run, because the configured
+  transcripts' cDNA and the gene background are still fetched live; `--sequences` with
+  `--background-fasta`, both from the config's release, makes no request at all.
 
 ### Changed
 - **Breaking: the structural verdict no longer sets the exit status of
@@ -129,6 +142,9 @@ release, once the remaining 2.3.0 items are in.
   drifted from what the code produces; a figure difference is reported for review
   rather than failing the build, since fonts and renderers differ across machines.
   `ruff` now covers `scripts/` as well as `src` and `tests`.
+- `annotate` no longer writes `"reference": "Ensembl REST (live annotation)"`. The string
+  named no release, and `ensembl_release` replaces it. Nothing read the field, so configs
+  that carry it load unchanged.
 
 ### Fixed
 - The `identifiability` step of the weekly `Ensembl live check` workflow

@@ -72,6 +72,7 @@ and for the contrast between them. Ask it for the effect size you need:
 ```bash
 isoform-dominance identifiability --config config.json --min-log2fc 0.5
 # Identifiability (window=31, k=31, canonical k-mers)
+#   annotation: Ensembl release 116
 #   background: 9 same-gene transcript(s)
 #   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
 #   [identifiable] iso_1165aa: min |log2FC| 0.064; 5369 unique k-mers, 5399 bp in 1 block(s), ~1072 informative reads, conditioning 3.62
@@ -116,6 +117,18 @@ annotation release the transcripts came from, so it is reported in the output an
 > can separate should be judged against the same FASTA the index was built from. The
 > scan is streamed, so a whole-transcriptome background costs memory proportional to
 > the gene, not the file.
+
+> **Pin the release.** The verdict is a function of the annotation release: between
+> GENCODE v44 and Ensembl 116, 6 of 36 verdicts in a 49-gene panel moved. `annotate`
+> records the release it fetched from as `ensembl_release`, and `identifiability` prints it
+> in its header and carries it in the `--json` report, beside `fetched_release`, the release
+> any sequence was fetched from in that run. `rest.ensembl.org` serves only its current
+> release, so a later run that fetches sequence is not a run against the config's release,
+> and the command says so when the two differ. `--background-fasta` alone does not pin a
+> run: the configured transcripts' cDNA and the gene's other transcripts are still fetched
+> live. Pass `--sequences` with the configured transcripts' cDNA and `--background-fasta`
+> with the FASTA the index was built from, both from the release the config names, and
+> nothing is fetched at all. A verdict quoted without a release is not a reproducible claim.
 
 | Layer | Reports | Why it is not the layer above |
 |---|---|---|

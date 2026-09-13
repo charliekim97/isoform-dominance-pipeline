@@ -19,6 +19,10 @@ The config object passed throughout is a plain dict (loaded from JSON via
 }
 ```
 
+`annotate` also writes `ensembl_release`, the Ensembl release the groups were proposed
+from. It is optional, so configs written before 2.3.0 still load, but `identifiability`
+reports a verdict without it as not reproducible.
+
 ---
 
 ## `annotate`
@@ -36,7 +40,7 @@ Group the transcripts from `fetch_transcripts` by terminal-exon acceptor coordin
 Choose the canonical cluster and the largest alternative cluster, returning `groups` ({label: [ids]}, labels like `iso_896aa`), the `primary_comparison` list (alternative first), and all clusters.
 
 **`annotate.build_config(gene, species="homo_sapiens") -> dict`**
-Convenience wrapper returning a complete, reviewable config dict (including `_proposed` notes and `_clusters`).
+Convenience wrapper returning a complete, reviewable config dict (including `ensembl_release`, `_proposed` notes and `_clusters`).
 
 **`annotate.run(gene, out, species="homo_sapiens") -> dict`**
 As `build_config`, but also writes the config JSON to `out`. Backs the `annotate` CLI subcommand.
@@ -59,6 +63,11 @@ Fetch one transcript's cDNA sequence from Ensembl. Network access required.
 **`ensembl.fetch_cdna_batch(ids, **retry) -> dict`**
 `{id: cdna}` via `POST /sequence/id`, 50 ids per request, matched back to ids by the
 `query` field Ensembl echoes. `analyze` fetches all of its sequence this way.
+
+**`ensembl.fetch_release(**retry) -> int`**
+The release the server is serving, from `GET /info/data`; raises `ValueError` unless it
+lists exactly one. `annotate.build_config` records it, and `analyze` reports it as
+`annotation.fetched_release` when, and only when, the run fetched sequence.
 
 **Retries.** Every Ensembl request (`annotate`'s lookup included) goes through
 `ensembl.request`. It is retried on HTTP 429/500/502/503/504, connection errors and read
@@ -85,6 +94,9 @@ fetched from Ensembl. Returns:
   "primary_distinguishable": bool   # True only if every primary group has >0 unique k-mers
 }
 ```
+
+The full report also carries `annotation`: `{"ensembl_release": <from the config, or
+None>, "fetched_release": <the release sequence was fetched from in this run, or None>}`.
 
 A group with zero unique k-mers is not separable by short reads and is flagged
 (`distinguishable: False`). Neither this flag nor `verdict` sets the CLI's exit status:

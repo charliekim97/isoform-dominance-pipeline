@@ -27,7 +27,8 @@ jobs:
           assert len(cfg["primary_comparison"]) == 2, cfg["primary_comparison"]
           ids = {t for v in cfg["groups"].values() for t in v}
           assert "ENST00000349533" in ids, sorted(ids)   # LepRb must still be there
-          print("ok:", {k: len(v) for k, v in cfg["groups"].items()})
+          assert isinstance(cfg["ensembl_release"], int), cfg.get("ensembl_release")
+          print("ok: release", cfg["ensembl_release"], {k: len(v) for k, v in cfg["groups"].items()})
           PY
       - name: identifiability against live Ensembl
         run: isoform-dominance identifiability --config /tmp/lepr.json --json

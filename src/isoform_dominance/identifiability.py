@@ -682,7 +682,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     Parameters
     ----------
     config
-        The pipeline config dict; ``groups`` and ``primary_comparison`` are used.
+        The pipeline config dict; ``groups`` and ``primary_comparison`` are used, and
+        ``ensembl_release``, when present, is carried into the report.
     k, window
         k-mer length, and the window length used to build the compatibility system
         (defaults to ``k``; a different window gives a different system, not a
@@ -728,8 +729,11 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     dict
         ``groups`` (per-class sequence, read-model and estimability numbers),
         ``primary_comparison``, ``contrast`` (estimability of ``s_A - s_B``),
-        ``verdict`` with its ``reasons``, ``gene_total`` (estimability of the sum of
-        every column, with the transcripts that have no window at all),
+        ``verdict`` with its ``reasons``, ``annotation`` (the config's
+        ``ensembl_release``, and ``fetched_release``, the release any sequence was
+        fetched from in this run -- None for both when absent), ``gene_total``
+        (estimability of the sum of every column, with the transcripts that have no
+        window at all),
         ``effect_resolvable`` (whether both class totals and the contrast resolve
         ``min_log2fc``; None without it), and -- for callers written against v2.1 --
         ``primary_distinguishable``.  Note that ``verdict`` supersedes
@@ -762,7 +766,15 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         # only reach for the network when we are already going there for sequence
         background_gene_transcripts = any(t not in seqs for t in needed)
     net = {"retries": retries, "retry_wait": retry_wait}
-    if background_gene_transcripts and config.get("gene") and not bg_seqs:
+    fetch_gene_background = bool(background_gene_transcripts and config.get("gene")
+                                 and not bg_seqs)
+    # The server serves only its current release, which need not be the one the config
+    # was annotated against.  Record it whenever this run takes sequence from it, and
+    # never otherwise: a run on supplied sequence did not use it.
+    fetched_release = (ensembl.fetch_release(**net)
+                       if fetch_gene_background or any(t not in seqs for t in needed)
+                       else None)
+    if fetch_gene_background:
         try:
             all_ids = fetch_gene_transcript_ids(
                 config["gene"], species or config.get("species", "homo_sapiens"), **net)
@@ -920,6 +932,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         "k": k,
         "window": window,
         "canonical": canonical,
+        "annotation": {"ensembl_release": config.get("ensembl_release"),
+                       "fetched_release": fetched_release},
         "background": {
             "gene_transcripts": sorted(bg_tracks),
             "fasta": str(background_fasta) if background_fasta else None,
