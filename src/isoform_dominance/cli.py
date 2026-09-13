@@ -320,8 +320,8 @@ def build_parser():
                    help="class abundance to condition the read model on")
     s.add_argument("--donors", type=int, default=1)
     s.add_argument("--min-log2fc", type=float, default=None,
-                   help="smallest |log2 fold change| in the class ratio you need to "
-                        "resolve; when given it replaces --tau in the verdict and sets the "
+                   help="smallest |log2 fold change| you need both class totals and the "
+                        "contrast to resolve; when given it replaces --tau in the verdict and sets the "
                         "exit status (3 when not resolved), which is the recommended way "
                         "to run this (--tau has no calibrated value: over a 49-gene survey "
                         "the median gene sat at conditioning 65 against the default 10)")

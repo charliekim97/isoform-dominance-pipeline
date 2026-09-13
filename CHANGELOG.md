@@ -26,8 +26,8 @@ release, once the remaining 2.3.0 items are in.
   transcript shorter than `window` — and `effect_resolvable`, which is `true` when both
   class totals and the contrast resolve `--min-log2fc`, `false` when any of them does not
   or has no finite figure, and `null` when no effect size was asked for.
-- `identifiability --min-log2fc`: the smallest |log2 fold change| in the class ratio you
-  need to resolve. When given it replaces `--tau` in the verdict, and is the recommended
+- `identifiability --min-log2fc`: the smallest |log2 fold change| you need both class totals
+  and the contrast to resolve. When given it replaces `--tau` in the verdict, and is the recommended
   way to run the command. `--tau` has no calibrated value: across a 49-gene survey the
   median gene sat at conditioning 65.0 against the default tau of 10.0, so the default
   rejects 85% of what it is applied to, and any other fixed value simply sorts genes by
@@ -131,6 +131,11 @@ release, once the remaining 2.3.0 items are in.
   `ruff` now covers `scripts/` as well as `src` and `tests`.
 
 ### Fixed
+- The `identifiability` step of the weekly `Ensembl live check` workflow
+  (`ensembl-nightly.yml`) would have failed at its first scheduled run: it runs LEPR against
+  live Ensembl with default flags, where LEPR is `weakly_identifiable` (release 116), and
+  that exited 3. The workflow was added in 2.2.0 and had not yet run. The exit-status change
+  above resolves it.
 - **`scipy>=1.10` was a false floor.** Before 1.15, SciPy's `wilcoxon(method="auto")`
   answered *any* zero difference with the normal approximation, at any n. For the pairs
   in `test_zeros_shrink_the_effective_n_and_raise_the_floor` (five pairs, one tied at
