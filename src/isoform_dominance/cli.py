@@ -18,6 +18,7 @@ middle one is the interesting case and a boolean cannot carry it:
 """
 import argparse
 import json
+import math
 import sys
 from urllib.error import HTTPError, URLError
 
@@ -90,6 +91,7 @@ def cmd_identifiability(a):
             read_length=a.read_length, frag_mean=a.frag_mean, frag_sd=a.frag_sd,
             paired=not a.single_end, depth=a.depth, tpm=a.tpm, n_donors=a.donors,
             conditioning_tau=a.tau, min_informative_reads=a.min_informative_reads,
+            min_log2fc=a.min_log2fc,
             retries=a.retries, retry_wait=a.retry_wait)
     except (URLError, HTTPError, TimeoutError) as e:
         return _net_fail(e)
@@ -120,19 +122,46 @@ def cmd_identifiability(a):
     print("  design: %s %dbp reads, fragments %.0f+-%.0f, depth %.0fM, TPM %.3g, n=%d"
           % ("paired" if d["paired"] else "single", d["read_length"],
              d["frag_mean"], d["frag_sd"], d["depth"] / 1e6, d["tpm"], d["n_donors"]))
+    def _fc(r):
+        """min resolvable |log2FC|, or why there is no usable figure."""
+        v = r.get("min_resolvable_log2fc")
+        if v is None or not math.isfinite(v):
+            return "min |log2FC| n/a"
+        return "min |log2FC| %.3f%s" % (v, "*" if r.get("beyond_linear") else "")
+
+    incoherent = []
     for g, r in res["groups"].items():
         print("  [%s] %s: %d unique k-mers, %d bp in %d block(s), "
-              "~%.0f informative reads, conditioning %.2f"
+              "~%.0f informative reads, conditioning %.2f, %s"
               % (r["verdict"], g, r["n_unique_kmers"], r["unique_length"],
-                 r["n_blocks"], r["expected_informative_reads"], r["conditioning_factor"]))
+                 r["n_blocks"], r["expected_informative_reads"],
+                 r["conditioning_factor"], _fc(r)))
+        coh = r.get("coherence") or {}
+        if coh.get("min_jaccard") is not None and coh["min_jaccard"] < 0.05:
+            incoherent.append((g, coh["min_jaccard"]))
     c = res["contrast"]
-    print("  contrast %s vs %s: %s (conditioning %.2f)"
+    print("  contrast %s vs %s: %s (conditioning %.2f, %s)"
           % (res["primary_comparison"][0], res["primary_comparison"][1],
-             c["verdict"], c["conditioning_factor"]))
+             c["verdict"], c["conditioning_factor"], _fc(c)))
+    if any(r.get("beyond_linear") for r in list(res["groups"].values()) + [c]):
+        print("  * first-order figure past the linearisation limit: read it as "
+              "'not resolvable at this design', not as a value.", file=sys.stderr)
+    for g, j in incoherent:
+        print("  NOTE: class %s is not coherent -- its least similar pair of transcripts "
+              "shares %.1f%% of windows. `annotate` groups by the 3' terminal-exon "
+              "acceptor alone, so a class can hold transcripts that have nothing else in "
+              "common; a precision figure for such a class describes a quantity nobody "
+              "asked for. Review the grouping before using any number above."
+              % (g, 100.0 * j), file=sys.stderr)
     noise = res["counting_noise"]
-    print("  counting-noise floor on log2 ratio: SE %.3f per donor, "
+    print("  unique-read counting floor on log2 ratio: SE %.3f per donor, "
           "min resolvable |log2FC| %.3f at n=%d"
           % (noise["log2_ratio_se"], noise["min_resolvable_log2fc"], d["n_donors"]))
+    print("    (precision of log2(n_a/n_b), the informative-read counts of each class's "
+          "best single transcript -- that ratio equals the class ratio only when the two "
+          "classes have the same informative fraction, so it can read better than the "
+          "class comparison actually is. The per-class figures above are for the class "
+          "totals themselves.)", file=sys.stderr)
     print("  VERDICT:", res["verdict"])
     for reason in res["reasons"]:
         print("    - %s" % reason, file=sys.stderr)
@@ -260,6 +289,12 @@ def build_parser():
     s.add_argument("--tpm", type=float, default=identifiability.DEFAULT_TPM,
                    help="class abundance to condition the read model on")
     s.add_argument("--donors", type=int, default=1)
+    s.add_argument("--min-log2fc", type=float, default=None,
+                   help="smallest |log2 fold change| in the class ratio you need to "
+                        "resolve; when given it replaces --tau in the verdict, which is "
+                        "the recommended way to run this (--tau has no calibrated value: "
+                        "over a 49-gene survey the median gene sat at conditioning 65 "
+                        "against the default 10)")
     s.add_argument("--tau", type=float, default=identifiability.DEFAULT_CONDITIONING_TAU,
                    help="structural conditioning factor above which a class is only weakly identifiable")
     s.add_argument("--min-informative-reads", type=float,

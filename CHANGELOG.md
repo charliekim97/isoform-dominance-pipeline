@@ -16,7 +16,40 @@ versioning.
 
 ## [Unreleased]
 
+### Added
+- `identifiability --min-log2fc`: the smallest |log2 fold change| in the class ratio you
+  need to resolve. When given it replaces `--tau` in the verdict, and is the recommended
+  way to run the command. `--tau` has no calibrated value: across a 49-gene survey the
+  median gene sat at conditioning 65.0 against the default tau of 10.0, so the default
+  rejects 85% of what it is applied to, and any other fixed value simply sorts genes by
+  how many transcripts they have annotated. An effect size is a question the experimenter
+  can answer; a conditioning number is not.
+- The report now carries, per class and for the contrast, `gls_relative_se` and
+  `min_resolvable_log2fc` computed from the Poisson-weighted GLS covariance of the *whole*
+  system — the estimator `conditioning_factor` has always described. Under Poisson
+  weighting the same 49 genes had a median factor of 16.4 against 65.0 homoskedastic, and
+  a 157x range against 850x; the ranking barely moves (Spearman 0.93), so this does not
+  rescue a fixed threshold, it puts the number on a scale that converts to an effect.
+- `class_coherence` and a `coherence` block per class: the median and minimum pairwise
+  window Jaccard among a class's transcripts. `annotate` groups by the 3' terminal-exon
+  acceptor alone and asks the user to review the proposal; this is the number to review it
+  with. Three of 49 surveyed classes came in under 0.05 — TPI1 at 0.004, whose two members
+  are 374 nt and 2217 nt long, CD44 at 0.009, DMD at 0.038 — and the CLI now says so on
+  stderr, because a precision figure for such a class describes a quantity nobody asked
+  for. Low coherence is a reason to revisit the grouping, not a verdict: most of the
+  survey's hard genes had perfectly coherent classes that simply share a lot of sequence.
+- `beyond_linear` per estimand, against `LINEARISATION_LIMIT`. Checked against simulation
+  (Poisson counts, GLS fit, sample SD of log2(A/B) over 3-4k draws): inside the limit the
+  delta-method figure matched at 0.99-1.03x, outside it the two part company by up to
+  twofold. Past the limit the figure reads as "not resolvable at this design", not as a
+  value.
+
 ### Changed
+- The CLI no longer prints the counting-noise floor as though it were comparable to the
+  per-class figures. It is the precision of `log2(n_a/n_b)` for the informative-read
+  counts of each class's *best single transcript*, which equals the class ratio only when
+  both classes have the same informative fraction — on TPI1 it reads 0.76 where the class
+  totals themselves are not resolvable at all. The line now says which estimand it is.
 - Redesigned the `stats` figure. The per-cohort numbers used to float above the axes at
   a fixed offset and collided with the figure title; they now sit in each panel's own
   title block, in reading order (figure title -> combined result -> cohort -> that

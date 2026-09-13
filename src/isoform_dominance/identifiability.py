@@ -350,6 +350,144 @@ def counting_noise_floor(n_informative_a, n_informative_b, n_donors=1):
     }
 
 
+def class_coherence(tracks, ids):
+    """How much the transcripts assigned to one class look alike, as window Jaccard.
+
+    ``annotate`` groups protein-coding transcripts by their 3' terminal-exon splice
+    acceptor and its docstring asks the user to review the proposal.  This is the number
+    to review it with: a class whose members share almost no windows is not a functional
+    group that happens to be hard to measure, it is two unrelated transcripts that share
+    one acceptor, and every precision figure computed for it describes a quantity nobody
+    wants.  Across a 49-gene survey three classes came in under 0.05 (TPI1 0.004, whose
+    two members are 374 nt and 2217 nt long; CD44 0.009; DMD 0.038) while the median
+    class sat near 0.7.
+
+    Low coherence is a reason to revisit the grouping, not a verdict: a class can be
+    perfectly coherent and still be hard to measure, which is what most of that survey's
+    difficult genes turned out to be.
+    """
+    members = [t for t in ids if t in tracks]
+    if len(members) < 2:
+        return {"median_jaccard": None, "min_jaccard": None, "n_pairs": 0}
+    sets = {t: frozenset(tracks[t]) for t in members}
+    js = []
+    for i, a in enumerate(members):
+        for b in members[i + 1:]:
+            union = len(sets[a] | sets[b])
+            js.append(len(sets[a] & sets[b]) / union if union else 1.0)
+    js.sort()
+    mid = len(js) // 2
+    median = js[mid] if len(js) % 2 else 0.5 * (js[mid - 1] + js[mid])
+    return {"median_jaccard": float(median), "min_jaccard": float(js[0]),
+            "n_pairs": len(js)}
+
+
+def gls_covariance(A, theta):
+    """Covariance of the GLS estimate of ``theta`` under Poisson counts: ``(A'WA)^+``.
+
+    :func:`estimability` reports ``sqrt(c'(A'A)^+ c)``, which is the standard-deviation
+    multiplier of the BLUE only under ``Var(y) = sigma^2 I``.  Fragment counts are not
+    homoskedastic: ``Var(y_c) = E[y_c]``, so the weight is ``W = diag(1/mean)``.
+
+    The difference is not cosmetic.  Over 41 estimable genes the homoskedastic factor had
+    a median of 65.0 and a range of 850x; the same genes under Poisson weighting had a
+    median of 16.4 and a range of 157x.  The *ranking* barely moved (Spearman 0.93), so
+    this does not rescue a fixed threshold on the factor -- what it does is put the number
+    on a scale that can be turned into a detectable effect.
+
+    ``theta`` is the vector of expected fragment counts per transcript.  It is what the
+    analysis is trying to estimate, so a plug-in is unavoidable; :func:`analyze` passes a
+    flat one from the stated design.  Real genes are skewed toward one isoform and the
+    weights move with that, in a direction this function does not attempt to predict.
+    """
+    A = np.asarray(A, dtype=float)
+    theta = np.asarray(theta, dtype=float)
+    if A.size == 0:
+        return None
+    mean = A @ theta
+    keep = mean > 1e-12
+    if not keep.any():
+        return None
+    aw = A[keep] / np.sqrt(mean[keep])[:, None]
+    return np.linalg.pinv(aw.T @ aw, rcond=1e-10)
+
+
+def gls_relative_se(cov, c, theta):
+    """Standard error of ``c'theta``, relative to it -- the SE of ``log(c'theta)``."""
+    if cov is None or not np.any(c):
+        return float("inf")
+    var = float(c @ cov @ c)
+    est = float(c @ theta)
+    if var < 0.0 or not est:
+        return float("inf")
+    return math.sqrt(var) / abs(est)
+
+
+def log_ratio_se(cov, c_a, c_b, theta):
+    """Standard error of ``log(A/B)`` for two class totals, by the delta method.
+
+    The contrast's estimand is the *ratio* of the class totals, so its precision is not
+    ``SD(A-B)`` rescaled: a difference can sit near zero for reasons that have nothing to
+    do with how well either total is determined, and the two totals are correlated because
+    they are solved from one system.  With ``Sigma`` the GLS covariance,
+
+        Var(log A/B) = c_a'Sigma c_a / A^2 + c_b'Sigma c_b / B^2 - 2 c_a'Sigma c_b / (A B)
+
+    which is what makes the returned figure comparable to the per-class ones and
+    convertible into a fold change.
+    """
+    if cov is None:
+        return float("inf")
+    a = float(c_a @ theta)
+    b = float(c_b @ theta)
+    if not a or not b:
+        return float("inf")
+    va = float(c_a @ cov @ c_a) / (a * a)
+    vb = float(c_b @ cov @ c_b) / (b * b)
+    cab = float(c_a @ cov @ c_b) / (a * b)
+    var = va + vb - 2.0 * cab
+    if var < 0.0:                       # numerically negative only when it is ~0
+        var = 0.0
+    return math.sqrt(var)
+
+
+LINEARISATION_LIMIT = 0.3
+"""Above this standard error on the log scale the first-order figures stop being values.
+
+Checked against simulation -- Poisson counts, GLS fit, the sample SD of ``log2(A/B)`` over
+4000 draws.  Below the limit the delta-method figure is the answer: PIK3CA came back at
+1.002 and 0.992 times the simulated SD at 1e4 and 1e6 fragments, FLT1 at 1.034.  Above it
+the two part company -- NR1H3 1.244, TPI1 0.540 -- because the expansion is first order and
+because the unconstrained GLS total can go negative there, which truncates the simulation
+too.  Neither number is trustworthy in that regime; both still say the comparison is out of
+reach, which is the only thing being claimed.
+"""
+
+
+def min_resolvable_log2fc(relative_se, n_donors=1):
+    """Smallest |log2 fold change| a 95% interval excludes zero for, at this design.
+
+    The companion to :func:`counting_noise_floor`, which answers the same question for an
+    estimator that counts only unambiguously assignable reads.  This one is for the
+    estimator that inverts the whole system, which is what ``conditioning_factor``
+    describes -- the two numbers in a report have always belonged to different estimators.
+
+    Still a floor: Poisson counting error only, biological and technical variation on top.
+    A figure past :data:`LINEARISATION_LIMIT` on the log scale reads as "not resolvable at
+    this design", not as a calibrated value; ``analyze`` flags those as ``beyond_linear``.
+
+    Not comparable to :func:`counting_noise_floor`'s figure, which is the precision of
+    ``log2(n_a/n_b)`` for the informative-read counts of each class's *best single
+    transcript*.  That ratio equals the class ratio only when the two classes share an
+    informative fraction, so the older number can look much better than the class
+    comparison is -- on TPI1 it reads 0.76 where the class totals themselves are not
+    resolvable at all.
+    """
+    if not math.isfinite(relative_se):
+        return float("inf")
+    return 1.96 * relative_se / (math.log(2.0) * math.sqrt(max(1, int(n_donors))))
+
+
 # --------------------------------------------------------------------------- #
 # estimability of the class-collapsed system
 # --------------------------------------------------------------------------- #
@@ -486,7 +624,7 @@ def estimability(A, c, rcond=1e-10):
 # --------------------------------------------------------------------------- #
 # top-level analysis
 # --------------------------------------------------------------------------- #
-def _verdict(entry, tau, min_reads=None):
+def _verdict(entry, tau, min_reads=None, min_log2fc=None):
     """Grade one estimand, and say why.
 
     ``entry`` may be a class total or the contrast; ``entry["label"]`` names which, so
@@ -506,7 +644,20 @@ def _verdict(entry, tau, min_reads=None):
         reasons.append("%s outside the row space of the compatibility system"
                        % entry.get("label", "estimand"))
         return "not_identifiable", reasons
-    if entry.get("conditioning_factor", 0.0) > tau:
+    if min_log2fc is not None:
+        # An effect size the user can defend, in place of a conditioning number nobody
+        # can: tau has no calibrated value -- over a 49-gene survey the median gene sat
+        # at 65.0 against a default tau of 10.0, so the default rejects 85% of what it
+        # is applied to and any other fixed value simply sorts genes by how many
+        # transcripts they have annotated.  See docs and the CHANGELOG entry.
+        got = entry.get("min_resolvable_log2fc")
+        if got is None or not math.isfinite(got):
+            reasons.append("%s has no finite resolvable effect size at this design"
+                           % entry.get("label", "estimand"))
+        elif got > min_log2fc:
+            reasons.append("smallest resolvable |log2FC| %.2f exceeds the requested %.2f"
+                           % (got, min_log2fc))
+    elif entry.get("conditioning_factor", 0.0) > tau:
         reasons.append("conditioning factor %.1f exceeds tau=%.1f"
                        % (entry["conditioning_factor"], tau))
     n = entry.get("expected_informative_reads")
@@ -524,6 +675,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             mean_efflen=DEFAULT_MEAN_EFFLEN, tpm=DEFAULT_TPM, n_donors=1,
             conditioning_tau=DEFAULT_CONDITIONING_TAU,
             min_informative_reads=DEFAULT_MIN_INFORMATIVE_READS,
+            min_log2fc=None,
             retries=DEFAULT_RETRIES, retry_wait=DEFAULT_RETRY_WAIT):
     """Assess whether the configured isoform classes are measurable by short reads.
 
@@ -554,6 +706,17 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         The sequencing design the report should be conditioned on.
     conditioning_tau, min_informative_reads
         Thresholds separating ``identifiable`` from ``weakly_identifiable``.
+        ``conditioning_tau`` has no calibrated value and is kept as the default only for
+        compatibility: a 49-gene survey put the median gene at a conditioning factor of
+        65.0 against the default 10.0, and no fixed threshold does better than sorting
+        genes by their annotated transcript count.  Prefer ``min_log2fc``.
+    min_log2fc
+        The smallest class-ratio change, as ``|log2 fold change|``, the caller needs to
+        resolve.  When given it replaces ``conditioning_tau`` in the verdict, and the
+        comparison is against :func:`min_resolvable_log2fc` computed from the GLS
+        standard error of the *whole* system under Poisson counts -- not from
+        :func:`counting_noise_floor`, which describes a unique-read-counting estimator
+        and is reported alongside for what it is.
     retries, retry_wait
         Each Ensembl request is retried up to ``retries`` times after the first
         attempt, waiting ``retry_wait`` seconds and doubling each time (an HTTP 429
@@ -679,14 +842,31 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     A, classes = compatibility_matrix(all_tracks, all_tids)
     idx = {t: j for j, t in enumerate(all_tids)}
 
+    # Expected fragments per transcript at the stated design, used as the plug-in for the
+    # Poisson weights.  Flat in TPM across the gene's transcripts, which is the same
+    # assumption the per-class read estimate already makes; real genes are skewed.
+    all_lengths = {t: len(seqs[t]) for t in needed}
+    all_lengths.update({t: len(v) for t, v in bg_seqs.items()})
+    theta = np.array([expected_informative_reads(
+        1.0, tpm, all_lengths.get(t, 0), depth=depth,
+        mean_efflen=mean_efflen, frag_mean=frag_mean) for t in all_tids])
+    cov = gls_covariance(A, theta)
+    class_indicator = {}
+
     for g, ids in group_ids.items():
         c = np.zeros(len(all_tids))
         for t in ids:
             c[idx[t]] = 1.0
         report[g].update(estimability(A, c))
         report[g]["label"] = "the %s class total" % g
+        report[g]["coherence"] = class_coherence(tracks, ids)
+        class_indicator[g] = c
+        rse = gls_relative_se(cov, c, theta) if report[g]["estimable"] else float("inf")
+        report[g]["gls_relative_se"] = rse
+        report[g]["min_resolvable_log2fc"] = min_resolvable_log2fc(rse, n_donors)
+        report[g]["beyond_linear"] = rse > LINEARISATION_LIMIT
         report[g]["verdict"], report[g]["reasons"] = _verdict(
-            report[g], conditioning_tau, min_informative_reads)
+            report[g], conditioning_tau, min_informative_reads, min_log2fc)
 
     c = np.zeros(len(all_tids))
     for t in group_ids[pc[0]]:
@@ -695,7 +875,15 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         c[idx[t]] -= 1.0
     contrast = estimability(A, c)
     contrast["label"] = "the class contrast"
-    contrast["verdict"], contrast["reasons"] = _verdict(contrast, conditioning_tau)
+    if contrast["estimable"]:
+        raw = log_ratio_se(cov, class_indicator[pc[0]], class_indicator[pc[1]], theta)
+    else:
+        raw = float("inf")
+    contrast["gls_relative_se"] = raw
+    contrast["min_resolvable_log2fc"] = min_resolvable_log2fc(raw, n_donors)
+    contrast["beyond_linear"] = raw > LINEARISATION_LIMIT
+    contrast["verdict"], contrast["reasons"] = _verdict(
+        contrast, conditioning_tau, None, min_log2fc)
 
     noise = counting_noise_floor(
         report[pc[0]]["expected_informative_reads"],
@@ -720,7 +908,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         },
         "design": {"read_length": read_length, "paired": paired,
                    "frag_mean": frag_mean, "frag_sd": frag_sd, "depth": depth,
-                   "mean_efflen": mean_efflen, "tpm": tpm, "n_donors": n_donors},
+                   "mean_efflen": mean_efflen, "tpm": tpm, "n_donors": n_donors,
+                   "min_log2fc": min_log2fc},
         "groups": report,
         "primary_comparison": list(pc),
         "contrast": contrast,
