@@ -3,6 +3,20 @@ name: Ensembl live check
 # The offline suite covers the Ensembl-parsing code against a recorded payload, which
 # cannot notice the REST schema changing under it. This job hits the live API weekly so
 # a break surfaces here rather than in a user's first run.
+#
+# It distinguishes three outcomes, because the first run of this job (091426) failed on
+# the third and reported it as the second:
+#
+#   Ensembl unreachable      -> skip.  A 5xx or a read timeout on rest.ensembl.org is a
+#                               statement about their uptime, not about this package.  A
+#                               red check for someone else's outage is noise, and noise
+#                               on a public repository is worse than no check.
+#   the answer changed       -> warn.  Fewer or different transcripts, a moved verdict:
+#                               real and worth seeing, but expected, since the annotation
+#                               is meant to move.  Annotated, not failed.
+#   the structure broke      -> fail.  No groups, the primary comparison is not a pair,
+#                               LepRb absent, or the release field missing.  That is a
+#                               parsing or API-schema break and it should stop the build.
 on:
   schedule:
     - cron: "17 5 * * 1"
@@ -17,18 +31,121 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e "."
-      - name: annotate against live Ensembl
+
+      - name: is Ensembl answering
+        id: ping
         run: |
-          isoform-dominance annotate --gene LEPR --out /tmp/lepr.json --json
           python - <<'PY'
-          import json
+          import os, time, urllib.request
+          U = "https://rest.ensembl.org/info/ping?content-type=application/json"
+          ok = False
+          for i in range(4):
+              try:
+                  urllib.request.urlopen(U, timeout=20).read()
+                  ok = True
+                  break
+              except Exception as e:
+                  print("attempt %d: %s" % (i + 1, type(e).__name__))
+                  time.sleep(5 * (i + 1))
+          print("Ensembl answering:", ok)
+          # only the key=value line goes in the output file: any other line there is
+          # rejected by the runner as "Invalid format", and the diagnostics above are
+          # written exactly when the ping is failing.
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write("up=%s\n" % ("true" if ok else "false"))
+          PY
+      - name: note the outage and stop
+        if: steps.ping.outputs.up != 'true'
+        run: echo "::notice::rest.ensembl.org did not answer four pings; live check skipped, nothing is wrong with this package."
+
+      - name: annotate against live Ensembl
+        if: steps.ping.outputs.up == 'true'
+        run: |
+          python - <<'PY'
+          import json, subprocess, sys
+          NET = ("Ensembl request failed", "HTTPError", "URLError", "timed out", "TimeoutError")
+          r = subprocess.run(
+              ["isoform-dominance", "annotate", "--gene", "LEPR",
+               "--out", "/tmp/lepr.json", "--json"],
+              capture_output=True, text=True)
+          if r.returncode:
+              blob = r.stdout + r.stderr
+              if any(k in blob for k in NET):
+                  print("::notice::annotate could not reach Ensembl; live check skipped.")
+                  print(blob[-800:])
+                  sys.exit(0)
+              print(blob[-2000:]); sys.exit(r.returncode)
+
           cfg = json.load(open("/tmp/lepr.json"))
+          # structural -- these failing means parsing or the API schema broke
           assert cfg["groups"], "no groups proposed"
           assert len(cfg["primary_comparison"]) == 2, cfg["primary_comparison"]
           ids = {t for v in cfg["groups"].values() for t in v}
-          assert "ENST00000349533" in ids, sorted(ids)   # LepRb must still be there
+          assert "ENST00000349533" in ids, sorted(ids)      # LepRb must still be there
           assert isinstance(cfg["ensembl_release"], int), cfg.get("ensembl_release")
-          print("ok: release", cfg["ensembl_release"], {k: len(v) for k, v in cfg["groups"].items()})
+
+          sizes = {k: len(v) for k, v in cfg["groups"].items()}
+          print("ok: release", cfg["ensembl_release"], sizes)
+          json.dump({"release": cfg["ensembl_release"], "sizes": sizes,
+                     "primary": cfg["primary_comparison"]},
+                    open("/tmp/lepr.summary.json", "w"))
           PY
+
       - name: identifiability against live Ensembl
-        run: isoform-dominance identifiability --config /tmp/lepr.json --json
+        if: steps.ping.outputs.up == 'true'
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, sys
+          if not os.path.exists("/tmp/lepr.json"):
+              print("::notice::annotate skipped on a network failure; nothing to check.")
+              raise SystemExit(0)
+          NET = ("Ensembl request failed", "HTTPError", "URLError", "timed out", "TimeoutError")
+          r = subprocess.run(
+              ["isoform-dominance", "identifiability", "--config", "/tmp/lepr.json",
+               "--min-log2fc", "1.0", "--json"],
+              capture_output=True, text=True)
+          blob = r.stdout + r.stderr
+          if r.returncode and any(k in blob for k in NET):
+              print("::notice::identifiability could not reach Ensembl; live check skipped.")
+              print(blob[-800:]); sys.exit(0)
+          print(blob[-4000:])
+          # the exit status now answers "is the requested effect size resolvable", which is
+          # a verdict about LEPR under today's annotation, not a health check on the code.
+          # Record it; do not fail on it.
+          try:
+              res = json.loads(r.stdout)
+          except Exception:
+              print("::error::identifiability produced no parsable JSON"); sys.exit(1)
+          json.dump({"exit": r.returncode, "result": res}, open("/tmp/lepr.ident.json", "w"))
+          print("identifiability exit status:", r.returncode)
+          PY
+
+      - name: compare against the recorded answer
+        if: steps.ping.outputs.up == 'true'
+        run: |
+          python - <<'PY'
+          import json, os
+          base_path = ".github/lepr-live-baseline.json"
+          missing = [p for p in ("/tmp/lepr.summary.json", "/tmp/lepr.ident.json")
+                     if not os.path.exists(p)]
+          if missing:
+              print("::notice::an earlier step skipped on a network failure (%s); "
+                    "nothing to compare." % ", ".join(missing))
+              raise SystemExit(0)
+          now = json.load(open("/tmp/lepr.summary.json"))
+          now["ident_exit"] = json.load(open("/tmp/lepr.ident.json"))["exit"]
+          if not os.path.exists(base_path):
+              print("::notice::no baseline recorded yet; today's answer is", json.dumps(now))
+              raise SystemExit(0)
+          base = json.load(open(base_path))
+          diffs = [k for k in set(base) | set(now) if base.get(k) != now.get(k)]
+          if diffs:
+              print("::warning::the live answer for LEPR moved since the baseline: %s"
+                    % ", ".join("%s %r -> %r" % (k, base.get(k), now.get(k)) for k in sorted(diffs)))
+              print("baseline:", json.dumps(base))
+              print("today:   ", json.dumps(now))
+              print("If this is real annotation drift, update %s in the same commit that "
+                    "records it." % base_path)
+          else:
+              print("unchanged from baseline:", json.dumps(now))
+          PY
