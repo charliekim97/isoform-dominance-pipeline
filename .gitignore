@@ -15,3 +15,5 @@ results/
 *.err
 .DS_Store
 .venv/
+.claude/settings.local.json
+.claude/settings.local.json.bak-*

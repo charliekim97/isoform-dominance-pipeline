@@ -83,11 +83,18 @@ def propose_groups(info):
 
 
 def build_config(gene, species="homo_sapiens", **retry):
-    """Build a reviewable config.json dict for `gene` from live Ensembl annotation."""
+    """Build a reviewable config.json dict for `gene` from live Ensembl annotation.
+
+    ``ensembl_release`` records the release the groups were proposed from.  The
+    identifiability verdict is a function of that release, and ``rest.ensembl.org``
+    serves only the current one, so a config without it cannot be re-run to the same
+    answer.
+    """
     info = fetch_transcripts(gene, species, **retry)
+    release = ensembl.release_number(_get("/info/data", **retry))
     groups, primary, clusters = propose_groups(info)
     return {
-        "gene": gene, "species": species, "reference": "Ensembl REST (live annotation)",
+        "gene": gene, "species": species, "ensembl_release": release,
         "groups": groups, "primary_comparison": primary,
         "_proposed": ("Auto-proposed by `isoform-dominance annotate`. Groups = protein-coding "
                       "transcripts sharing a 3' terminal-exon splice acceptor (isoform-defining "

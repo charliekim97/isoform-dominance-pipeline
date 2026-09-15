@@ -63,7 +63,7 @@ def offline_ensembl(monkeypatch):
 
     def fake_get(path, **kw):
         calls.append(path)
-        return LEPR_LIKE
+        return {"releases": [116]} if path.startswith("/info/data") else LEPR_LIKE
 
     monkeypatch.setattr(annotate, "_get", fake_get)
     return calls

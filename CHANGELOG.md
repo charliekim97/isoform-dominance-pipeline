@@ -11,14 +11,21 @@ versioning.
 > are left in place as a matter of policy: they are never retagged, replaced or deleted.
 > Nothing in this or any later version alters that record's files. The
 > `extract` aggregation behaviour those results depend on — transcript-to-group mapping
-> and per-donor TPM summation — is unchanged in 2.2.0, and the bundled self-test still
+> and per-donor TPM summation — is unchanged in 2.3.0, and the bundled self-test still
 > reproduces the same reference numbers.
 
-## [Unreleased]
+## [2.3.0] — 2026-09-15
+
+A minor version, not a patch: the exit status of `identifiability` changes meaning.
 
 ### Added
-- `identifiability --min-log2fc`: the smallest |log2 fold change| in the class ratio you
-  need to resolve. When given it replaces `--tau` in the verdict, and is the recommended
+- The `identifiability` report carries `gene_total` — the estimability of the sum of every
+  column of the compatibility system, with `transcripts_without_windows` listing any
+  transcript shorter than `window` — and `effect_resolvable`, which is `true` when both
+  class totals and the contrast resolve `--min-log2fc`, `false` when any of them does not
+  or has no finite figure, and `null` when no effect size was asked for.
+- `identifiability --min-log2fc`: the smallest |log2 fold change| you need both class totals
+  and the contrast to resolve. When given it replaces `--tau` in the verdict, and is the recommended
   way to run the command. `--tau` has no calibrated value: across a 49-gene survey the
   median gene sat at conditioning 65.0 against the default tau of 10.0, so the default
   rejects 85% of what it is applied to, and any other fixed value simply sorts genes by
@@ -43,8 +50,65 @@ versioning.
   delta-method figure matched at 0.99-1.03x, outside it the two part company by up to
   twofold. Past the limit the figure reads as "not resolvable at this design", not as a
   value.
+- **The annotation release is recorded and reported (issue #5).** `annotate` writes
+  `ensembl_release`, taken from Ensembl's `/info/data`. `identifiability` prints it in its
+  header and carries it in the `--json` report as `annotation.ensembl_release`, beside
+  `annotation.fetched_release`: the release any sequence was fetched from in that run, and
+  `null` when none was. The two are different facts. `rest.ensembl.org` serves only its
+  current release, so a config annotated against one release and re-run later can fetch
+  sequence from another, and the command then says so on stderr. A config without a
+  release still runs; the command prints one line saying the verdict is not reproducible.
+  The verdict is a function of the release: between GENCODE v44 and Ensembl 116, 960 of
+  1911 transcripts across 49 genes are new, 47 of the 49 genes changed, and 6 of 36
+  verdicts moved. `--background-fasta` alone does not pin a run, because the configured
+  transcripts' cDNA and the gene background are still fetched live; `--sequences` with
+  `--background-fasta`, both from the config's release, makes no request at all.
+- **The report says how exposed a comparison is to coverage skew.** The contrast carries
+  `log2_efflen_ratio`, the log2 ratio of the classes' plain mean effective lengths
+  (`max(1, L - frag_mean + 1)` per transcript), with `class_mean_efflen`, and
+  `distinguishing_window_position`: median and quartiles of where each class's
+  distinguishing windows start, as a fraction of each transcript's own length. The CLI prints
+  both. When `|log2_efflen_ratio| >= 0.3` (`efflen_direction_in_band`) it also says on stderr
+  which class a 5'- or 3'-skewed library tends to inflate, with the evidence: in a 49-gene
+  simulation (Salmon, one quantifier, monotone positional skew) the 5' direction held for
+  35–36 of the 39 genes with a ratio above 1.23x and the 3' direction for 30–32, against 20
+  of 39 at uniform coverage. Below the band nothing was measured, so nothing is said. Five
+  summaries of class length were scored on that simulation: plain mean (Spearman −0.547 at
+  b = +2.0, +0.169 at b = −2.0, sign 35/39), harmonic mean (−0.541, +0.164, 36/41), class
+  total (−0.369, +0.285, 35/47), minimum (−0.398, +0.101, 32/39), sum of 1/efflen (−0.369,
+  −0.058, 24/45). The plain mean is best or tied. The class total weights by transcript count,
+  reads −0.344 at b = 0 where the answer has to be null, and is excluded for that reason. The
+  table is kept in the `class_efflen_ratio` docstring.
 
 ### Changed
+- **Breaking: the structural verdict no longer sets the exit status of
+  `identifiability`.** Up to 2.2.0 `not_identifiable` exited 2 and `weakly_identifiable`
+  exited 3. The verdict cannot gate a program: it is a function of the annotation
+  release — on NTRK3 the same comparison is `not_identifiable` against today's Ensembl and
+  `identifiable` against GENCODE v44, and 6 of 36 comparable verdicts in a 49-gene panel
+  move between the two — and across seven simulated coverage models the
+  `not_identifiable` group never differed from the estimable genes in realised error
+  (Mann-Whitney p = 0.08–0.96, with the sign of the difference inconsistent). The exit
+  status now answers the question the user asks with `--min-log2fc`:
+  **0** when no `--min-log2fc` is given or it is resolved; **3** when it is given and not
+  resolved; **2** only when the gene total itself is not estimable, because a transcript
+  shorter than `--window` has no windows and an all-zero column — a precondition of the
+  system, not a judgement, and independent of the grouping, the design and any threshold;
+  **1** for a config or network error, as before. The verdict is still printed and still
+  in the `--json` report, and without `--min-log2fc` the command now says on stderr what
+  it does and does not mean. A pipeline that branched on exit 2 or 3 to skip
+  "unmeasurable" genes should pass `--min-log2fc` with the effect it needs, or read
+  `verdict` from `--json`.
+- `cli.EXIT_WEAK` is renamed `cli.EXIT_EFFECT_NOT_RESOLVED`; the value is still 3.
+- **The conditioning factor is demoted from the headline to a diagnostic** in the CLI
+  output, the README and the paper. Each class and contrast line now leads with
+  `min |log2FC|`, and the README example is run with `--min-log2fc`. Against realised
+  quantification error in simulation, the conditioning factor was the weakest predictor
+  measured under both uniform and 5'-skewed coverage (Spearman +0.197 and −0.119, n = 40),
+  and it moves by up to two orders of magnitude with the annotation release alone
+  (PFKL 2182 → 12.2, TPI1 719 → 7.6, today's Ensembl against GENCODE v44). It is still
+  reported, with its `Var(y) = sigma^2 I` caveat, and `--tau` still grades the verdict
+  when no `--min-log2fc` is given.
 - The CLI no longer prints the counting-noise floor as though it were comparable to the
   per-class figures. It is the precision of `log2(n_a/n_b)` for the informative-read
   counts of each class's *best single transcript*, which equals the class ratio only when
@@ -92,8 +156,25 @@ versioning.
   drifted from what the code produces; a figure difference is reported for review
   rather than failing the build, since fonts and renderers differ across machines.
   `ruff` now covers `scripts/` as well as `src` and `tests`.
+- `annotate` no longer writes `"reference": "Ensembl REST (live annotation)"`. The string
+  named no release, and `ensembl_release` replaces it. Nothing read the field, so configs
+  that carry it load unchanged.
+- **`min_resolvable_log2fc` is documented as a bound on spread, not on accuracy.** It is
+  built from the delta-method SE of the log class ratio under the Poisson-GLS covariance,
+  which assumes uniform coverage and a correctly specified compatibility model. In
+  simulation (49 genes, 30 replicates, 39 estimable with a finite predicted SE in all seven
+  coverage models), |bias| exceeds the predicted SE in 0 of 39 genes at uniform coverage
+  and in 20–24 of 39 at a 2.3× first/last-decile coverage ratio, while the replicate SD
+  stays below the predicted SE in 34–37 of 39 (35 of 39 at uniform). NTRK3 holds an SD of
+  0.016–0.025 while its bias runs from 0.002 to 2.82. The README says, next to the figure,
+  that replicate agreement does not detect this failure.
 
 ### Fixed
+- The `identifiability` step of the weekly `Ensembl live check` workflow
+  (`ensembl-nightly.yml`) would have failed at its first scheduled run: it runs LEPR against
+  live Ensembl with default flags, where LEPR is `weakly_identifiable` (release 116), and
+  that exited 3. The workflow was added in 2.2.0 and had not yet run. The exit-status change
+  above resolves it.
 - **`scipy>=1.10` was a false floor.** Before 1.15, SciPy's `wilcoxon(method="auto")`
   answered *any* zero difference with the normal approximation, at any n. For the pairs
   in `test_zeros_shrink_the_effective_n_and_raise_the_floor` (five pairs, one tied at

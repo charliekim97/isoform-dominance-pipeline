@@ -5,8 +5,8 @@ type: software
 authors:
   - family-names: "Kim"
     given-names: "Sangeon"
-version: "2.2.0"
-date-released: "2026-09-09"
+version: "2.3.0"
+date-released: "2026-09-15"
 license: MIT
 doi: "10.5281/zenodo.20672051"
 repository-code: "https://github.com/charliekim97/isoform-dominance-pipeline"

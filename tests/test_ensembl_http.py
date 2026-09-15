@@ -56,12 +56,14 @@ def _http_error(url, code, retry_after=None):
 
 
 class FakeEnsembl:
-    """Serves lookups and cDNA, one id per GET or up to 50 per POST, and logs each call."""
+    """Serves lookups, cDNA (one id per GET or up to 50 per POST) and the release, and logs
+    each call."""
 
-    def __init__(self, fail=None, lookup=GENE_LOOKUP):
+    def __init__(self, fail=None, lookup=GENE_LOOKUP, release=116):
         self.calls = []
         self.fail = fail or (lambda call: None)
         self.lookup = lookup
+        self.release = release
 
     def __call__(self, req, timeout=None, **_):
         path = req.full_url[len(SERVER):]
@@ -73,6 +75,8 @@ class FakeEnsembl:
             raise err
         if path.startswith("/lookup/symbol/"):
             return _Resp(json.dumps(self.lookup))
+        if path.startswith("/info/data"):
+            return _Resp(json.dumps({"releases": [self.release]}))
         if call[0] == "POST" and path.startswith("/sequence/id"):
             ids = [i.split(".")[0] for i in body["ids"]]
             # reversed, so a caller that pairs results with ids by position is caught
@@ -111,8 +115,8 @@ def sleeps(monkeypatch):
 
 @pytest.fixture
 def serve(monkeypatch):
-    def _serve(fail=None, lookup=GENE_LOOKUP):
-        fake = FakeEnsembl(fail, lookup)
+    def _serve(fail=None, lookup=GENE_LOOKUP, release=116):
+        fake = FakeEnsembl(fail, lookup, release)
         monkeypatch.setattr(urllib.request, "urlopen", fake)
         return fake
     return _serve
