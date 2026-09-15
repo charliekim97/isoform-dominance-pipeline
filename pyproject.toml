@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isoform-dominance"
-version = "2.2.0"
+version = "2.3.0"
 description = "Is this functional isoform-class comparison measurable by short reads? Group-level identifiability, quantification and testing from bulk RNA-seq"
 readme = "README.md"
 requires-python = ">=3.10"

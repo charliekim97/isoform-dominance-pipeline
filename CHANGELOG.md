@@ -11,14 +11,12 @@ versioning.
 > are left in place as a matter of policy: they are never retagged, replaced or deleted.
 > Nothing in this or any later version alters that record's files. The
 > `extract` aggregation behaviour those results depend on — transcript-to-group mapping
-> and per-donor TPM summation — is unchanged in 2.2.0, and the bundled self-test still
+> and per-donor TPM summation — is unchanged in 2.3.0, and the bundled self-test still
 > reproduces the same reference numbers.
 
-## [Unreleased]
+## [2.3.0] — 2026-09-15
 
-Targets **2.3.0**, not a patch: the exit status of `identifiability` changes meaning.
-The version strings in `pyproject.toml`, `__init__.py` and `CITATION.cff` are bumped at
-release, once the remaining 2.3.0 items are in.
+A minor version, not a patch: the exit status of `identifiability` changes meaning.
 
 ### Added
 - The `identifiability` report carries `gene_total` — the estimability of the sum of every

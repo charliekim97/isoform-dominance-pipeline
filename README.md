@@ -295,7 +295,7 @@ archived at [10.5281/zenodo.20738150](https://doi.org/10.5281/zenodo.20738150). 
 version does **not** alter that record: Zenodo mints a separate version DOI and leaves the old
 one in place, and the `v2.1.1` tag and release are left untouched by policy — not because they
 are technically immutable, but because a published paper cites them. The `extract`
-aggregation behaviour those results rest on is unchanged in 2.2.0, and the bundled self-test
+aggregation behaviour those results rest on is unchanged in 2.3.0, and the bundled self-test
 still reproduces the same reference numbers.
 
 Cite this repository (see `CITATION.cff`, DOI 10.5281/zenodo.20672051) and Salmon:
