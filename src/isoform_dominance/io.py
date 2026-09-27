@@ -1,10 +1,33 @@
 """Shared IO helpers: config and sample-map loading."""
-import json, csv
+import csv
+import json
 
 
-def load_config(path):
+class InputError(ValueError):
+    """A file named on the command line that cannot be used as it is."""
+
+
+def load_json(path, what):
+    """Parse the JSON file ``path``; :class:`InputError` naming ``what`` if it is not JSON."""
     with open(path) as f:
-        return json.load(f)
+        try:
+            return json.load(f)
+        except json.JSONDecodeError as e:
+            raise InputError("%s %s is not valid JSON (%s)" % (what, path, e)) from e
+
+
+def load_config(path, need_groups=True):
+    """A config written by ``annotate`` or by hand: a JSON object, with a ``groups`` object
+    mapping group names to transcript ids unless ``need_groups`` is false (``qc`` reads
+    only ``contamination_qc``)."""
+    cfg = load_json(path, "config")
+    if not isinstance(cfg, dict):
+        raise InputError("config %s is not a JSON object" % path)
+    if need_groups and not isinstance(cfg.get("groups"), dict):
+        raise InputError("config %s has no \"groups\" object mapping group names to "
+                         "transcript ids; `annotate` writes one" % path)
+    return cfg
+
 
 
 def transcript_to_group(groups):
@@ -36,3 +59,4 @@ def primary_pair(config):
             "alternative terminal-exon cluster exists; edit the config to define "
             "two groups." % (pc,))
     return pc[0], pc[1]
+

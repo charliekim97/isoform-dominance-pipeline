@@ -16,18 +16,21 @@ ENSEMBL = ensembl.SERVER
 
 
 def _get(path, timeout=ensembl.DEFAULT_TIMEOUT, retries=DEFAULT_RETRIES,
-         retry_wait=DEFAULT_RETRY_WAIT):
-    return ensembl.get_json(path, timeout=timeout, retries=retries, retry_wait=retry_wait)
+         retry_wait=DEFAULT_RETRY_WAIT, server=None):
+    return ensembl.get_json(path, server=server, timeout=timeout, retries=retries,
+                            retry_wait=retry_wait)
 
 
 def fetch_transcripts(gene, species="homo_sapiens", retries=DEFAULT_RETRIES,
-                      retry_wait=DEFAULT_RETRY_WAIT):
+                      retry_wait=DEFAULT_RETRY_WAIT, server=None):
     """Return {gene, species, strand, transcripts:[{id, protein_aa, terminal_acceptor, is_canonical}]}.
 
-    The lookup is retried as described in :mod:`isoform_dominance.ensembl`.
+    The lookup is retried as described in :mod:`isoform_dominance.ensembl`.  ``server``
+    is a base URL from :func:`isoform_dominance.ensembl.resolve_server`; None means the
+    current release.
     """
     g = _get("/lookup/symbol/%s/%s?expand=1" % (species, gene),
-             retries=retries, retry_wait=retry_wait)
+             retries=retries, retry_wait=retry_wait, server=server)
     strand = g["strand"]
     canonical = (g.get("canonical_transcript") or "").split(".")[0]
     out = []
@@ -82,16 +85,19 @@ def propose_groups(info):
     return groups, primary, clusters
 
 
-def build_config(gene, species="homo_sapiens", **retry):
-    """Build a reviewable config.json dict for `gene` from live Ensembl annotation.
+def build_config(gene, species="homo_sapiens", release=None, **retry):
+    """Build a reviewable config.json dict for `gene` from Ensembl annotation.
 
-    ``ensembl_release`` records the release the groups were proposed from.  The
-    identifiability verdict is a function of that release, and ``rest.ensembl.org``
-    serves only the current one, so a config without it cannot be re-run to the same
-    answer.
+    ``release`` is the Ensembl release to propose the groups from; None means the one
+    ``rest.ensembl.org`` currently serves, and an earlier one is read from Ensembl's
+    REST archive (see :func:`isoform_dominance.ensembl.resolve_server`).
+    ``ensembl_release`` records the release the groups were proposed from, as the server
+    reported it.  The identifiability verdict is a function of that release, so a
+    config without it cannot be re-run to the same answer.
     """
-    info = fetch_transcripts(gene, species, **retry)
-    release = ensembl.release_number(_get("/info/data", **retry))
+    server = ensembl.resolve_server(release, **retry)
+    info = fetch_transcripts(gene, species, server=server, **retry)
+    release = ensembl.release_number(_get("/info/data", server=server, **retry))
     groups, primary, clusters = propose_groups(info)
     return {
         "gene": gene, "species": species, "ensembl_release": release,
@@ -106,8 +112,8 @@ def build_config(gene, species="homo_sapiens", **retry):
     }
 
 
-def run(gene, out, species="homo_sapiens", **retry):
-    cfg = build_config(gene, species, **retry)
+def run(gene, out, species="homo_sapiens", release=None, **retry):
+    cfg = build_config(gene, species, release=release, **retry)
     with open(out, "w") as f:
         json.dump(cfg, f, indent=2)
     return cfg

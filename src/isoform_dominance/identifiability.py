@@ -760,7 +760,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             mean_efflen=DEFAULT_MEAN_EFFLEN, tpm=DEFAULT_TPM, n_donors=1,
             conditioning_tau=DEFAULT_CONDITIONING_TAU,
             min_informative_reads=DEFAULT_MIN_INFORMATIVE_READS,
-            min_log2fc=None,
+            min_log2fc=None, ensembl_release=None,
             retries=DEFAULT_RETRIES, retry_wait=DEFAULT_RETRY_WAIT):
     """Assess whether the configured isoform classes are measurable by short reads.
 
@@ -803,6 +803,12 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         standard error of the *whole* system under Poisson counts -- not from
         :func:`counting_noise_floor`, which describes a unique-read-counting estimator
         and is reported alongside for what it is.
+    ensembl_release
+        The Ensembl release to fetch sequence and the gene background from, when
+        anything has to be fetched.  None means the release ``rest.ensembl.org``
+        currently serves; an earlier one is read from Ensembl's REST archive (see
+        :func:`isoform_dominance.ensembl.resolve_server`).  Nothing is resolved, and no
+        request made, when every sequence was supplied.
     retries, retry_wait
         Each Ensembl request is retried up to ``retries`` times after the first
         attempt, waiting ``retry_wait`` seconds and doubling each time (an HTTP 429
@@ -856,12 +862,14 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     net = {"retries": retries, "retry_wait": retry_wait}
     fetch_gene_background = bool(background_gene_transcripts and config.get("gene")
                                  and not bg_seqs)
-    # The server serves only its current release, which need not be the one the config
-    # was annotated against.  Record it whenever this run takes sequence from it, and
-    # never otherwise: a run on supplied sequence did not use it.
-    fetched_release = (ensembl.fetch_release(**net)
-                       if fetch_gene_background or any(t not in seqs for t in needed)
-                       else None)
+    # The release sequence comes from need not be the one the config was annotated
+    # against.  Record it whenever this run takes sequence from a server, and never
+    # otherwise: a run on supplied sequence did not use one.
+    if fetch_gene_background or any(t not in seqs for t in needed):
+        net["server"] = ensembl.resolve_server(ensembl_release, **net)
+        fetched_release = ensembl.fetch_release(**net)
+    else:
+        fetched_release = None
     if fetch_gene_background:
         try:
             all_ids = fetch_gene_transcript_ids(
@@ -879,7 +887,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         got = ensembl.fetch_cdna_batch(missing, **net)
         absent = [t for t in missing if t not in got]
         if absent:
-            raise ValueError("Ensembl returned no cDNA for %s" % ", ".join(absent))
+            raise ValueError("Ensembl release %s has no cDNA for %s, which the config names"
+                             % (fetched_release, ", ".join(absent)))
         seqs.update(got)
     bg_seqs = {t: s for t, s in bg_seqs.items() if t not in needed}
 

@@ -24,7 +24,6 @@ import argparse
 import json
 import math
 import sys
-from urllib.error import HTTPError, URLError
 
 from . import (__version__, annotate, contamination, ensembl, extract, identifiability,
                io, stats)
@@ -41,6 +40,17 @@ def _identifiability_exit(res):
     if res["effect_resolvable"] is False:
         return EXIT_EFFECT_NOT_RESOLVED
     return EXIT_OK
+
+
+def _release(value):
+    """argparse type for --ensembl-release: a positive integer."""
+    try:
+        n = int(value)
+    except ValueError:
+        n = 0
+    if n < 1:
+        raise argparse.ArgumentTypeError("expected a positive release number, got %r" % value)
+    return n
 
 
 def _kv(items):
@@ -66,12 +76,22 @@ def _net_fail(e):
     return 1
 
 
+def _release_fail(e):
+    print("Ensembl release not available: %s" % e, file=sys.stderr)
+    return 1
+
+
 def cmd_annotate(a):
     try:
-        cfg = annotate.run(a.gene, a.out, species=a.species,
+        cfg = annotate.run(a.gene, a.out, species=a.species, release=a.ensembl_release,
                            retries=a.retries, retry_wait=a.retry_wait)
-    except (URLError, HTTPError, TimeoutError) as e:
+    except ensembl.ReleaseNotServed as e:
+        return _release_fail(e)
+    except ensembl.TRANSIENT as e:
         return _net_fail(e)
+    except ValueError as e:
+        print("error: %s" % e, file=sys.stderr)
+        return 1
     if a.json:
         _emit(cfg)
         return EXIT_OK
@@ -83,10 +103,21 @@ def cmd_annotate(a):
     return EXIT_OK
 
 
+def _load_sequences(path, flag):
+    """``{transcript_id: sequence}`` from the JSON file a sequence flag names."""
+    seqs = io.load_json(path, flag + " file")
+    if not (isinstance(seqs, dict)
+            and all(isinstance(k, str) and isinstance(v, str) for k, v in seqs.items())):
+        raise io.InputError("%s file %s is not a JSON object of transcript id to sequence"
+                            % (flag, path))
+    return seqs
+
+
 def cmd_identifiability(a):
     cfg = io.load_config(a.config)
-    seqs = json.load(open(a.sequences)) if a.sequences else None
-    background = json.load(open(a.background_sequences)) if a.background_sequences else None
+    seqs = _load_sequences(a.sequences, "--sequences") if a.sequences else None
+    background = (_load_sequences(a.background_sequences, "--background-sequences")
+                  if a.background_sequences else None)
     try:
         res = identifiability.analyze(
             cfg, k=a.k, sequences=seqs,
@@ -98,14 +129,15 @@ def cmd_identifiability(a):
             read_length=a.read_length, frag_mean=a.frag_mean, frag_sd=a.frag_sd,
             paired=not a.single_end, depth=a.depth, tpm=a.tpm, n_donors=a.donors,
             conditioning_tau=a.tau, min_informative_reads=a.min_informative_reads,
-            min_log2fc=a.min_log2fc,
+            min_log2fc=a.min_log2fc, ensembl_release=a.ensembl_release,
             retries=a.retries, retry_wait=a.retry_wait)
-    except (URLError, HTTPError, TimeoutError) as e:
+    except ensembl.ReleaseNotServed as e:
+        return _release_fail(e)
+    except ensembl.TRANSIENT as e:
         return _net_fail(e)
     except ValueError as e:
         print("config error: %s" % e, file=sys.stderr)
         return 1
-
     if a.json:
         _emit(res)
         return _identifiability_exit(res)
@@ -126,11 +158,18 @@ def cmd_identifiability(a):
               "reproducible. Re-run `annotate` to record one, or set \"ensembl_release\" in "
               "the config.", file=sys.stderr)
     elif got is not None and got != rel:
-        print("  NOTE: the config was annotated against Ensembl release %s, but the server "
-              "now serves release %s and the sequence used here came from it. The groups may "
-              "name transcripts whose sequence has changed, and the gene may have gained "
-              "transcripts they do not name. To pin release %s, pass --sequences and "
-              "--background-fasta built from it." % (rel, got, rel), file=sys.stderr)
+        if a.ensembl_release is None:
+            print("  NOTE: the config was annotated against Ensembl release %s, but the "
+                  "server now serves release %s and the sequence used here came from it. "
+                  "The groups may name transcripts whose sequence has changed, and the gene "
+                  "may have gained transcripts they do not name. To fetch from release %s, "
+                  "pass --ensembl-release %s." % (rel, got, rel, rel), file=sys.stderr)
+        else:
+            print("  NOTE: sequence was fetched from Ensembl release %s, as requested, but "
+                  "the config's groups were proposed from release %s. The gene may have "
+                  "transcripts in release %s that the groups do not name; `annotate "
+                  "--ensembl-release %s` proposes groups from it." % (got, rel, got, got),
+                  file=sys.stderr)
     print("  background: %d same-gene transcript(s)%s"
           % (bg["n_background_transcripts"],
              ", FASTA %s" % bg["fasta"] if bg["fasta"] else ""))
@@ -296,7 +335,8 @@ def cmd_stats(a):
 
 
 def cmd_qc(a):
-    rows = contamination.run(io.load_config(a.config), _kv(a.markers), _kv(a.target), a.out)
+    rows = contamination.run(io.load_config(a.config, need_groups=False), _kv(a.markers),
+                             _kv(a.target), a.out)
     if a.json:
         _emit([{"cohort": r[0], "n": r[1], "rho": r[2], "p": r[3], "ratio": r[4]}
                for r in rows])
@@ -335,6 +375,12 @@ def build_parser():
         sp.add_argument("--retry-wait", type=float, default=ensembl.DEFAULT_RETRY_WAIT,
                         help="seconds before the first retry, doubling each time; an HTTP "
                              "429 waits for its Retry-After instead (default: %(default)s)")
+        sp.add_argument("--ensembl-release", type=_release, default=None, metavar="N",
+                        help="Ensembl release to fetch from (default: the current one at "
+                             "rest.ensembl.org). Earlier releases are read from Ensembl's "
+                             "REST archive -- release 110 is GENCODE 44 -- and the release "
+                             "the server reports is checked against N before anything is "
+                             "fetched")
         return sp
 
     s = _net(_json(sub.add_parser("annotate",
@@ -408,7 +454,16 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    return args.func(args) or 0
+    try:
+        return args.func(args) or 0
+    except io.InputError as e:              # a file named on the command line is unusable
+        print("error: %s" % e, file=sys.stderr)
+        return 1
+    except OSError as e:                    # ... or cannot be opened: one line, not a trace
+        if e.filename is None:
+            raise
+        print("error: %s: %s" % (e.strerror or e, e.filename), file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

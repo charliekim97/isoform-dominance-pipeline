@@ -5,6 +5,7 @@ The HTTP layer is replaced at ``urllib.request.urlopen`` and the clock at
 response parsing, and assert on the requests actually made and the waits actually taken.
 """
 import email.message
+import http.client
 import io
 import json
 import random
@@ -191,6 +192,101 @@ def test_a_client_error_is_not_retried(serve, sleeps):
         identifiability.analyze(CONFIG)
     assert len(fake.sequence_calls()) == 1
     assert sleeps == []
+
+
+# --------------------------------------------------------------------------- #
+# failures below HTTP, which urllib does not wrap in URLError
+# --------------------------------------------------------------------------- #
+# Measured against a local socket server (Python 3.12): a connection closed before any
+# response raises RemoteDisconnected, a garbled status line BadStatusLine, a body shorter
+# than its Content-Length IncompleteRead, a reset mid-body ConnectionResetError.  None is
+# a URLError.  Before this, each got one attempt and then escaped the CLI as a traceback.
+@pytest.mark.parametrize("make", [
+    lambda u: http.client.RemoteDisconnected("Remote end closed connection without response"),
+    lambda u: http.client.BadStatusLine("NOT-HTTP"),
+    lambda u: ConnectionResetError(104, "Connection reset by peer"),
+], ids=["closed-before-response", "garbled-status-line", "reset"])
+def test_a_failure_urllib_does_not_wrap_is_retried(serve, sleeps, make):
+    serve(fail_first(2, make))
+    res = identifiability.analyze(CONFIG)
+    assert res["background"]["n_background_transcripts"] == len(BACKGROUND)
+    assert sleeps == [1.0, 2.0]
+
+
+class _BadRead(_Resp):
+    """A response whose status line arrived and whose body then failed."""
+
+    def __init__(self, exc):
+        super().__init__(b"")
+        self.exc = exc
+
+    def read(self, *a):
+        raise self.exc
+
+
+def _first_answer(monkeypatch, fake, on, answer):
+    """Serve ``answer`` for the first request whose path starts with ``on``, then ``fake``."""
+    left = [1]
+
+    def urlopen(req, timeout=None, **kw):
+        if req.full_url[len(SERVER):].startswith(on) and left[0]:
+            left[0] -= 1
+            fake.calls.append((req.get_method(), req.full_url[len(SERVER):], None))
+            return answer
+        return fake(req, timeout=timeout, **kw)
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+
+
+def test_a_body_cut_short_is_retried(serve, sleeps, monkeypatch):
+    fake = serve()
+    _first_answer(monkeypatch, fake, "/sequence/id",
+                  _BadRead(http.client.IncompleteRead(b'[{"query": "ENST', 4096)))
+    res = identifiability.analyze(CONFIG)
+    assert res["background"]["n_background_transcripts"] == len(BACKGROUND)
+    assert sleeps == [1.0]
+
+
+def test_a_reset_mid_body_is_retried(serve, sleeps, monkeypatch):
+    fake = serve()
+    _first_answer(monkeypatch, fake, "/sequence/id",
+                  _BadRead(ConnectionResetError(104, "Connection reset by peer")))
+    identifiability.analyze(CONFIG)
+    assert sleeps == [1.0]
+
+
+def test_a_200_that_is_not_json_is_retried_not_read_as_a_config_error(serve, sleeps,
+                                                                     monkeypatch):
+    fake = serve(lookup=LEPR_LIKE)
+    _first_answer(monkeypatch, fake, "/lookup/",
+                  _Resp("<html><body>Ensembl is down for maintenance</body></html>"))
+    cfg = annotate.build_config("LEPR")
+    assert "ENST00000349533" in {t for ids in cfg["groups"].values() for t in ids}
+    assert sleeps == [1.0]
+
+
+def test_a_200_that_is_not_json_on_the_cdna_post_is_retried_too(serve, sleeps, monkeypatch):
+    # the batched fetch decodes inside the retry loop as the lookup does; decoding after
+    # it would take a maintenance page for a config error on the POST alone
+    fake = serve()
+    _first_answer(monkeypatch, fake, "/sequence/id",
+                  _Resp("<html><body>Ensembl is down for maintenance</body></html>"))
+    res = identifiability.analyze(CONFIG)
+    assert res["background"]["n_background_transcripts"] == len(BACKGROUND)
+    assert sleeps == [1.0]
+
+
+@pytest.mark.parametrize("cmd", ["annotate", "identify"])
+def test_a_connection_that_keeps_dropping_is_one_line_and_exit_1(serve, sleeps, tmp_path,
+                                                                 capsys, cmd):
+    serve(fail_first(99, lambda u: http.client.RemoteDisconnected("closed"), on="/"),
+          lookup=LEPR_LIKE)
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps(CONFIG))
+    argv = (["annotate", "--gene", "LEPR", "--out", str(tmp_path / "a.json")]
+            if cmd == "annotate" else ["identify", "--config", str(cfg)])
+    assert cli.main(argv + ["--retries", "1"]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("Ensembl request failed") and "Traceback" not in err
 
 
 # --------------------------------------------------------------------------- #
