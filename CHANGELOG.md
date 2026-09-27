@@ -14,6 +14,185 @@ versioning.
 > and per-donor TPM summation — is unchanged in 2.3.0, and the bundled self-test still
 > reproduces the same reference numbers.
 
+## [Unreleased]
+
+### Added
+- **`--ensembl-release N` on `annotate` and `identifiability`** (`release=` in
+  `annotate.build_config`/`run`, `ensembl_release=` in `identifiability.analyze`): fetch
+  the annotation, the configured transcripts' cDNA and the gene background from Ensembl
+  release N instead of the current one. This closes issue #5, which 2.3.0 only half-closed
+  by recording the release: a config's release can now be fetched again, and when a run's
+  release differs from the config's the note names the flag that fetches the config's.
+  `rest.ensembl.org` serves only its current release. Earlier ones are served by Ensembl's
+  REST archive through an alias per release, `e110.rest.ensembl.org`, which answers with
+  an HTTP 301 to a date-named host, `jul2023.rest.ensembl.org`. `ensembl.resolve_server`
+  follows that redirect once, with a GET, and every later request goes to the host it
+  lands on, because `urllib` replays a POST that receives a 301, 302 or 303 as a GET with
+  no body: against the alias, the batched cDNA fetch fails with
+  `400 {"error":"ID '' not found"}` (observed 2026-09-24). The host must report exactly N on `/info/data` before anything is
+  fetched from it. The alias is asked first, so a pinned run against an archived release
+  never touches `rest.ensembl.org`, the server whose outage on 2026-09-11 is recorded
+  below; only when the alias fails is `rest.ensembl.org` asked which release is current.
+  The current release has no working alias (`e116` answered 503, and later redirected to
+  a host that answers 503) and is taken from `rest.ensembl.org`. A release later than the
+  current one, an archive that reports another release, an archive Ensembl has retired
+  and an archive still unreachable once the retries are spent are one-line errors and
+  exit 1 (`ensembl.ReleaseNotServed`, a `LookupError`). A retired archive is named as
+  such at once, without retries, when its alias redirects off the REST service to a web
+  page about archives, as releases 90 to 104 but 94 did on 2026-09-24; releases 75 to 89
+  and 94 answered 503 instead, and an archive that does not answer is either down or
+  retired, which the message says. Release 111's archive timed out on most lookups
+  through 2026-09-24, and 106's intermittently. A 200 that is
+  not a release listing, such as a maintenance page, counts as an unreachable archive
+  rather than a config error. `--ensembl-release` takes a positive integer. When the
+  pinned release has no cDNA for a transcript the config names, the error names the
+  release and the transcript; a batch `POST /sequence/id` returns the ids it knows and
+  silently drops the rest, so the missing transcript surfaces only there. A run on
+  supplied sequence resolves nothing and makes no request, as before. Every request takes
+  `server=`, the base URL, which defaults to `ensembl.SERVER`.
+- **`identifiability --save-inputs FILE` and `--inputs FILE`**: a verdict that outlives
+  Ensembl's REST service. `--save-inputs` writes the sequence the run used — the configured
+  transcripts' cDNA, the gene background after the configured transcripts are removed from
+  it, and the release they came from — to a JSON file (`"format":
+  "isoform-dominance/inputs/1"`); `--inputs` repeats the run from that file with no request
+  at all. Ensembl 116 (June 2026) is the last release on the REST API, archives are
+  retired as they age (none from 104 or earlier answered on 2026-09-24), and one can be
+  down for hours (111 that day), so the file, not the archive, is what keeps a verdict
+  reproducible. `--inputs` replaces `--sequences`, `--background-sequences` and
+  `--ensembl-release`, and refuses a file saved for another gene, or one that lacks a
+  transcript the config names rather than fetching it: a silent top-up would mix releases.
+  A `--background-fasta` is not copied into the file, but its path, size and SHA-256 are,
+  and a rerun given no FASTA, or another one, says so on stderr. A `--save-inputs` path in
+  a directory that does not exist, or that is itself a directory, is refused before
+  anything is fetched, not after. The
+  header names the saved release, and the `--json` report carries it as
+  `annotation.inputs_release`. **The file holds the gene, not one grouping of it.** Which
+  transcripts are a class and which are background is a property of the config, not of the
+  file, so a rerun pools the saved `sequences` and `background_sequences` and splits them
+  again by the config in hand — the rule a live run follows. Splitting them by the saved
+  grouping instead lost a transcript the config no longer named from the background as
+  well as from its class, and refused one moved the other way for "no sequence" while
+  holding that sequence. On LEPR at release 116 with `--min-log2fc 0.3`, against the
+  release-116 proposal with one transcript dropped from `iso_896aa`: live gives a contrast
+  of 0.323 and exit 3, and the saved-grouping rerun gave 0.264 and exit 0 — the optimistic
+  answer, with no warning. The rerun's whole `--json` report now equals the live one,
+  for that config, for the full proposal and for the reviewed two-class config of
+  `docs/api.md`. The file also records the `k`, the window and the k-mer convention the
+  run used, none of which is in the config, and a rerun at another one says so on stderr
+  as it does for a changed `--background-fasta`. Every field `--inputs` goes on to read is
+  checked when the file is loaded, so a hand-edited or truncated file is one line naming
+  the file rather than a `KeyError` from inside the analysis. In the
+  library, `analyze(..., inputs_out={})` hands back what was used, and
+  `io.save_inputs`/`io.load_inputs` write and read the file.
+- **`annotate` flags a proposal decided by a tie.** The alternative class is the
+  non-canonical cluster with the most transcripts, and a tie goes to the longer
+  representative protein — a tie-break, not a biological criterion. When another cluster
+  has as many transcripts as the one chosen, `annotate` now says so on stderr, naming each
+  tied cluster by protein length and terminal acceptor, and the config records the rule
+  and the tied clusters under `_proposal` (`alternative_rule`, `tied_with`). The note
+  quotes `alternative_rule` as recorded rather than paraphrasing its first step: a tie on
+  transcript count is settled by protein length and then by the terminal-acceptor
+  coordinate, and a note that stops at the protein does not say what decided this one. Across six
+  releases of a 109-gene survey, 26 to 39 of the 84 to 100 two-class proposals were such
+  ties. Of the 84 genes proposed a pair at every release, 30 were proposed a different
+  pair at some release, always on the alternative side; 12 of the 30 had been a tie at the
+  release before the first change, and in 8, LEPR and NTRK3 among them, the new
+  alternative was a cluster the old one had been tied with. 33 of the 34 changes came
+  with releases 115 and 116. Re-proposing all 654 stored configs of that survey from
+  their stored lookups with this version gives the same groups, pairs and clusters for
+  652; FOXO1 at 115 and 116 changes, through the tie-break fix below.
+
+### Changed
+- A release after 116 is refused as not on the REST API, not as a release that "does not
+  exist yet": Ensembl 116 is the final release of the legacy platform, whose REST API
+  "remains available for e116 for long term use" with "no plans to port over" to the new
+  platform (ensembl.info, 2026-07-21). Unpinned runs therefore read release 116 for as
+  long as the service lasts (`ensembl.REST_LAST_RELEASE`).
+- The weekly Ensembl check (`ensembl-nightly.yml`) runs a second target, LEPR pinned to
+  release 110 through the REST archive, against its own recorded answer
+  (`.github/lepr-e110-baseline.json`). An archived release is frozen, so a move there is a
+  change in this package or in the archive, and the archive path has its own ways to
+  break. Workflows use `actions/checkout@v5` and `actions/setup-python@v6`, which run on
+  Node 24.
+- The version on `main` is `2.4.0.dev0`, so a saved-inputs file and a `--version` from an
+  unreleased tree cannot be mistaken for 2.3.0's. `CITATION.cff` still names 2.3.0, the
+  last release.
+
+### Fixed
+- **An archive alias that redirects to `rest.ensembl.org` itself was read as a retired
+  archive.** The test for "still inside the REST service" accepted only hosts ending in
+  `.rest.ensembl.org`, and `rest.ensembl.org` is not a subdomain of itself, so
+  `--ensembl-release 116` would have failed with "the REST archive for Ensembl release 116
+  is retired" the day Ensembl pointed `e116.rest.ensembl.org` at the current server. 116 is
+  the last release on the REST API and so the release everyone will pin, and its alias has
+  no archive of its own: on 2026-09-24 it answered 503, then redirected to a host that
+  answers 503. `ensembl.resolve_server` now accepts the host of `ensembl.SERVER` as well as
+  its subdomains.
+- `annotate` printed a traceback for a gene with no protein-coding transcript; it now
+  prints one line and exits 1.
+- **Network failures raised while a response was being read escaped the retry loop.**
+  `urllib` wraps an error raised while *sending* a request in `URLError`, but not one
+  raised while reading the answer, so these arrived raw — measured against a local socket
+  server: a connection closed before the status line (`RemoteDisconnected`), a garbled
+  status line (`BadStatusLine`), a body shorter than its `Content-Length`
+  (`IncompleteRead`), a reset mid-body (`ConnectionResetError`). They were neither retried
+  nor reported: one attempt, then a traceback. They are now retried like any other
+  transient failure (`ensembl.TRANSIENT`), and once the retries are spent `annotate` and
+  `identifiability` print one line and exit 1. A 200 whose body is not JSON, such as a
+  maintenance page, is retried too (`ensembl.BadResponse`), for the batched cDNA fetch as
+  well as for lookups (`ensembl.request_json`).
+- **`annotate`'s proposal depended on the order in which the server listed transcripts**
+  when two alternative clusters tied on both transcript count and protein length: the sort
+  was stable, so the first one listed won. Nothing guarantees that order. 249 of the
+  14,054 two-class genes of GENCODE 50 (1.8%) have such a tie, and for FOXO1 and STK11
+  the REST order and the GTF's order pick different alternatives. Ties now go to the
+  lower terminal-acceptor coordinate, and a gene without a canonical transcript takes the
+  longest protein, then the lower acceptor, so the proposal is a function of the
+  annotation alone; `ALTERNATIVE_RULE` names the new last step. Of the release series'
+  654 stored configs, FOXO1 at 115 and 116 changes; no number quoted here or in the
+  README moves (the release report and its independent recount are unchanged).
+- A file named on the command line that is missing, unreadable or not what it should be
+  — a config that is not JSON, not an object or has no `groups`; a `--sequences` or
+  `--background-sequences` file that is not an object of id to sequence — printed a
+  traceback. Each is now one line naming the file, and exit 1 (`io.InputError`,
+  `io.load_json`). `qc` still accepts a config with no `groups`.
+- **The annotation-release numbers in the 2.3.0 entry came from a reconstruction of
+  GENCODE 44, not from GENCODE 44.** It restricted release 116's transcripts to the ids
+  GENCODE 44 lists, which kept release 116's sequences. Rebuilt from release 110 as served
+  (release 110 is GENCODE 44), through `--ensembl-release`, on the same 36 genes: the
+  transcript sets were right to two transcripts in 797, but 154 of the 795 it kept have a
+  different sequence at release 110, and two of 36 verdicts were wrong. NR1H3 is
+  `not_identifiable` at release 110, not `weakly_identifiable`: there a class transcript
+  and a background transcript have identical cDNA, which puts a null direction across the
+  class boundary, and release 116 lengthened one of them by 300 nt. CASP9 is
+  `weakly_identifiable` at release 110, not `identifiable`: two of its class transcripts
+  were 2.6 and 3.1 kb shorter, which leaves one class 36 expected informative reads
+  against the floor of 50 and the contrast a conditioning factor of 11.6 against `--tau`
+  10. So **8 of 36 verdicts move between GENCODE 44 and release 116, not 6**, and not all
+  in one direction: six lose resolution and two, CASP9 and NR1H3, gain it. Four of the
+  eight change whether the contrast is estimable at all (NR1H3, NTRK3, SMN2, TSC1); the
+  other four only cross `--tau`, which has no calibrated value, and two of them the
+  informative-read floor as well. The median fold change of the contrast's conditioning
+  factor is 3.2 on the same genes; 2.3.0's analysis quoted 4.6, which cannot be recovered
+  from the two result files it was computed from: that median is 3.8 there, and none of
+  some 770 other summaries of them (per class, pooled, with and without the non-estimable
+  genes, medians of ratios and ratios of medians) gives 4.6. What stands: 960 of 1911
+  transcripts across 49 genes are new since GENCODE 44, 47 of 49 genes changed, NTRK3's
+  comparison is `identifiable` at GENCODE 44 and `not_identifiable` at release 116, PFKL's
+  conditioning is 12.15 against 2182 and TPI1's 7.62 against 719. Six releases, 110 and
+  112 to 116, put a date on it: the transcript count of a 109-gene survey goes 2005, 2062,
+  2062, 2066, 3188, 4396, so a comparison measured at any release from 110 to 114 was
+  measured against nearly the same annotation, and 115 and 116 more than doubled it. The
+  growth is GENCODE's long-read annotation: every one of the 1122 transcripts release 115
+  added to those genes, and 1128 of the 1211 that 116 added, come from TAGENE, GENCODE's
+  manually supervised pipeline for long-read transcriptome data (Mudge et al., *Nucleic
+  Acids Res.* 2025, doi:10.1093/nar/gkae1078). Release 115's were all protein-coding;
+  639 of 116's are nonsense-mediated-decay candidates. Genome-wide, GENCODE lists 89,843
+  protein-coding transcripts at release 48 (Ensembl 114), 211,446 at 49 (115) and 278,455
+  at 50 (116), and 21,902, 21,949 and 91,818 nonsense-mediated-decay ones; Ensembl put
+  the release-115 addition at about 121,000 protein-coding transcripts. Release 111's
+  archive did not answer long enough to be read.
+
 ## [2.3.0] — 2026-09-15
 
 A minor version, not a patch: the exit status of `identifiability` changes meaning.

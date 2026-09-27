@@ -1,8 +1,8 @@
 """The Ensembl release is recorded, reported, and never claimed for sequence it did not
 produce.
 
-The verdict is a function of the annotation release -- between GENCODE v44 and Ensembl
-116, 6 of 36 verdicts in a 49-gene panel moved -- so a config that does not say which
+The verdict is a function of the annotation release -- between Ensembl 110 (GENCODE 44)
+and 116, 8 of 36 verdicts in a 49-gene panel moved -- so a config that does not say which
 release its groups came from gives a verdict nobody can reproduce.  ``rest.ensembl.org``
 serves only the current release, so the release a config was annotated against and the
 release ``identifiability`` later fetches sequence from are different facts, and are

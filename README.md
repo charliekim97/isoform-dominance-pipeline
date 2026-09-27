@@ -62,6 +62,15 @@ isoform-dominance annotate --gene LEPR --out config.json
 #   iso_896aa : 7 transcripts   (short / LepRa)
 #   iso_1165aa: 2 transcripts   (long / LepRb, canonical)
 ```
+Review it: the proposal is a function of the annotation release too. The alternative class
+is the one with the most transcripts, and transcript counts are what a new release changes
+most. Across six Ensembl releases from 110 to 116, 30 of the 84 genes in a 109-gene survey
+that had two classes at every one were proposed a different pair at some release. LEPR up to
+release 115 was proposed the 1165 aa class against a 906 aa class of two transcripts,
+because the 896 aa class also had two and ties go to the longer protein; release 116 added
+five transcripts to the 896 aa class. When a proposal is decided by such a tie, `annotate`
+says so on stderr and lists the tied clusters in the config under `_proposal.tied_with`;
+at release 116, 39 of the survey's 100 proposals were ties.
 
 **2. Identifiability guardrail (`identify`).** A short-read quantifier apportions fragments
 by solving a linear inverse problem; a class total is recoverable only when it is an
@@ -138,17 +147,36 @@ annotation release the transcripts came from, so it is reported in the output an
 > scan is streamed, so a whole-transcriptome background costs memory proportional to
 > the gene, not the file.
 
-> **Pin the release.** The verdict is a function of the annotation release: between
-> GENCODE v44 and Ensembl 116, 6 of 36 verdicts in a 49-gene panel moved. `annotate`
-> records the release it fetched from as `ensembl_release`, and `identifiability` prints it
-> in its header and carries it in the `--json` report, beside `fetched_release`, the release
-> any sequence was fetched from in that run. `rest.ensembl.org` serves only its current
-> release, so a later run that fetches sequence is not a run against the config's release,
-> and the command says so when the two differ. `--background-fasta` alone does not pin a
-> run: the configured transcripts' cDNA and the gene's other transcripts are still fetched
-> live. Pass `--sequences` with the configured transcripts' cDNA and `--background-fasta`
-> with the FASTA the index was built from, both from the release the config names, and
-> nothing is fetched at all. A verdict quoted without a release is not a reproducible claim.
+> **Pin the release.** The verdict is a function of the annotation release. Rebuilt with
+> `--ensembl-release` against six Ensembl releases from 110 (GENCODE 44, July 2023) to 116,
+> a 109-gene survey went from 2,005 transcripts to 4,396, nearly all of it in the last two
+> releases, where GENCODE added transcripts from long-read data through its TAGENE
+> pipeline: protein-coding ones at 115, protein-coding and nonsense-mediated-decay ones at
+> 116. Of the 100 comparisons `annotate` proposes at release 116, 38 could not be posed
+> at 110 at all, because one of the two classes had no protein-coding transcript there; of the
+> 62 that could, 12 change verdict between the two. NTRK3's is `identifiable` at every one of
+> those releases before 116 and `not_identifiable` at 116. The exit status moves too: at
+> `--min-log2fc 1.0` it changes across the six for 10 of the 62. `annotate` records
+> the release it fetched from as `ensembl_release`, and `identifiability` prints it in its
+> header and carries it in the `--json` report, beside `fetched_release`, the release any
+> sequence was fetched from in that run. Both commands take `--ensembl-release N`: without
+> it they read the release `rest.ensembl.org` serves — 116, the last one Ensembl publishes
+> on its REST API; later releases are on the new Ensembl platform only, which has none —
+> and with it they read release N from Ensembl's REST archive, after checking that the
+> server reports N. A config annotated against release 110 is re-run against 110 with
+> `identifiability --config config.json --ensembl-release 110`, and the command names that
+> flag when the two differ. Archives do not last: none from release 104 or earlier
+> answered on 2026-09-24, and 111's timed out for most of that day. For a verdict that has
+> to outlive them, add `--save-inputs run.json`, which writes the sequence the run used,
+> the release it came from and the k, window and k-mer convention it was built at;
+> `identifiability --config config.json --inputs run.json` then repeats the run with no
+> request at all. The file holds the gene, not one grouping of it: a rerun pools its
+> class and background sequence and splits it again by the config in hand, so a class the
+> config has narrowed still has the transcripts it dropped in the background, where a
+> live run puts them, and a transcript moved the other way is used rather than refused.
+> `--background-fasta` is not copied into that file, but its SHA-256 is, and a rerun given
+> no FASTA or another one says so, as does one at another k or window. A verdict quoted
+> without a release is not a reproducible claim.
 
 | Layer | Reports | Why it is not the layer above |
 |---|---|---|

@@ -184,8 +184,11 @@ interval.
 
 `identifiability` accepts transcript sequences and background offline, keeping the test
 suite deterministic and allowing use on compute nodes without internet access; `annotate`
-queries Ensembl and has no offline mode. Dependencies are minimal: the Ensembl REST API
-[@yates2015], NumPy [@harris2020], SciPy [@virtanen2020] and Matplotlib [@hunter2007].
+queries Ensembl and has no offline mode. The verdict is a function of the annotation
+release, so a run can be pinned to a named release and its sequence saved for replay
+without network access; Ensembl's archives of earlier releases are retired as they age.
+Dependencies are minimal: the Ensembl REST API [@yates2015], NumPy
+[@harris2020], SciPy [@virtanen2020] and Matplotlib [@hunter2007].
 
 # Research impact
 
