@@ -4,19 +4,34 @@ name: Ensembl live check
 # cannot notice the REST schema changing under it. This job hits the live API weekly so
 # a break surfaces here rather than in a user's first run.
 #
-# It distinguishes three outcomes, because the first run of this job (091426) failed on
+# Two targets, each against its own recorded answer:
+#
+#   current release   rest.ensembl.org, whatever release it serves. That is 116, the
+#                     last release Ensembl publishes on the REST API (later ones are on
+#                     its new platform only), so this answer should no longer move
+#                     either; a move is still annotated, not failed. This target is
+#                     also what notices the service itself going away.
+#   release 110       the REST archive, through `--ensembl-release 110` (GENCODE 44). An
+#                     archived release is frozen, so a move here means this package's
+#                     behaviour changed or Ensembl altered the archive -- and the archive
+#                     path has its own ways to break: the alias answers with a redirect
+#                     that urllib turns a POST into a bodiless GET across, and archives
+#                     are retired.
+#
+# Each distinguishes three outcomes, because the first run of this job (091426) failed on
 # the third and reported it as the second:
 #
-#   Ensembl unreachable      -> skip.  A 5xx or a read timeout on rest.ensembl.org is a
-#                               statement about their uptime, not about this package.  A
-#                               red check for someone else's outage is noise, and noise
-#                               on a public repository is worse than no check.
+#   Ensembl unreachable      -> skip.  A 5xx or a read timeout on rest.ensembl.org, or an
+#                               archive that does not answer, is a statement about their
+#                               uptime, not about this package.  A red check for someone
+#                               else's outage is noise, and noise on a public repository is
+#                               worse than no check.
 #   the answer changed       -> warn.  Fewer or different transcripts, a moved verdict:
-#                               real and worth seeing, but expected, since the annotation
-#                               is meant to move.  Annotated, not failed.
+#                               real and worth seeing.  Annotated, not failed.
 #   the structure broke      -> fail.  No groups, the primary comparison is not a pair,
-#                               LepRb absent, or the release field missing.  That is a
-#                               parsing or API-schema break and it should stop the build.
+#                               LepRb absent, or the release field missing or not the one
+#                               asked for.  That is a parsing or API-schema break and it
+#                               should stop the build.
 on:
   schedule:
     - cron: "17 5 * * 1"
@@ -24,10 +39,27 @@ on:
 
 jobs:
   live:
+    name: LEPR, ${{ matrix.target.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: current release
+            release: ""
+            ping: "https://rest.ensembl.org/info/ping?content-type=application/json"
+            baseline: ".github/lepr-live-baseline.json"
+          - name: release 110 archive
+            release: "110"
+            ping: "https://e110.rest.ensembl.org/info/ping?content-type=application/json"
+            baseline: ".github/lepr-e110-baseline.json"
+    env:
+      RELEASE: ${{ matrix.target.release }}
+      PING: ${{ matrix.target.ping }}
+      BASELINE: ${{ matrix.target.baseline }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install -e "."
@@ -37,11 +69,10 @@ jobs:
         run: |
           python - <<'PY'
           import os, time, urllib.request
-          U = "https://rest.ensembl.org/info/ping?content-type=application/json"
           ok = False
           for i in range(4):
               try:
-                  urllib.request.urlopen(U, timeout=20).read()
+                  urllib.request.urlopen(os.environ["PING"], timeout=20).read()
                   ok = True
                   break
               except Exception as e:
@@ -56,22 +87,25 @@ jobs:
           PY
       - name: note the outage and stop
         if: steps.ping.outputs.up != 'true'
-        run: echo "::notice::rest.ensembl.org did not answer four pings; live check skipped, nothing is wrong with this package."
+        run: echo "::notice::$PING did not answer four pings; this check skipped, nothing is wrong with this package."
 
-      - name: annotate against live Ensembl
+      - name: annotate
         if: steps.ping.outputs.up == 'true'
         run: |
           python - <<'PY'
-          import json, subprocess, sys
-          NET = ("Ensembl request failed", "HTTPError", "URLError", "timed out", "TimeoutError")
+          import json, os, subprocess, sys
+          NET = ("Ensembl request failed", "Ensembl release not available", "HTTPError",
+                 "URLError", "timed out", "TimeoutError")
+          rel = os.environ["RELEASE"]
+          pin = ["--ensembl-release", rel] if rel else []
           r = subprocess.run(
               ["isoform-dominance", "annotate", "--gene", "LEPR",
-               "--out", "/tmp/lepr.json", "--json"],
+               "--out", "/tmp/lepr.json", "--json"] + pin,
               capture_output=True, text=True)
           if r.returncode:
               blob = r.stdout + r.stderr
               if any(k in blob for k in NET):
-                  print("::notice::annotate could not reach Ensembl; live check skipped.")
+                  print("::notice::annotate could not reach Ensembl; this check skipped.")
                   print(blob[-800:])
                   sys.exit(0)
               print(blob[-2000:]); sys.exit(r.returncode)
@@ -83,6 +117,8 @@ jobs:
           ids = {t for v in cfg["groups"].values() for t in v}
           assert "ENST00000349533" in ids, sorted(ids)      # LepRb must still be there
           assert isinstance(cfg["ensembl_release"], int), cfg.get("ensembl_release")
+          if rel:
+              assert cfg["ensembl_release"] == int(rel), (cfg["ensembl_release"], rel)
 
           sizes = {k: len(v) for k, v in cfg["groups"].items()}
           print("ok: release", cfg["ensembl_release"], sizes)
@@ -91,7 +127,7 @@ jobs:
                     open("/tmp/lepr.summary.json", "w"))
           PY
 
-      - name: identifiability against live Ensembl
+      - name: identifiability
         if: steps.ping.outputs.up == 'true'
         run: |
           python - <<'PY'
@@ -99,23 +135,29 @@ jobs:
           if not os.path.exists("/tmp/lepr.json"):
               print("::notice::annotate skipped on a network failure; nothing to check.")
               raise SystemExit(0)
-          NET = ("Ensembl request failed", "HTTPError", "URLError", "timed out", "TimeoutError")
+          NET = ("Ensembl request failed", "Ensembl release not available", "HTTPError",
+                 "URLError", "timed out", "TimeoutError")
+          rel = os.environ["RELEASE"]
+          pin = ["--ensembl-release", rel] if rel else []
           r = subprocess.run(
               ["isoform-dominance", "identifiability", "--config", "/tmp/lepr.json",
-               "--min-log2fc", "1.0", "--json"],
+               "--min-log2fc", "1.0", "--json"] + pin,
               capture_output=True, text=True)
           blob = r.stdout + r.stderr
           if r.returncode and any(k in blob for k in NET):
-              print("::notice::identifiability could not reach Ensembl; live check skipped.")
+              print("::notice::identifiability could not reach Ensembl; this check skipped.")
               print(blob[-800:]); sys.exit(0)
           print(blob[-4000:])
-          # the exit status now answers "is the requested effect size resolvable", which is
-          # a verdict about LEPR under today's annotation, not a health check on the code.
+          # the exit status answers "is the requested effect size resolvable", which is a
+          # verdict about LEPR under that annotation, not a health check on the code.
           # Record it; do not fail on it.
           try:
               res = json.loads(r.stdout)
           except Exception:
               print("::error::identifiability produced no parsable JSON"); sys.exit(1)
+          if rel:
+              got = res["annotation"]["fetched_release"]
+              assert got == int(rel), "sequence came from release %r, not %s" % (got, rel)
           json.dump({"exit": r.returncode, "result": res}, open("/tmp/lepr.ident.json", "w"))
           print("identifiability exit status:", r.returncode)
           PY
@@ -125,7 +167,8 @@ jobs:
         run: |
           python - <<'PY'
           import json, os
-          base_path = ".github/lepr-live-baseline.json"
+          base_path = os.environ["BASELINE"]
+          frozen = bool(os.environ["RELEASE"])
           missing = [p for p in ("/tmp/lepr.summary.json", "/tmp/lepr.ident.json")
                      if not os.path.exists(p)]
           if missing:
@@ -140,11 +183,15 @@ jobs:
           base = json.load(open(base_path))
           diffs = [k for k in set(base) | set(now) if base.get(k) != now.get(k)]
           if diffs:
-              print("::warning::the live answer for LEPR moved since the baseline: %s"
-                    % ", ".join("%s %r -> %r" % (k, base.get(k), now.get(k)) for k in sorted(diffs)))
+              print("::warning::the answer for LEPR moved since %s: %s%s"
+                    % (base_path,
+                       ", ".join("%s %r -> %r" % (k, base.get(k), now.get(k))
+                                 for k in sorted(diffs)),
+                       " -- an archived release is frozen, so this package's behaviour "
+                       "changed or Ensembl altered the archive" if frozen else ""))
               print("baseline:", json.dumps(base))
               print("today:   ", json.dumps(now))
-              print("If this is real annotation drift, update %s in the same commit that "
+              print("If the change is real and intended, update %s in the same commit that "
                     "records it." % base_path)
           else:
               print("unchanged from baseline:", json.dumps(now))
