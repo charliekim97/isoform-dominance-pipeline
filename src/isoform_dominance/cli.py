@@ -23,6 +23,7 @@ with ``--min-log2fc``:
 import argparse
 import json
 import math
+import os
 import sys
 
 from . import (__version__, annotate, contamination, ensembl, extract, identifiability,
@@ -113,11 +114,100 @@ def _load_sequences(path, flag):
     return seqs
 
 
+def _fasta_note(saved, given):
+    """What to say when a rerun from saved inputs has another --background-fasta, or none.
+
+    ``saved`` is the ``background_fasta`` record of the saved inputs (None if that run
+    used none); ``given`` is this run's --background-fasta.  None when they agree.
+    """
+    if saved is None:
+        return None
+    if not given:
+        return ("the saved run also used --background-fasta %s (sha256 %s...); without it, "
+                "windows shared with other genes count as unique here and the verdict can "
+                "differ. Pass it again." % (saved["path"], saved["sha256"][:12]))
+    if io.file_sha256(given) != saved["sha256"]:
+        return ("--background-fasta %s is not the file the inputs were saved with (%s, "
+                "sha256 %s...); the verdict can differ." % (given, saved["path"],
+                                                           saved["sha256"][:12]))
+    return None
+
+
+def _analysis_note(saved, k, window, canonical):
+    """What to say when a rerun from saved inputs is at another k, window or convention.
+
+    Neither k, nor the window, nor the k-mer convention is recorded in the config, so
+    nothing else can tell a rerun that it is not repeating the run that was saved.
+    """
+    mine = {"k": k, "window": window if window is not None else k, "canonical": canonical}
+    if saved == mine:
+        return None
+
+    def _say(d):
+        return ("k=%d, window=%d, %s k-mers"
+                % (d["k"], d["window"], "canonical" if d["canonical"] else "strand-aware"))
+    return ("the inputs were saved at %s; this run is at %s, which is a different "
+            "compatibility system on the same sequence, so the verdict can differ."
+            % (_say(saved), _say(mine)))
+
+
+def _load_saved_inputs(a, cfg):
+    """The saved inputs ``--inputs`` names, split by *this* config; exits on misuse.
+
+    A saved file holds the sequence of one grouping: the configured transcripts under
+    ``sequences`` and the rest of the gene under ``background_sequences``.  Which is
+    which is a property of the config, not of the file, so the two are pooled and split
+    again here by the config in hand -- the rule a live run follows.  Splitting them by
+    the saved grouping instead dropped a transcript the config no longer names from the
+    background as well as from its class, and refused one moved the other way for "no
+    sequence" while holding that sequence.
+    """
+    if a.sequences or a.background_sequences or a.ensembl_release is not None:
+        raise ValueError("--inputs replaces --sequences, --background-sequences and "
+                         "--ensembl-release; pass it alone")
+    inputs = io.load_inputs(a.inputs)
+    if inputs.get("gene") and cfg.get("gene") and inputs["gene"] != cfg["gene"]:
+        raise ValueError("the saved inputs are for %s and the config for %s"
+                         % (inputs["gene"], cfg["gene"]))
+    pool = dict(inputs["background_sequences"], **inputs["sequences"])
+    needed = {t.split(".")[0] for ids in cfg["groups"].values() for t in ids}
+    absent = sorted(needed - set(pool))
+    if absent:
+        # never fall through to Ensembl here: the point of --inputs is a run that does not
+        # depend on it, and a silent fetch would mix releases
+        raise ValueError("the saved inputs have no sequence for %s, which the config names; "
+                         "they were saved for another grouping" % ", ".join(absent))
+    return dict(inputs,
+                sequences={t: pool[t] for t in sorted(needed)},
+                background_sequences={t: s for t, s in pool.items() if t not in needed})
+
+
 def cmd_identifiability(a):
     cfg = io.load_config(a.config)
-    seqs = _load_sequences(a.sequences, "--sequences") if a.sequences else None
-    background = (_load_sequences(a.background_sequences, "--background-sequences")
-                  if a.background_sequences else None)
+    if a.save_inputs:
+        # checked before the run, which can spend minutes on an archive, not after it
+        if os.path.isdir(a.save_inputs):
+            raise io.InputError("--save-inputs %s: is a directory; name the file to write"
+                                % a.save_inputs)
+        where = os.path.dirname(os.path.abspath(a.save_inputs))
+        if not os.path.isdir(where):
+            raise io.InputError("--save-inputs %s: directory %s does not exist"
+                                % (a.save_inputs, where))
+    inputs = None
+    try:
+        if a.inputs:
+            inputs = _load_saved_inputs(a, cfg)
+    except ValueError as e:
+        print("config error: %s" % e, file=sys.stderr)
+        return 1
+    if inputs is not None:
+        seqs = inputs["sequences"]
+        background = None if a.no_gene_background else inputs["background_sequences"]
+    else:
+        seqs = _load_sequences(a.sequences, "--sequences") if a.sequences else None
+        background = (_load_sequences(a.background_sequences, "--background-sequences")
+                      if a.background_sequences else None)
+    captured = {} if a.save_inputs else None
     try:
         res = identifiability.analyze(
             cfg, k=a.k, sequences=seqs,
@@ -125,11 +215,13 @@ def cmd_identifiability(a):
             window=a.window,
             background_sequences=background,
             background_fasta=a.background_fasta,
-            background_gene_transcripts=False if a.no_gene_background else "auto",
+            background_gene_transcripts=(False if a.no_gene_background or inputs is not None
+                                         else "auto"),
             read_length=a.read_length, frag_mean=a.frag_mean, frag_sd=a.frag_sd,
             paired=not a.single_end, depth=a.depth, tpm=a.tpm, n_donors=a.donors,
             conditioning_tau=a.tau, min_informative_reads=a.min_informative_reads,
             min_log2fc=a.min_log2fc, ensembl_release=a.ensembl_release,
+            inputs_out=captured,
             retries=a.retries, retry_wait=a.retry_wait)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
@@ -138,6 +230,23 @@ def cmd_identifiability(a):
     except ValueError as e:
         print("config error: %s" % e, file=sys.stderr)
         return 1
+    if inputs is not None:
+        res["annotation"]["inputs_release"] = inputs["ensembl_release"]
+        for note in (_analysis_note(inputs["analysis"], a.k, a.window, not a.strand_aware),
+                     _fasta_note(inputs.get("background_fasta"), a.background_fasta)):
+            if note:
+                print("  NOTE: " + note, file=sys.stderr)
+    if captured is not None:
+        release = res["annotation"]["fetched_release"]
+        if release is None and inputs is not None:
+            release = inputs["ensembl_release"]
+        io.save_inputs(a.save_inputs, captured, cfg, release, __version__,
+                       background_fasta=a.background_fasta)
+        print("  saved this run's sequence (%s) to %s; repeat it with no network: "
+              "--inputs %s" % ("Ensembl release %s" % release if release is not None
+                               else "release unknown: supplied offline",
+                               a.save_inputs, a.save_inputs), file=sys.stderr)
+
     if a.json:
         _emit(res)
         return _identifiability_exit(res)
@@ -147,11 +256,20 @@ def cmd_identifiability(a):
           % (res["window"], res["k"], "canonical" if res["canonical"] else "strand-aware"))
     rel = res["annotation"]["ensembl_release"]
     got = res["annotation"]["fetched_release"]
-    print("  annotation: %s%s"
+    saved = res["annotation"].get("inputs_release")
+    print("  annotation: %s%s%s"
           % ("Ensembl release %s" % rel if rel is not None
              else "release not recorded in the config",
              "; sequence fetched from release %s" % got
-             if got is not None and got != rel else ""))
+             if got is not None and got != rel else "",
+             "; sequence from saved inputs (%s, %s)"
+             % ("release %s" % saved if saved is not None else "release not recorded",
+                a.inputs) if a.inputs else ""))
+    if a.inputs and rel is not None and saved != rel:
+        print("  NOTE: the config was annotated against Ensembl release %s, and the saved "
+              "inputs %s." % (rel, "are from release %s" % saved if saved is not None
+                              else "record no release: their sequence was supplied offline"),
+              file=sys.stderr)
     if rel is None:
         print("  NOTE: the config records no Ensembl release, and the verdict is a function "
               "of the release its transcripts came from, so this verdict is not "
@@ -397,6 +515,15 @@ def build_parser():
                    help="window length for the compatibility system (default: k). A "
                         "different window gives a different system, not a uniformly "
                         "sharper one: the rank is not monotone in it.")
+    s.add_argument("--save-inputs", metavar="FILE",
+                   help="write the sequence this run used -- the configured transcripts, "
+                        "the gene background and the Ensembl release they came from -- to "
+                        "FILE, so the run can be repeated with --inputs and no network after "
+                        "the release's REST archive is gone. A --background-fasta is recorded "
+                        "by path and SHA-256, not copied")
+    s.add_argument("--inputs", metavar="FILE",
+                   help="run on sequence saved by --save-inputs, with no request at all; "
+                        "replaces --sequences, --background-sequences and --ensembl-release")
     s.add_argument("--sequences", help="optional JSON {transcript_id: cdna} (offline)")
     s.add_argument("--background-sequences", help="optional JSON {transcript_id: cdna} of background transcripts")
     s.add_argument("--background-fasta",

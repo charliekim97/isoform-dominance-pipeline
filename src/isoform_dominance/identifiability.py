@@ -760,7 +760,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             mean_efflen=DEFAULT_MEAN_EFFLEN, tpm=DEFAULT_TPM, n_donors=1,
             conditioning_tau=DEFAULT_CONDITIONING_TAU,
             min_informative_reads=DEFAULT_MIN_INFORMATIVE_READS,
-            min_log2fc=None, ensembl_release=None,
+            min_log2fc=None, ensembl_release=None, inputs_out=None,
             retries=DEFAULT_RETRIES, retry_wait=DEFAULT_RETRY_WAIT):
     """Assess whether the configured isoform classes are measurable by short reads.
 
@@ -809,6 +809,13 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         currently serves; an earlier one is read from Ensembl's REST archive (see
         :func:`isoform_dominance.ensembl.resolve_server`).  Nothing is resolved, and no
         request made, when every sequence was supplied.
+    inputs_out
+        A dict to fill with the sequence this run used: ``sequences`` (the configured
+        transcripts), ``background_sequences`` (the gene background, after the configured
+        transcripts are removed from it), ``fetched_release``, and the ``k``, ``window``
+        and ``canonical`` the system was built at -- none of which is in the config.
+        Written to a file by :func:`isoform_dominance.io.save_inputs`, it repeats the run
+        with no request at all, after the release's REST archive is gone.
     retries, retry_wait
         Each Ensembl request is retried up to ``retries`` times after the first
         attempt, waiting ``retry_wait`` seconds and doubling each time (an HTTP 429
@@ -891,6 +898,11 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
                              % (fetched_release, ", ".join(absent)))
         seqs.update(got)
     bg_seqs = {t: s for t, s in bg_seqs.items() if t not in needed}
+    if inputs_out is not None:
+        inputs_out.update(sequences={t: seqs[t] for t in needed},
+                          background_sequences=dict(bg_seqs),
+                          fetched_release=fetched_release,
+                          k=k, window=window, canonical=canonical)
 
     # ---- window tracks ---------------------------------------------------- #
     tracks = {t: kmer_track(seqs[t], window, canonical) for t in needed}

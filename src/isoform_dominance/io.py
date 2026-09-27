@@ -1,6 +1,12 @@
-"""Shared IO helpers: config and sample-map loading."""
+"""Shared IO helpers: config, sample-map and saved-inputs loading."""
 import csv
+import datetime
+import hashlib
 import json
+import os
+
+#: The ``format`` field of a file written by :func:`save_inputs`.
+INPUTS_FORMAT = "isoform-dominance/inputs/1"
 
 
 class InputError(ValueError):
@@ -28,6 +34,14 @@ def load_config(path, need_groups=True):
                          "transcript ids; `annotate` writes one" % path)
     return cfg
 
+
+def file_sha256(path, chunk=1 << 20):
+    """Hex SHA-256 of the file's bytes, read in 1 MiB chunks."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(chunk), b""):
+            h.update(block)
+    return h.hexdigest()
 
 
 def transcript_to_group(groups):
@@ -60,3 +74,82 @@ def primary_pair(config):
             "two groups." % (pc,))
     return pc[0], pc[1]
 
+
+def save_inputs(path, captured, config, release, version, background_fasta=None):
+    """Write the sequence an ``identifiability`` run used, so it can be repeated offline.
+
+    ``captured`` is what :func:`isoform_dominance.identifiability.analyze` put in
+    ``inputs_out``; ``release`` is the Ensembl release that sequence came from, or None
+    when it was supplied from an unknown one.  Ensembl keeps REST archives for recent
+    releases only, and stopped publishing new releases on the REST API after 116, so
+    this file, not the archive, is what keeps a verdict reproducible.
+
+    A ``background_fasta`` is not copied -- a transcriptome FASTA runs to hundreds of
+    megabytes -- but its path, size and SHA-256 are recorded, so that a rerun from this
+    file can say when it is given no FASTA, or another one.
+
+    ``analysis`` records the k, window and k-mer convention the run used.  None of the
+    three is in the config, so without them nothing can tell a rerun from this file that
+    it is building a different compatibility system on the same sequence.
+    """
+    fasta = None
+    if background_fasta:
+        fasta = {"path": str(background_fasta), "bytes": os.path.getsize(background_fasta),
+                 "sha256": file_sha256(background_fasta)}
+    doc = {"format": INPUTS_FORMAT, "package_version": version,
+           "saved": datetime.date.today().isoformat(),
+           "gene": config.get("gene"), "species": config.get("species", "homo_sapiens"),
+           "ensembl_release": release,
+           "config_ensembl_release": config.get("ensembl_release"),
+           "analysis": {key: captured[key] for key in ("k", "window", "canonical")},
+           "background_fasta": fasta,
+           "sequences": captured["sequences"],
+           "background_sequences": captured["background_sequences"]}
+    with open(path, "w") as f:
+        json.dump(doc, f)
+    return doc
+
+
+def load_inputs(path):
+    """Read a file written by :func:`save_inputs`; :class:`InputError` if it is not one.
+
+    Every field the caller goes on to read is checked here, so that a hand-edited or
+    truncated file is one line naming the file rather than a ``KeyError`` or a
+    ``TypeError`` from somewhere inside the analysis.
+    """
+    doc = load_json(path, "saved inputs")
+    fmt = doc.get("format") if isinstance(doc, dict) else None
+    if fmt != INPUTS_FORMAT:
+        raise InputError("%s is not a saved-inputs file (format %r, expected %r); write one "
+                         "with `identifiability --save-inputs`" % (path, fmt, INPUTS_FORMAT))
+    for key in ("sequences", "background_sequences"):
+        seqs = doc.get(key)
+        if not (isinstance(seqs, dict)
+                and all(isinstance(k, str) and isinstance(v, str) for k, v in seqs.items())):
+            raise InputError("saved inputs %s: %s is not an object of transcript id to "
+                             "sequence" % (path, key))
+    if "ensembl_release" not in doc:
+        raise InputError("saved inputs %s records no ensembl_release; write the file with "
+                         "`identifiability --save-inputs`" % path)
+    if not isinstance(doc["ensembl_release"], (int, type(None))) \
+            or isinstance(doc["ensembl_release"], bool):
+        raise InputError("saved inputs %s: ensembl_release is %r, expected a release number "
+                         "or null" % (path, doc["ensembl_release"]))
+    analysis = doc.get("analysis")
+    if analysis is None:
+        raise InputError("saved inputs %s records no analysis (k, window, canonical); it "
+                         "was written by a version before 2.4, and which compatibility "
+                         "system it was saved from cannot be recovered from it" % path)
+    if not (isinstance(analysis, dict)
+            and all(isinstance(analysis.get(key), int) and not isinstance(analysis.get(key), bool)
+                    for key in ("k", "window"))
+            and isinstance(analysis.get("canonical"), bool)):
+        raise InputError("saved inputs %s: analysis is %r, expected k and window as "
+                         "integers and canonical as a boolean" % (path, analysis))
+    fasta = doc.get("background_fasta")
+    if fasta is not None and not (isinstance(fasta, dict)
+                                  and isinstance(fasta.get("path"), str)
+                                  and isinstance(fasta.get("sha256"), str)):
+        raise InputError("saved inputs %s: background_fasta is %r, expected null or an "
+                         "object with a path and a sha256" % (path, fasta))
+    return doc

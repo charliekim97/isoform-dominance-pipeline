@@ -48,8 +48,9 @@ def test_identifiability_cli_ok(tmp_path):
 def test_not_identifiable_without_min_log2fc_exits_zero(tmp_path, capsys):
     """The structural verdict is a flag in the report, not the exit status.
 
-    It moves with the annotation release -- NTRK3 is `not_identifiable` on live Ensembl
-    and `identifiable` on GENCODE v44 -- so it cannot gate a program's exit code.
+    It moves with the annotation release -- NTRK3's comparison is `identifiable` at every
+    Ensembl release measured from 110 (GENCODE 44) to 115 and `not_identifiable` at 116 --
+    so it cannot gate a program's exit code.
     """
     dup = _SHARED + _ALT_A
     cfg, seqs = _write_case(
@@ -226,3 +227,56 @@ def test_extract_stats_qc_cli_end_to_end(tmp_path):
                   + ["--out", os.path.join(base, "qc")])
     assert (rc or 0) == 0
     assert os.path.exists(os.path.join(base, "qc.png"))
+
+
+# ---- a file named on the command line that is missing or unusable: one line, exit 1 -- #
+@pytest.mark.parametrize("content, message", [
+    (None, "error: No such file or directory: "),
+    ("not json {", "is not valid JSON"),
+    ("[1, 2]", "is not a JSON object"),
+    ('{"gene": "X"}', 'has no "groups" object'),
+])
+def test_an_unusable_config_is_one_line_not_a_traceback(tmp_path, capsys, content, message):
+    cfg = tmp_path / "cfg.json"
+    if content is not None:
+        cfg.write_text(content)
+    assert cli.main(["identify", "--config", str(cfg)]) == 1
+    err = capsys.readouterr().err
+    assert message in err and "Traceback" not in err and len(err.strip().splitlines()) == 1
+
+
+@pytest.mark.parametrize("flag", ["--sequences", "--background-sequences", "--inputs"])
+@pytest.mark.parametrize("content", [None, "[]", "{oops"])
+def test_an_unusable_sequence_file_is_one_line_not_a_traceback(tmp_path, capsys, flag,
+                                                                content):
+    cfg, _ = _write_case(tmp_path, {"A": ["t1"], "B": ["t2"]}, ["A", "B"],
+                         {"t1": _ALT_A, "t2": _ALT_B})
+    bad = tmp_path / "bad.json"
+    if content is not None:
+        bad.write_text(content)
+    assert cli.main(["identify", "--config", cfg, flag, str(bad)]) == 1
+    err = capsys.readouterr().err
+    assert "Traceback" not in err and len(err.strip().splitlines()) == 1
+    assert str(bad) in err
+
+
+def test_a_qc_config_needs_no_groups(tmp_path):
+    from isoform_dominance import io
+    p = tmp_path / "qc.json"
+    p.write_text(json.dumps({"contamination_qc": {"target_group": "g"}}))
+    assert io.load_config(str(p), need_groups=False)["contamination_qc"]["target_group"] == "g"
+    with pytest.raises(io.InputError):
+        io.load_config(str(p))
+
+
+def test_a_network_oserror_is_not_mistaken_for_a_file_error(tmp_path, monkeypatch):
+    # main() turns an OSError that names a file into one line; one that names none is a
+    # bug or a network failure a command did not catch, and must stay visible
+    cfg, sq = _write_case(tmp_path, {"A": ["t1"], "B": ["t2"]}, ["A", "B"],
+                          {"t1": _ALT_A, "t2": _ALT_B})
+
+    def boom(*a, **k):
+        raise OSError("no filename here")
+    monkeypatch.setattr(identifiability, "analyze", boom)
+    with pytest.raises(OSError, match="no filename here"):
+        cli.main(["identify", "--config", cfg, "--sequences", sq])
