@@ -100,6 +100,22 @@ def cmd_annotate(a):
     for g, ids in cfg["groups"].items():
         print("  %s: %d transcripts" % (g, len(ids)))
     print("  primary_comparison:", cfg["primary_comparison"])
+    proposal = cfg.get("_proposal", {})
+    ties = proposal.get("tied_with") or []
+    if ties:
+        alt = cfg["primary_comparison"][0]
+        # quote the recorded rule rather than paraphrase one step of it: a tie on
+        # transcript count is settled by protein length and then by the acceptor
+        # coordinate, and a note that stops at the protein does not say what decided this
+        print("  NOTE: %s was chosen by a tie. %d other cluster(s) have as many transcripts "
+              "(%d): %s. The rule is %s, so a release that adds one transcript to either "
+              "can change the proposed comparison. Pick the one you mean; each is listed "
+              "under _clusters."
+              % (alt, len(ties), ties[0]["n_transcripts"],
+                 ", ".join("%d aa at acceptor %d" % (t["rep_protein_aa"],
+                                                    t["terminal_acceptor"]) for t in ties),
+                 proposal.get("alternative_rule") or annotate.ALTERNATIVE_RULE),
+              file=sys.stderr)
     print("  REVIEW _proposed/_clusters and rename groups before use.")
     return EXIT_OK
 

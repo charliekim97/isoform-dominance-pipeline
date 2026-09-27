@@ -202,3 +202,52 @@ def test_clustering_is_brittle_to_a_shifted_acceptor(monkeypatch):
     clusters = annotate.cluster_by_terminal_exon(annotate.fetch_transcripts("LEPR"))
     accs = sorted(c["acceptor"] for c in clusters)
     assert 65_571_199 in accs and 65_571_200 in accs   # split, not merged
+
+
+# --------------------------------------------------------------------------- #
+# a proposal decided by a tie says so
+# --------------------------------------------------------------------------- #
+def _with_second_short_class():
+    """LEPR_LIKE plus a second short class of three, tying the proposed alternative."""
+    payload = json.loads(json.dumps(LEPR_LIKE))
+    for i, tid in enumerate(("ENST00000800001", "ENST00000800002", "ENST00000800003")):
+        payload["Transcript"].append(
+            {"id": tid, "biotype": "protein_coding", "is_canonical": 0,
+             "Translation": {"length": 870},
+             "Exon": [{"start": 65_540_000 - 100 * i, "end": 65_541_000},
+                      {"start": 65_600_000, "end": 65_600_400}]})
+    return payload
+
+
+def test_config_records_the_rule_and_no_tie_for_lepr_like(offline_ensembl):
+    cfg = annotate.build_config("LEPR")
+    assert cfg["_proposal"]["alternative_rule"] == annotate.ALTERNATIVE_RULE
+    assert cfg["_proposal"]["tied_with"] == []
+
+
+def test_config_names_the_cluster_a_tie_was_broken_against(monkeypatch):
+    payload = _with_second_short_class()
+    monkeypatch.setattr(annotate, "_get", lambda path, **kw: {"releases": [116]}
+                        if path.startswith("/info/data") else payload)
+    cfg = annotate.build_config("LEPR")
+    assert cfg["primary_comparison"][0] == "iso_896aa"      # 896 aa beats 870 aa
+    assert [(t["terminal_acceptor"], t["rep_protein_aa"], t["n_transcripts"])
+            for t in cfg["_proposal"]["tied_with"]] == [(65_541_000, 870, 3)]
+
+
+def test_cli_warns_about_a_tie_and_is_silent_without_one(monkeypatch, tmp_path, capsys):
+    from isoform_dominance import cli
+    payload = _with_second_short_class()
+    monkeypatch.setattr(annotate, "_get", lambda path, **kw: {"releases": [116]}
+                        if path.startswith("/info/data") else payload)
+    assert cli.main(["annotate", "--gene", "LEPR", "--out", str(tmp_path / "t.json")]) == 0
+    err = capsys.readouterr().err
+    assert "chosen by a tie" in err and "870 aa at acceptor 65541000" in err
+    # the note must name the rule that actually broke the tie, all of it: a note that
+    # stops at "the longer protein" describes a step that does not decide a full tie
+    assert annotate.ALTERNATIVE_RULE in err
+
+    monkeypatch.setattr(annotate, "_get", lambda path, **kw: {"releases": [116]}
+                        if path.startswith("/info/data") else LEPR_LIKE)
+    assert cli.main(["annotate", "--gene", "LEPR", "--out", str(tmp_path / "u.json")]) == 0
+    assert "tie" not in capsys.readouterr().err

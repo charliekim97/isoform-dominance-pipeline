@@ -68,10 +68,48 @@ def cluster_by_terminal_exon(info):
     return sorted(out, key=lambda c: -c["n"])
 
 
+#: How :func:`propose_groups` picks the alternative class; recorded in every config.
+ALTERNATIVE_RULE = ("the non-canonical cluster with the most transcripts; a tie goes to the "
+                    "longer representative protein, and a tie on both to the lower terminal-"
+                    "acceptor coordinate")
+
+
+def alternative_ties(clusters, groups, primary):
+    """The clusters the alternative class was chosen over on protein length alone.
+
+    :func:`propose_groups` takes the non-canonical cluster with the most transcripts.  When
+    another cluster has as many, the choice fell to representative protein length -- a
+    tie-break, not a biological criterion -- and a later release that adds one transcript
+    to either cluster changes the proposed comparison.  Across six Ensembl releases (110,
+    112-116), 26 to 39 of the 84 to 100 two-class proposals in a 109-gene survey were ties
+    of this kind.  Of the 84 genes proposed a pair at every one of them, 30 were proposed a
+    different pair at some release; 12 of the 30 had been a tie at the release before the
+    first change, and in 8 -- LEPR and NTRK3 among them -- the new alternative was a
+    cluster the old one had been tied with.  In all 30 it was the alternative class that
+    changed, never the canonical one.
+    """
+    if len(primary) < 2:
+        return []
+    alt_ids, canon_ids = set(groups[primary[0]]), set(groups[primary[1]])
+    alt = next(c for c in clusters if set(c["ids"]) == alt_ids)
+    return [c for c in clusters
+            if set(c["ids"]) not in (alt_ids, canon_ids) and c["n"] == alt["n"]]
+
+
 def propose_groups(info):
+    """The canonical cluster, the alternative (:data:`ALTERNATIVE_RULE`) and all clusters.
+
+    Every tie is broken by content, down to the acceptor coordinate, so the proposal is a
+    function of the annotation alone.  Before 2.4 a tie on both transcript count and
+    protein length fell to the order in which the server listed the transcripts, which
+    nothing guarantees: 249 of the 14,054 two-class genes of GENCODE 50 (1.8%) are such
+    ties, and for FOXO1 and STK11 the REST order and the GTF order pick differently.
+    """
     clusters = cluster_by_terminal_exon(info)
-    canon = next((c for c in clusters if c["canonical"]), None) or max(clusters, key=lambda c: c["rep_aa"])
-    others = sorted([c for c in clusters if c is not canon], key=lambda c: (-c["n"], -c["rep_aa"]))
+    canon = (next((c for c in clusters if c["canonical"]), None)
+             or max(clusters, key=lambda c: (c["rep_aa"], -c["acceptor"])))
+    others = sorted([c for c in clusters if c is not canon],
+                    key=lambda c: (-c["n"], -c["rep_aa"], c["acceptor"]))
     alt = others[0] if others else None
     lbl_canon = "iso_%daa" % canon["rep_aa"]
     groups = {lbl_canon: canon["ids"]}
@@ -99,9 +137,15 @@ def build_config(gene, species="homo_sapiens", release=None, **retry):
     info = fetch_transcripts(gene, species, server=server, **retry)
     release = ensembl.release_number(_get("/info/data", server=server, **retry))
     groups, primary, clusters = propose_groups(info)
+    ties = alternative_ties(clusters, groups, primary)
     return {
         "gene": gene, "species": species, "ensembl_release": release,
         "groups": groups, "primary_comparison": primary,
+        "_proposal": {"alternative_rule": ALTERNATIVE_RULE,
+                      "tied_with": [{"terminal_acceptor": c["acceptor"],
+                                     "rep_protein_aa": c["rep_aa"],
+                                     "n_transcripts": c["n"],
+                                     "transcripts": c["ids"]} for c in ties]},
         "_proposed": ("Auto-proposed by `isoform-dominance annotate`. Groups = protein-coding "
                       "transcripts sharing a 3' terminal-exon splice acceptor (isoform-defining "
                       "alternative last exon). REVIEW and rename to functional names "
