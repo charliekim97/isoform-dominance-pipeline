@@ -5,7 +5,8 @@ thin wrapper over a small public Python API. Each module is importable from the
 `isoform_dominance` package and can be used directly in scripts or notebooks.
 
 ```python
-from isoform_dominance import annotate, identifiability, extract, stats, contamination, io
+from isoform_dominance import (annotate, identifiability, extract, index_scope, stats,
+                               contamination, io)
 ```
 
 The config object passed throughout is a plain dict (loaded from JSON via
@@ -128,7 +129,7 @@ was supplied. Pass a dict as `inputs_out` to get back the sequence the run used
 (`sequences`, `background_sequences`, `fetched_release`) and the system it was built at
 (`k`, `window`, `canonical`, none of which is in the config), which `io.save_inputs`
 writes to a file. Returns a dict with `k`, `window`, `canonical`; `annotation`
-(`ensembl_release`, `fetched_release`); `background`; `design`; `groups` (per group:
+(`ensembl_release`, `fetched_release`); `background` (with `same_name_copies`, from `index_scope.fasta_copies`, when `background_fasta` is given); `design`; `groups` (per group:
 `verdict`, `reasons`, `n_unique_kmers`, `unique_length`, `n_blocks`,
 `expected_informative_reads`, `estimable`, `conditioning_factor`, `gls_relative_se`,
 `min_resolvable_log2fc`, `coherence`, ...); `contrast` (the same estimability fields for
@@ -170,8 +171,42 @@ Read `quantdir/<donor>/quant.sf` Salmon outputs and sum TPM per isoform group.
 Returns `[(donor, condition, {group: tpm}), ...]`. Raises `FileNotFoundError` if no
 `quant.sf` is found and `ValueError` if a file lacks the `Name`/`TPM` columns.
 
-**`extract.run(config, quantdir, samplemap, cohort, out) -> int`**
-Run `extract` and write a per-donor CSV to `out`; returns the number of donors.
+**`extract.run(config, quantdir, samplemap, cohort, out, allow_mixed_index=False, notes=None) -> int`**
+Run `extract` and write a per-donor CSV to `out`; returns the number of donors. Beside it,
+`<out>.index.json` (`"format": "isoform-dominance/index/1"`) records each donor's index
+from Salmon's `aux_info/meta_info.json` (`index_seq_hash`, `index_name_hash`,
+`num_valid_targets`, `keep_duplicates`, `salmon_version`; null for a donor without one),
+the distinct `index_seq_hashes`, `mixed`, `missing_meta_info` and `same_name_copies`.
+Donors quantified against different indexes raise `index_scope.MixedIndexError` (an
+`io.InputError`) before anything is written, unless `allow_mixed_index`. Warnings are
+appended to `notes` when a list is given.
+
+---
+
+## `index_scope`
+
+Same-name copies of a gene on scaffolds, patches and alternate loci, which GENCODE ≥ 48
+`transcripts.fa.gz` and Ensembl `cdna.all` contain (README, "Index scope").
+
+**`index_scope.parse_header(head) -> dict | None`**
+A GENCODE (`transcript|gene|…|gene name|…`) or Ensembl cDNA (`gene:`, `gene_symbol:`,
+`chromosome:`/`scaffold:` region) FASTA header, or a quant.sf name, as
+`{transcript, gene_id, gene_name, region}` with unversioned ids (`region` is None for
+GENCODE); None for a header in neither format.
+
+**`index_scope.same_name_copies(records, target_ids, gene_names=()) -> list`**
+The gene ids among `records` whose gene name is the target transcripts' but whose gene id
+is not, as `[{gene_id, gene_name, region, transcripts}]`; empty when no target
+transcript is among the records. A record on a reference chromosome
+(`index_scope.REFERENCE_REGIONS`: 1–22, X, Y, MT) is left out; only an Ensembl header names
+the region, so from a GENCODE header every same-name gene id is returned, with `region`
+None, as a possible copy.
+
+**`index_scope.fasta_copies(path, target_ids, gene_names=()) -> list`**
+`same_name_copies` over a plain or gzipped FASTA, streamed.
+
+**`index_scope.copy_warning(copies, source) -> str | None`** — the warning the CLI prints;
+for copies without a region it says they may be same-name genes on a reference chromosome.
 
 ---
 

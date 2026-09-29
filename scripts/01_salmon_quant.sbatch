@@ -6,6 +6,15 @@
 #SBATCH --mem=64G
 #SBATCH --output=isoform_quant_%j.out
 # Salmon quantification (SLURM/HPC). Reuses a pre-built decoy-aware index.
+# Build that index
+#  - from the GENCODE release matching `annotate --ensembl-release`
+#    (https://www.gencodegenes.org/human/releases.html), and
+#  - from reference-chromosome transcripts only. GENCODE >= 48 transcripts.fa.gz and
+#    Ensembl cdna.all.fa.gz (release 116 checked) also hold scaffold, patch and
+#    alternate-locus copies, which take reads that `extract` does not count; filter
+#    them out first (README, "Index scope"). Every donor of a cohort must be quantified
+#    against the same index: `extract` compares aux_info/meta_info.json across donors
+#    and stops if they differ.
 set -euo pipefail
 # ===== EDIT =====
 SALMON=salmon

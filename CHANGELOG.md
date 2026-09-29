@@ -101,6 +101,41 @@ versioning.
   with releases 115 and 116. Re-proposing all 654 stored configs of that survey from
   their stored lookups with this version gives the same groups, pairs and clusters for
   652; FOXO1 at 115 and 116 changes, through the tie-break fix below.
+- **`extract` records which index quantified each donor, and refuses a cohort that mixes
+  indexes (issue #8).** Salmon writes `<donor>/aux_info/meta_info.json` with the index's
+  `index_seq_hash`, `index_name_hash`, `num_valid_targets`, `keep_duplicates` and
+  `salmon_version`. `extract` now copies these to a sidecar `<out>.index.json`, not to the
+  per-donor CSV, which `stats` reads, and stops before writing anything when the donors
+  of one cohort have different `index_seq_hash` values
+  (`index_scope.MixedIndexError`, exit 1): until now it summed TPMs from different indexes
+  without a word. `--allow-mixed-index` (`allow_mixed_index=True`) combines them anyway,
+  with a warning, and the sidecar says `"mixed": true`. A donor with no `meta_info.json`
+  (kallisto, or Salmon output without `aux_info`) is a warning.
+- **A same-name copy of the gene on a non-reference region is reported (issue #8).** From
+  GENCODE release 48, `transcripts.fa.gz` holds the transcripts on scaffolds, patches and
+  alternate loci as well as those on the reference chromosomes; releases 44–47 hold the
+  reference chromosomes only. The change is recorded in the release-48 entry of the
+  changelog in GENCODE's FTP `_README.TXT`, whose file description still calls the file
+  reference-chromosome only. Ensembl's `cdna.all` holds both too (checked for release 116).
+  An index built from such a FASTA lets the quantifier split a gene's reads with its
+  copies, which `extract` does not count. `identifiability --background-fasta` now lists,
+  under `background.same_name_copies`, every gene id in the FASTA that has the configured
+  transcripts' gene name but not their gene id, and warns on stderr; `extract` does the
+  same when `quant.sf` names are whole GENCODE headers (an index built without Salmon's
+  `--gencode`). Only an Ensembl header says where a gene lies, so only there is a same-name
+  gene on a reference chromosome (1–22, X, Y, MT) left out; from a GENCODE header it is
+  reported as a possible copy, and the warning says what else it may be: in GENCODE v50's
+  reference-chromosome FASTA, 34 names with a protein-coding transcript have more than one
+  gene id, among them the chrY copies of pseudoautosomal genes such as CD99 and SHOX, which
+  GENCODE 44, 48 and 50 give their own gene id, and distinct genes sharing a name such as
+  HERC3. The copies are read from the FASTA headers (GENCODE fields 2 and 6; Ensembl
+  `gene:`, `gene_symbol:` and the region), not from Ensembl REST:
+  `xrefs/symbol/homo_sapiens/SMN1` also returns SMN2's gene ids. On GENCODE v50
+  `transcripts.fa.gz` this reports one copy for SMN1 (`ENSG00000275349`) and seven for
+  HLA-A, and none for LEPR, NTRK2, NTRK3 or FLT1, whose documented numbers are therefore
+  unaffected. The README's "Full workflow" step 0 and `scripts/01_salmon_quant.sbatch` now
+  say to build the index from the GENCODE release matching `--ensembl-release` and from
+  reference-chromosome transcripts only, with a filter for each source.
 
 ### Changed
 - A release after 116 is refused as not on the REST API, not as a release that "does not

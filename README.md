@@ -214,6 +214,9 @@ linear functional of the observable fragment-class expectations.
 
 ```bash
 # 0) build a decoy-aware index once (Salmon + GENCODE) — see scripts/01_salmon_quant.sbatch
+#    - from the GENCODE release that matches `annotate --ensembl-release`
+#      (https://www.gencodegenes.org/human/releases.html), and
+#    - from reference-chromosome transcripts only: see "Index scope" below
 # 1) quantify on an HPC cluster:
 sbatch scripts/01_salmon_quant.sbatch                    # -> quant/<donor>/quant.sf
 # 2) extract per cohort:
@@ -227,6 +230,50 @@ isoform-dominance stats --config config.json --condition control \
 isoform-dominance qc --config config.json \
     --markers GSE228458=markers_228.csv --target GSE228458=perdonor_GSE228458.csv --out results/qc
 ```
+
+### Index scope
+
+From GENCODE release 48, `gencode.vX.transcripts.fa.gz` holds the transcripts on
+scaffolds, patches and alternate loci as well as those on the reference chromosomes;
+releases 44–47 hold the reference chromosomes only. The change is in the release-48 entry
+of the changelog in GENCODE's FTP `_README.TXT`; the file description in the same README
+still calls the file reference-chromosome only. Ensembl's `cdna.all.fa.gz` holds both too
+(checked for release 116). A gene with a copy on such a region (SMN1, HLA-A) is in that
+FASTA twice, under its own name and another gene id. An index built from it lets the
+quantifier split the gene's reads with the copy — Salmon folds an identical copy into the
+reference transcript, but splits reads with a copy that differs, and kallisto splits them
+either way — and `extract` counts only the configured transcript ids, so the class totals
+are biased. Build the index from reference-chromosome transcripts only. For GENCODE, keep
+the transcripts of the reference-chromosome GTF (`gencode.vX.annotation.gtf.gz`):
+
+```bash
+gzip -dc gencode.v50.annotation.gtf.gz | awk -F'\t' '$3=="transcript"' \
+  | grep -o 'transcript_id "[^"]*"' | cut -d'"' -f2 | sort -u > chr_ids.txt
+gzip -dc gencode.v50.transcripts.fa.gz \
+  | awk 'NR==FNR {keep[$1]; next} /^>/ {split(substr($0,2), h, "|"); p = (h[1] in keep)} p' chr_ids.txt - \
+  > gencode.v50.transcripts.chr.fa
+grep -c '^>' gencode.v50.transcripts.chr.fa    # = wc -l < chr_ids.txt  (644,292 for v50)
+```
+
+For Ensembl `cdna.all`, keep the records whose header region
+(`chromosome:GRCh38:<name>:…`) is 1–22, X, Y or MT:
+
+```bash
+gzip -dc Homo_sapiens.GRCh38.cdna.all.fa.gz \
+  | awk '/^>/ {split($3, r, ":"); p = (r[3] ~ /^([1-9]|1[0-9]|2[0-2]|X|Y|MT)$/)} p' \
+  > Homo_sapiens.GRCh38.cdna.primary.fa
+```
+
+The package checks for such an index where it can. `identifiability
+--background-fasta` warns when the FASTA holds a transcript with the configured gene's
+name under another gene id, and so does `extract` when `quant.sf` names carry the whole
+GENCODE header (an index built without Salmon's `--gencode`). Only an Ensembl header says
+where a gene lies, so a same-name gene on a reference chromosome — the chrY copy of a
+pseudoautosomal gene such as CD99 or SHOX, or a distinct gene sharing the name — is left
+out there, and reported from a GENCODE header as a possible copy. `extract` also writes
+`<out>.index.json`, which records the index each donor was quantified against (from
+Salmon's `aux_info/meta_info.json`), and it stops when one cohort mixes indexes, unless
+`--allow-mixed-index` is given.
 
 ## How this relates to existing tools
 
