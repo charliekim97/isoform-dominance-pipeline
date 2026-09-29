@@ -1,4 +1,4 @@
-"""Index scope: same-name copies of a gene on non-reference regions.
+"""Index scope: same-name copies on non-reference regions, and which index quantified whom.
 
 From GENCODE release 48, ``gencode.vX.transcripts.fa.gz`` holds the transcripts on
 scaffolds, patches and alternate loci as well as on the reference chromosomes; releases
@@ -22,11 +22,27 @@ The copies are found from the FASTA headers, which describe exactly the file the
 built from, and not from Ensembl REST: ``xrefs/symbol/homo_sapiens/SMN1`` also returns
 SMN2's gene ids.
 """
+import json
+import os
+
+from .io import InputError
+
+#: The ``format`` field of the ``<out>.index.json`` sidecar :mod:`extract` writes.
+INDEX_FORMAT = "isoform-dominance/index/1"
+
+#: What is kept of a Salmon ``aux_info/meta_info.json``.
+META_KEYS = ("salmon_version", "index_seq_hash", "index_name_hash", "num_valid_targets",
+             "keep_duplicates")
+
 _ENSEMBL_REGION_KINDS = ("chromosome:", "scaffold:", "primary_assembly:")
 
 #: Ensembl's names for the GRCh38 reference chromosomes, as a cDNA header gives them
 #: (``chromosome:GRCh38:<name>:...``): the regions the README's filter keeps.
 REFERENCE_REGIONS = frozenset([str(i) for i in range(1, 23)] + ["X", "Y", "MT"])
+
+
+class MixedIndexError(InputError):
+    """Donors in one cohort were quantified against different indexes."""
 
 
 def _unversioned(ident):
@@ -188,3 +204,40 @@ def copy_warning(copies, source):
                      "reference-chromosome GTF (gencode.vX.annotation.gtf.gz) is one of "
                      "these.")
     return "WARNING: " + " ".join(parts)
+
+
+def read_meta_info(quant_path):
+    """The index fields of the Salmon ``aux_info/meta_info.json`` beside a quant.sf, or
+    None when there is none (kallisto, or an older Salmon)."""
+    path = os.path.join(os.path.dirname(quant_path), "aux_info", "meta_info.json")
+    if not os.path.isfile(path):
+        return None
+    with open(path) as f:
+        try:
+            meta = json.load(f)
+        except json.JSONDecodeError as e:
+            raise InputError("%s is not valid JSON (%s)" % (path, e)) from e
+    return {key: meta.get(key) for key in META_KEYS}
+
+
+def index_provenance(donor_quants):
+    """``{donor: quant.sf path}`` -> the sidecar document: each donor's index fields, the
+    distinct ``index_seq_hash`` values, whether there is more than one, and the donors
+    with no meta_info.json."""
+    donors = {d: read_meta_info(q) for d, q in sorted(donor_quants.items())}
+    hashes = sorted({m["index_seq_hash"] for m in donors.values()
+                     if m and m.get("index_seq_hash")})
+    return {"format": INDEX_FORMAT, "donors": donors, "index_seq_hashes": hashes,
+            "mixed": len(hashes) > 1,
+            "missing_meta_info": [d for d, m in donors.items() if m is None]}
+
+
+def mixed_index_message(prov):
+    """Which donors went with which index, for the error and for the warning."""
+    by = {}
+    for d, m in prov["donors"].items():
+        if m and m.get("index_seq_hash"):
+            by.setdefault(m["index_seq_hash"], []).append(d)
+    return "; ".join("index_seq_hash %s (%s targets): %s"
+                     % (h, prov["donors"][ds[0]].get("num_valid_targets"), ", ".join(ds))
+                     for h, ds in sorted(by.items()))

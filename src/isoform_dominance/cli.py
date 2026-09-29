@@ -437,7 +437,11 @@ def cmd_identifiability(a):
 
 
 def cmd_extract(a):
-    n = extract.run(io.load_config(a.config), a.quantdir, a.samplemap, a.cohort, a.out)
+    notes = []
+    n = extract.run(io.load_config(a.config), a.quantdir, a.samplemap, a.cohort, a.out,
+                    allow_mixed_index=a.allow_mixed_index, notes=notes)
+    for note in notes:
+        print("  " + note, file=sys.stderr)
     if a.json:
         _emit({"out": a.out, "n_donors": n, "cohort": a.cohort})
     else:
@@ -579,6 +583,10 @@ def build_parser():
     s = _json(sub.add_parser("extract", help="quant.sf -> per-donor isoform-group TPM"))
     for x in ("config", "quantdir", "samplemap", "cohort", "out"):
         s.add_argument("--" + x, required=True)
+    s.add_argument("--allow-mixed-index", action="store_true",
+                   help="combine donors quantified against different Salmon indexes "
+                        "(different index_seq_hash in aux_info/meta_info.json) instead of "
+                        "stopping; the sidecar <out>.index.json records which is which")
     s.set_defaults(func=cmd_extract)
 
     s = _json(sub.add_parser("stats", help="paired Wilcoxon, cohort combination + figure"))

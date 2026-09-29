@@ -1,4 +1,4 @@
-"""Index scope: same-name copies of a gene on non-reference regions.
+"""Index scope: same-name copies on non-reference regions, and which index quantified whom.
 
 GENCODE's transcripts.fa gained scaffold, patch and alternate-locus transcripts at
 release 48, and Ensembl's cdna.all has them too (release 116 checked).  A gene with a copy
@@ -8,11 +8,12 @@ configured ids.  A same-name gene on a reference chromosome is not such a copy, 
 an Ensembl header says where a gene lies.
 """
 import json
+import os
 import random
 
 import pytest
 
-from isoform_dominance import cli, identifiability, index_scope
+from isoform_dominance import cli, extract, identifiability, index_scope
 
 
 def _seq(n, seed):
@@ -194,3 +195,98 @@ def test_no_background_fasta_reports_no_copies():
     res = identifiability.analyze({"groups": GROUPS, "primary_comparison": ["A", "B"]},
                                   sequences=SEQS, background_gene_transcripts=False)
     assert res["background"]["same_name_copies"] == []
+
+
+# ---- extract: which index quantified each donor ---------------------------- #
+def _quantdir(tmp_path, donors, names=None):
+    """``donors``: {donor: meta_info dict, or None for no aux_info/meta_info.json}."""
+    qd = tmp_path / "quant"
+    names = names or ["ENST00000000001.1", "ENST00000000002.1"]
+    for d, meta in donors.items():
+        (qd / d).mkdir(parents=True)
+        (qd / d / "quant.sf").write_text(
+            "Name\tLength\tEffectiveLength\tTPM\tNumReads\n"
+            + "".join("%s\t1000\t800\t%d\t10\n" % (n, 5 + i) for i, n in enumerate(names)))
+        if meta is not None:
+            (qd / d / "aux_info").mkdir()
+            (qd / d / "aux_info" / "meta_info.json").write_text(json.dumps(meta))
+    sm = tmp_path / "sm.csv"
+    sm.write_text("donor,condition\n" + "".join("%s,control\n" % d for d in donors))
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({"gene": "GENEX", "groups": GROUPS,
+                               "primary_comparison": ["A", "B"]}))
+    return ["extract", "--config", str(cfg), "--quantdir", str(qd), "--samplemap", str(sm),
+            "--cohort", "C", "--out", str(tmp_path / "pd.csv")]
+
+
+def _meta(seq_hash, targets=642692):
+    return {"salmon_version": "1.10.3", "index_seq_hash": seq_hash,
+            "index_name_hash": "n" + seq_hash, "num_valid_targets": targets,
+            "keep_duplicates": False, "num_processed": 1}
+
+
+def test_extract_records_the_index_in_a_sidecar(tmp_path):
+    argv = _quantdir(tmp_path, {"D1": _meta("58f7"), "D2": _meta("58f7")})
+    assert cli.main(argv) == cli.EXIT_OK
+    side = json.load(open(str(tmp_path / "pd.csv") + ".index.json"))
+    assert side["format"] == index_scope.INDEX_FORMAT
+    assert side["index_seq_hashes"] == ["58f7"]
+    assert side["mixed"] is False
+    assert side["missing_meta_info"] == []
+    assert side["donors"]["D1"] == {"salmon_version": "1.10.3", "index_seq_hash": "58f7",
+                                    "index_name_hash": "n58f7",
+                                    "num_valid_targets": 642692, "keep_duplicates": False}
+    # the per-donor CSV itself is untouched: no comment lines for `stats` to trip on
+    assert open(tmp_path / "pd.csv").read().splitlines()[0].startswith("cohort,donor,")
+
+
+def test_extract_stops_when_donors_were_quantified_against_different_indexes(
+        tmp_path, capsys):
+    argv = _quantdir(tmp_path, {"D1": _meta("58f7"), "D2": _meta("fdc2", 654828)})
+    assert cli.main(argv) == 1
+    err = capsys.readouterr().err
+    assert "58f7" in err and "fdc2" in err
+    assert "D1" in err and "D2" in err
+    assert "--allow-mixed-index" in err
+    assert not os.path.exists(tmp_path / "pd.csv")
+
+
+def test_allow_mixed_index_passes_and_says_so_in_the_sidecar(tmp_path, capsys):
+    argv = _quantdir(tmp_path, {"D1": _meta("58f7"), "D2": _meta("fdc2", 654828)})
+    assert cli.main(argv + ["--allow-mixed-index"]) == cli.EXIT_OK
+    assert "WARNING" in capsys.readouterr().err
+    side = json.load(open(str(tmp_path / "pd.csv") + ".index.json"))
+    assert side["mixed"] is True
+    assert side["index_seq_hashes"] == ["58f7", "fdc2"]
+
+
+def test_the_library_call_refuses_a_mixed_cohort_too(tmp_path):
+    _quantdir(tmp_path, {"D1": _meta("58f7"), "D2": _meta("fdc2")})
+    cfg = json.load(open(tmp_path / "cfg.json"))
+    with pytest.raises(index_scope.MixedIndexError):
+        extract.run(cfg, str(tmp_path / "quant"), str(tmp_path / "sm.csv"), "C",
+                    str(tmp_path / "pd.csv"))
+
+
+def test_no_meta_info_is_a_warning_not_an_error(tmp_path, capsys):
+    argv = _quantdir(tmp_path, {"D1": None, "D2": _meta("58f7")})
+    assert cli.main(argv) == cli.EXIT_OK
+    err = capsys.readouterr().err
+    assert "WARNING" in err and "D1" in err and "meta_info.json" in err
+    side = json.load(open(str(tmp_path / "pd.csv") + ".index.json"))
+    assert side["missing_meta_info"] == ["D1"]
+    assert side["donors"]["D1"] is None
+    assert side["mixed"] is False
+
+
+def test_extract_warns_on_a_copy_named_in_full_gencode_headers(tmp_path, capsys):
+    """An index built without --gencode keeps the whole header as the target name."""
+    names = [line[1:] for line in (_REF + _COPY).splitlines() if line.startswith(">")]
+    argv = _quantdir(tmp_path, {"D1": _meta("fdc2")}, names=names)
+    assert cli.main(argv) == cli.EXIT_OK
+    err = capsys.readouterr().err
+    assert "WARNING" in err and "ENSG00000000050" in err
+    assert "may be copies" in err and "pseudoautosomal" in err
+    # the configured transcripts are still found under their full-header names
+    row = open(tmp_path / "pd.csv").read().splitlines()[1].split(",")
+    assert row[3:5] == ["5.0000", "6.0000"]
