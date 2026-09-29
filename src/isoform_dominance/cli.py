@@ -27,7 +27,7 @@ import os
 import sys
 
 from . import (__version__, annotate, contamination, ensembl, extract, identifiability,
-               io, stats)
+               index_scope, io, stats)
 
 EXIT_OK = 0
 EXIT_NOT_IDENTIFIABLE = 2
@@ -262,6 +262,11 @@ def cmd_identifiability(a):
               "--inputs %s" % ("Ensembl release %s" % release if release is not None
                                else "release unknown: supplied offline",
                                a.save_inputs, a.save_inputs), file=sys.stderr)
+
+    warning = index_scope.copy_warning(res["background"]["same_name_copies"],
+                                       "--background-fasta %s" % a.background_fasta)
+    if warning:
+        print("  " + warning, file=sys.stderr)
 
     if a.json:
         _emit(res)

@@ -46,7 +46,7 @@ from urllib.error import HTTPError
 
 import numpy as np
 
-from . import ensembl
+from . import ensembl, index_scope
 from .ensembl import DEFAULT_RETRIES, DEFAULT_RETRY_WAIT
 
 ENSEMBL = ensembl.SERVER
@@ -918,6 +918,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         query = set().union(*group_windows.values()) if group_windows else set()
         fasta_hits = scan_background_fasta(
             background_fasta, query, window, canonical=canonical, exclude_ids=needed)
+        copies = index_scope.fasta_copies(background_fasta, needed,
+                                          [config.get("gene")] if config.get("gene") else ())
+    else:
+        copies = []
 
     # ---- per-group report ------------------------------------------------- #
     report = {}
@@ -1060,6 +1064,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             "gene_transcripts": sorted(bg_tracks),
             "fasta": str(background_fasta) if background_fasta else None,
             "n_background_transcripts": len(bg_tracks),
+            "same_name_copies": copies,
         },
         "design": {"read_length": read_length, "paired": paired,
                    "frag_mean": frag_mean, "frag_sd": frag_sd, "depth": depth,
