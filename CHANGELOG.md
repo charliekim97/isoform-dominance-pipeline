@@ -16,6 +16,12 @@ versioning.
 > wrote a table: a cohort quantified against more than one Salmon index, and a config none
 > of whose transcripts is in any donor's `quant.sf`.
 
+## [Unreleased]
+
+### Added
+- The author's ORCID in `CITATION.cff`, from which Zenodo takes the creators of each
+  release's record.
+
 ## [2.4.0] - 2026-09-30
 
 ### Added
