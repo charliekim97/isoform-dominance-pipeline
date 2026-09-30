@@ -164,7 +164,8 @@ def kmer_track(seq, k, canonical=True):
     return [seq[i:i + k] for i in range(len(seq) - k + 1)]
 
 
-def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=()):
+def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
+                          identical=None, identical_out=None):
     """Return the subset of ``query_kmers`` that also occurs in a background FASTA.
 
     Streams the file and never materialises the background's own k-mer set, so a
@@ -173,6 +174,12 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=()):
     Handles plain or gzipped input; ``exclude_ids`` drops records whose first
     ``|``- or whitespace-delimited field matches (version suffix ignored), which is
     how the transcripts under test are kept out of their own background.
+
+    ``identical`` maps sequences, upper-cased and stripped, to the configured transcript
+    each is: a record whose whole sequence is one of them is skipped too, and
+    ``identical_out``, a dict, receives record id -> that transcript.  Salmon's index does
+    the same with such a record: unless it is built with ``--keepDuplicates`` it keeps
+    only the first of identical sequences, so the record competes with nothing.
     """
     import gzip
 
@@ -180,6 +187,8 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=()):
     if not query:
         return set()
     exclude = {str(i).split(".")[0] for i in exclude_ids}
+    identical = identical or {}
+    lengths = {len(s) for s in identical}
     seen = set()
     opener = gzip.open if str(path).endswith((".gz", ".bgz")) else open
 
@@ -187,6 +196,10 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=()):
         if not chunks or tid in exclude:
             return
         seq = "".join(chunks).upper()
+        if len(seq) in lengths and seq in identical:
+            if identical_out is not None:
+                identical_out[tid] = identical[seq]
+            return
         for i in range(len(seq) - k + 1):
             km = seq[i:i + k]
             if canonical:
@@ -772,6 +785,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             conditioning_tau=DEFAULT_CONDITIONING_TAU,
             min_informative_reads=DEFAULT_MIN_INFORMATIVE_READS,
             min_log2fc=None, ensembl_release=None, inputs_out=None,
+            keep_duplicates=False,
             retries=DEFAULT_RETRIES, retry_wait=DEFAULT_RETRY_WAIT):
     """Assess whether the configured isoform classes are measurable by short reads.
 
@@ -790,7 +804,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     background_sequences, background_fasta, background_gene_transcripts
         What uniqueness is judged against, beyond the other configured groups.  Pass a
         FASTA -- ideally the one the Salmon index was built from -- for the honest
-        whole-index answer.  ``background_gene_transcripts`` defaults to ``"auto"``:
+        whole-index answer.  A FASTA record with the sequence of a configured
+        transcript is not counted, because Salmon's index keeps one of identical sequences;
+        ``keep_duplicates=True`` counts it, for an index built with ``--keepDuplicates``.
+        ``background_gene_transcripts`` defaults to ``"auto"``:
         the gene's remaining transcripts are fetched and used when the caller is
         already relying on Ensembl for sequence, and skipped when sequences were
         supplied offline (so an offline call never blocks on the network).  ``True``
@@ -926,6 +943,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         inputs_out.update(sequences={t: seqs[t] for t in needed},
                           background_sequences=dict(bg_seqs),
                           gene_id=bg_gene_id,
+                          keep_duplicates=keep_duplicates,
                           fetched_release=fetched_release,
                           k=k, window=window, canonical=canonical)
 
@@ -939,10 +957,17 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
 
     # ---- an external FASTA background, streamed --------------------------- #
     fasta_hits = set()
+    identical_to_configured = None
     if background_fasta:
         query = set().union(*group_windows.values()) if group_windows else set()
+        identical = None
+        if not keep_duplicates:
+            identical, identical_to_configured = {}, {}
+            for t in sorted(set(needed)):
+                identical.setdefault(seqs[t].strip().upper(), t)
         fasta_hits = scan_background_fasta(
-            background_fasta, query, window, canonical=canonical, exclude_ids=needed)
+            background_fasta, query, window, canonical=canonical, exclude_ids=needed,
+            identical=identical, identical_out=identical_to_configured)
         copies = index_scope.fasta_copies(background_fasta, needed,
                                           [config.get("gene")] if config.get("gene") else ())
     else:
@@ -1090,6 +1115,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             "gene_transcripts": sorted(bg_tracks),
             "fasta": str(background_fasta) if background_fasta else None,
             "n_background_transcripts": len(bg_tracks),
+            "keep_duplicates": keep_duplicates,
+            "identical_to_configured": identical_to_configured,
             "same_name_copies": copies,
         },
         "design": {"read_length": read_length, "paired": paired,

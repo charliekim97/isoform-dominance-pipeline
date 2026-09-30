@@ -299,7 +299,8 @@ def test_the_saved_file_records_the_analysis_parameters(ens, tmp_path, capsys):
                      "--k", "25", "--window", "40", "--strand-aware", "--json"]) == 0
     capsys.readouterr()
     doc = json.loads(open(saved).read())
-    assert doc["analysis"] == {"k": 25, "window": 40, "canonical": False}
+    assert doc["analysis"] == {"k": 25, "window": 40, "canonical": False,
+                               "keep_duplicates": False}
 
 
 def test_a_rerun_at_another_window_or_k_says_so(ens, tmp_path, capsys, monkeypatch):

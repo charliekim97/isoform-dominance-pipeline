@@ -111,8 +111,11 @@ def test_scan_background_fasta_streams_plain_and_gzip(tmp_path, gz):
 
 
 def test_background_fasta_lowers_the_verdict(tmp_path):
+    # a decoy that holds every k-mer of the short class but is not its sequence: one that
+    # is identical is not counted by default, as Salmon's index keeps one of identical
+    # sequences (tests/test_identical_copies.py)
     path = tmp_path / "bg.fa"
-    path.write_text(">DECOY\n%s\n" % (SHARED + EXON_A))
+    path.write_text(">DECOY\n%s\n" % (SHARED + EXON_A + "ACGT" * 10))
     res = I.analyze(_cfg(), k=31, sequences=_seqs(), background_fasta=str(path),
                     background_gene_transcripts=False)
     assert res["groups"]["short"]["n_unique_kmers"] == 0

@@ -152,22 +152,31 @@ def _fasta_note(saved, given):
     return None
 
 
-def _analysis_note(saved, k, window, canonical):
-    """What to say when a rerun from saved inputs is at another k, window or convention.
+def _analysis_note(saved, k, window, canonical, keep_duplicates=None):
+    """What to say when a rerun from saved inputs is at another k, window or convention,
+    or -- ``keep_duplicates`` is None when this run has no background FASTA -- counts
+    records identical to a configured transcript differently.
 
-    Neither k, nor the window, nor the k-mer convention is recorded in the config, so
-    nothing else can tell a rerun that it is not repeating the run that was saved.
+    None of these is recorded in the config, so nothing else can tell a rerun that it is
+    not repeating the run that was saved.
     """
     mine = {"k": k, "window": window if window is not None else k, "canonical": canonical}
-    if saved == mine:
-        return None
-
-    def _say(d):
-        return ("k=%d, window=%d, %s k-mers"
-                % (d["k"], d["window"], "canonical" if d["canonical"] else "strand-aware"))
-    return ("the inputs were saved at %s; this run is at %s, which is a different "
-            "compatibility system on the same sequence, so the verdict can differ."
-            % (_say(saved), _say(mine)))
+    notes = []
+    if {key: saved[key] for key in mine} != mine:
+        def _say(d):
+            return ("k=%d, window=%d, %s k-mers"
+                    % (d["k"], d["window"], "canonical" if d["canonical"] else "strand-aware"))
+        notes.append("the inputs were saved at %s; this run is at %s, which is a different "
+                     "compatibility system on the same sequence, so the verdict can differ."
+                     % (_say(saved), _say(mine)))
+    if (keep_duplicates is not None and "keep_duplicates" in saved
+            and saved["keep_duplicates"] != keep_duplicates):
+        notes.append("the inputs were saved %s --keep-duplicates and this run is %s it: a "
+                     "--background-fasta record with a configured transcript's sequence was "
+                     "%s then and is %s now, so the verdict can differ."
+                     % (("with", "without", "counted", "not counted") if saved["keep_duplicates"]
+                        else ("without", "with", "not counted", "counted")))
+    return " ".join(notes) or None
 
 
 def _load_saved_inputs(a, cfg):
@@ -245,7 +254,7 @@ def cmd_identifiability(a):
             paired=not a.single_end, depth=a.depth, tpm=a.tpm, n_donors=a.donors,
             conditioning_tau=a.tau, min_informative_reads=a.min_informative_reads,
             min_log2fc=a.min_log2fc, ensembl_release=a.ensembl_release,
-            inputs_out=captured,
+            inputs_out=captured, keep_duplicates=a.keep_duplicates,
             retries=a.retries, retry_wait=a.retry_wait)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
@@ -256,7 +265,8 @@ def cmd_identifiability(a):
         return 1
     if inputs is not None:
         res["annotation"]["inputs_release"] = inputs["ensembl_release"]
-        for note in (_analysis_note(inputs["analysis"], a.k, a.window, not a.strand_aware),
+        for note in (_analysis_note(inputs["analysis"], a.k, a.window, not a.strand_aware,
+                                    a.keep_duplicates if a.background_fasta else None),
                      _fasta_note(inputs.get("background_fasta"), a.background_fasta)):
             if note:
                 print("  NOTE: " + note, file=sys.stderr)
@@ -277,6 +287,15 @@ def cmd_identifiability(a):
                                        "--background-fasta %s" % a.background_fasta)
     if warning:
         print("  " + warning, file=sys.stderr)
+    same = res["background"].get("identical_to_configured") or {}
+    if same:
+        shown = ", ".join("%s (= %s)" % (r, same[r]) for r in sorted(same)[:5])
+        if len(same) > 5:
+            shown += " and %d more" % (len(same) - 5)
+        print("  NOTE: --background-fasta: %d record(s) with the sequence of a configured "
+              "transcript were not counted as competing sequence, because Salmon's default "
+              "index keeps one of identical sequences: %s. For an index built with Salmon's "
+              "--keepDuplicates, pass --keep-duplicates." % (len(same), shown), file=sys.stderr)
 
     if a.json:
         _emit(res)
@@ -567,6 +586,11 @@ def build_parser():
     s.add_argument("--background-fasta",
                    help="FASTA (optionally gzipped) to judge uniqueness against -- "
                         "ideally the one the Salmon index was built from")
+    s.add_argument("--keep-duplicates", action="store_true",
+                   help="the Salmon index was built with --keepDuplicates: count a "
+                        "--background-fasta record with a configured transcript's sequence as "
+                        "competing sequence (by default it is not, as Salmon's default index "
+                        "keeps one of identical sequences)")
     s.add_argument("--no-gene-background", action="store_true",
                    help="do not fetch the gene's other transcripts as background (v2.1 behaviour)")
     s.add_argument("--strand-aware", action="store_true",

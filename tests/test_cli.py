@@ -155,8 +155,9 @@ def test_identifiability_cli_json(tmp_path, capsys):
 
 
 def test_identifiability_cli_background_fasta_changes_the_verdict(tmp_path, capsys):
+    # holds all of A1's k-mers without being A1's sequence, which would not be counted
     fa = tmp_path / "bg.fa"
-    fa.write_text(">DECOY\n%s\n" % (_SHARED + _ALT_A))
+    fa.write_text(">DECOY\n%s\n" % (_SHARED + _ALT_A + "ACGT" * 10))
     cfg, seqs = _write_case(
         tmp_path, {"A": ["A1"], "B": ["B1"]}, ["A", "B"],
         {"A1": _SHARED + _ALT_A, "B1": _SHARED + _ALT_B})
