@@ -14,14 +14,19 @@ def quant_paths(quantdir):
     return {os.path.basename(os.path.dirname(q)): q for q in quants}
 
 
-def extract(config, quantdir, samplemap, cohort):
-    """Return [(donor, condition, {group: tpm}), ...]. Reads quantdir/<donor>/quant.sf."""
+def extract(config, quantdir, samplemap, cohort, found_out=None):
+    """Return [(donor, condition, {group: tpm}), ...]. Reads quantdir/<donor>/quant.sf.
+
+    ``found_out``, when a dict, receives for each donor the set of configured transcript
+    ids its quant.sf has.
+    """
     groups = config["groups"]
     tx2grp = transcript_to_group(groups)
     cond = load_sample_map(samplemap)
     rows = []
     for donor, q in sorted(quant_paths(quantdir).items()):
         gt = dict.fromkeys(groups, 0.0)
+        seen = set()
         with open(q) as fh:
             reader = csv.DictReader(fh, delimiter="\t")
             if reader.fieldnames is None or "Name" not in reader.fieldnames or "TPM" not in reader.fieldnames:
@@ -29,11 +34,57 @@ def extract(config, quantdir, samplemap, cohort):
                     "%s is not a valid Salmon quant.sf (missing 'Name'/'TPM' columns); "
                     "found columns: %s" % (q, reader.fieldnames))
             for row in reader:
-                g = tx2grp.get(row["Name"].split(".")[0])
+                tid = row["Name"].split(".")[0]
+                g = tx2grp.get(tid)
                 if g:
                     gt[g] += float(row["TPM"])
+                    seen.add(tid)
+        if found_out is not None:
+            found_out[donor] = seen
         rows.append((donor, cond.get(donor, "NA"), gt))
     return rows
+
+
+#: How many missing transcript ids a warning names before "and N more".
+SHOW_MISSING = 5
+
+_MISSING_CAUSES = (
+    "The usual causes: when the index was built, Salmon kept another copy of an identical "
+    "sequence and dropped this one (the index's duplicate_clusters.tsv lists what it "
+    "dropped) -- the chrY copy of a pseudoautosomal gene is the common case, and an index "
+    "built from GENCODE keeps the chrX one -- or the config and the index come from "
+    "different releases.")
+
+
+def missing_transcripts(config, found, cohort):
+    """What the sidecar records about configured transcripts absent from quant.sf.
+
+    ``found`` is :func:`extract`'s ``found_out``.  Raises
+    :class:`index_scope.NoConfiguredTranscripts` when no donor has any of them: every class
+    total would be zero.  Otherwise ``warning`` is one line for the whole cohort, or None.
+    """
+    configured = sorted(transcript_to_group(config["groups"]))
+    short = {d: set(configured) - s for d, s in sorted(found.items())}
+    if configured and found and all(len(m) == len(configured) for m in short.values()):
+        raise index_scope.NoConfiguredTranscripts(
+            "none of the %d transcripts the config names is in quant.sf, for any of the %d "
+            "donor(s) of cohort %s, so every class total would be zero. %s"
+            % (len(configured), len(found), cohort, _MISSING_CAUSES))
+    missing = sorted(set().union(*short.values())) if short else []
+    warning = None
+    if missing:
+        donors = [d for d, m in short.items() if m]
+        where = ("in every donor" if len(donors) == len(short)
+                 else "in %d of %d donors (%s)" % (len(donors), len(short), ", ".join(donors)))
+        shown = ", ".join(missing[:SHOW_MISSING])
+        if len(missing) > SHOW_MISSING:
+            shown += " and %d more" % (len(missing) - SHOW_MISSING)
+        warning = ("WARNING: %d of the %d transcripts the config names %s not in quant.sf %s: "
+                   "%s. They add nothing to their class totals. %s"
+                   % (len(missing), len(configured), "is" if len(missing) == 1 else "are",
+                      where, shown, _MISSING_CAUSES))
+    return {"n_configured": len(configured), "n_missing": len(missing), "ids": missing,
+            "warning": warning}
 
 
 def write_perdonor(config, rows, cohort, out):
@@ -99,9 +150,11 @@ def run(config, quantdir, samplemap, cohort, out, allow_mixed_index=False, notes
 
     Donors quantified against different indexes (different ``index_seq_hash``) are
     refused with :class:`index_scope.MixedIndexError` before anything is written, unless
-    ``allow_mixed_index``.  Warnings -- a combined mixed cohort, donors with no
-    meta_info.json, same-name copies among the index's targets -- are appended to
-    ``notes`` when a list is given.
+    ``allow_mixed_index``, and a cohort in which no donor's quant.sf has any transcript the
+    config names with :class:`index_scope.NoConfiguredTranscripts`.  Warnings -- a combined
+    mixed cohort, donors with no meta_info.json, configured transcripts missing from some
+    quant.sf, same-name copies among the index's targets -- are appended to ``notes`` when a
+    list is given.
     """
     notes = [] if notes is None else notes
     quants = quant_paths(quantdir)
@@ -121,12 +174,17 @@ def run(config, quantdir, samplemap, cohort, out, allow_mixed_index=False, notes
                      "quantified them is not recorded, and a mix of indexes cannot be "
                      "detected (kallisto, or Salmon output without aux_info)"
                      % ", ".join(prov["missing_meta_info"]))
-    rows = extract(config, quantdir, samplemap, cohort)
+    found = {}
+    rows = extract(config, quantdir, samplemap, cohort, found_out=found)
+    missing = missing_transcripts(config, found, cohort)
+    if missing["warning"]:
+        notes.append(missing["warning"])
     copies = quant_copies(config, prov, quants)
     warning = index_scope.copy_warning(copies, "the index behind %s" % quantdir)
     if warning:
         notes.append(warning)
     write_perdonor(config, rows, cohort, out)
     with open(out + ".index.json", "w") as f:
-        json.dump(dict(prov, cohort=cohort, same_name_copies=copies), f, indent=1)
+        json.dump(dict(prov, cohort=cohort, missing_transcripts=missing,
+                       same_name_copies=copies), f, indent=1)
     return len(rows)

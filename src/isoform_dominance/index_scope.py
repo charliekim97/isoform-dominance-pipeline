@@ -45,6 +45,10 @@ class MixedIndexError(InputError):
     """Donors in one cohort were quantified against different indexes."""
 
 
+class NoConfiguredTranscripts(InputError):
+    """No donor's quant.sf has any transcript the config names."""
+
+
 def _unversioned(ident):
     """``ENSG00000182378.15_PAR_Y`` -> ``ENSG00000182378``: the version, and the PAR_Y
     suffix older GENCODE releases put after it, name the same gene."""
