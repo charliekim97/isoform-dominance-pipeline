@@ -91,6 +91,10 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
     ``analysis`` records the k, window and k-mer convention the run used.  None of the
     three is in the config, so without them nothing can tell a rerun from this file that
     it is building a different compatibility system on the same sequence.
+
+    ``gene_id`` is the Ensembl gene the gene background was fetched as -- or, when none was
+    fetched, the config's ``gene_id`` -- so that a rerun can be refused a config of another
+    gene of the same name.
     """
     fasta = None
     if background_fasta:
@@ -99,6 +103,7 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
     doc = {"format": INPUTS_FORMAT, "package_version": version,
            "saved": datetime.date.today().isoformat(),
            "gene": config.get("gene"), "species": config.get("species", "homo_sapiens"),
+           "gene_id": captured.get("gene_id") or config.get("gene_id"),
            "ensembl_release": release,
            "config_ensembl_release": config.get("ensembl_release"),
            "analysis": {key: captured[key] for key in ("k", "window", "canonical")},
@@ -146,6 +151,9 @@ def load_inputs(path):
             and isinstance(analysis.get("canonical"), bool)):
         raise InputError("saved inputs %s: analysis is %r, expected k and window as "
                          "integers and canonical as a boolean" % (path, analysis))
+    if not isinstance(doc.get("gene_id"), (str, type(None))):
+        raise InputError("saved inputs %s: gene_id is %r, expected an Ensembl gene id or null"
+                         % (path, doc["gene_id"]))
     fasta = doc.get("background_fasta")
     if fasta is not None and not (isinstance(fasta, dict)
                                   and isinstance(fasta.get("path"), str)

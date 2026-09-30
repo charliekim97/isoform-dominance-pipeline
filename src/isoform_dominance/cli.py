@@ -188,6 +188,11 @@ def _load_saved_inputs(a, cfg):
     if inputs.get("gene") and cfg.get("gene") and inputs["gene"] != cfg["gene"]:
         raise ValueError("the saved inputs are for %s and the config for %s"
                          % (inputs["gene"], cfg["gene"]))
+    # one symbol can name two genes: the chrY copy of a pseudoautosomal gene has its own id
+    saved_id, cfg_id = inputs.get("gene_id"), cfg.get("gene_id")
+    if saved_id and cfg_id and saved_id.split(".")[0] != cfg_id.split(".")[0]:
+        raise ValueError("the saved inputs are for gene %s and the config for gene %s"
+                         % (saved_id, cfg_id))
     pool = dict(inputs["background_sequences"], **inputs["sequences"])
     needed = {t.split(".")[0] for ids in cfg["groups"].values() for t in ids}
     absent = sorted(needed - set(pool))
@@ -259,6 +264,8 @@ def cmd_identifiability(a):
         release = res["annotation"]["fetched_release"]
         if release is None and inputs is not None:
             release = inputs["ensembl_release"]
+        if captured.get("gene_id") is None and inputs is not None:
+            captured["gene_id"] = inputs.get("gene_id")
         io.save_inputs(a.save_inputs, captured, cfg, release, __version__,
                        background_fasta=a.background_fasta)
         print("  saved this run's sequence (%s) to %s; repeat it with no network: "

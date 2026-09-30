@@ -93,15 +93,26 @@ def fetch_cdna(transcript_id, **retry):
     return got[tid]
 
 
-def fetch_gene_transcript_ids(gene, species="homo_sapiens", **retry):
-    """Every transcript id annotated for ``gene`` (all biotypes), for use as background.
+def fetch_gene(gene, species="homo_sapiens", gene_id=None, **retry):
+    """``(gene id, every transcript id)`` of a gene (all biotypes), for use as background.
 
-    Kept separate from :mod:`isoform_dominance.annotate`, which restricts itself to
-    protein-coding transcripts: for identifiability the non-coding, retained-intron
-    and NMD transcripts matter, because Salmon indexes them too.
+    By ``gene_id`` when given, and otherwise by the symbol ``gene``.  A symbol can name
+    more than one gene -- ``lookup/symbol/CD99`` gives the chrY copy of this
+    pseudoautosomal gene, whose sequence is the chrX copy's -- which is why a config
+    records the gene it was proposed from.  Kept separate from
+    :mod:`isoform_dominance.annotate`, which restricts itself to protein-coding
+    transcripts: for identifiability the non-coding, retained-intron and NMD transcripts
+    matter, because Salmon indexes them too.
     """
-    info = ensembl.get_json("/lookup/symbol/%s/%s?expand=1" % (species, gene), **retry)
-    return [t["id"].split(".")[0] for t in info.get("Transcript", [])]
+    path = ("/lookup/id/%s?expand=1" % gene_id.split(".")[0] if gene_id
+            else "/lookup/symbol/%s/%s?expand=1" % (species, gene))
+    info = ensembl.get_json(path, **retry)
+    return info.get("id"), [t["id"].split(".")[0] for t in info.get("Transcript", [])]
+
+
+def fetch_gene_transcript_ids(gene, species="homo_sapiens", gene_id=None, **retry):
+    """Every transcript id of the gene :func:`fetch_gene` fetches."""
+    return fetch_gene(gene, species, gene_id=gene_id, **retry)[1]
 
 
 # --------------------------------------------------------------------------- #
@@ -877,14 +888,27 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         fetched_release = ensembl.fetch_release(**net)
     else:
         fetched_release = None
+    bg_gene_id = None
     if fetch_gene_background:
         try:
-            all_ids = fetch_gene_transcript_ids(
-                config["gene"], species or config.get("species", "homo_sapiens"), **net)
+            bg_gene_id, all_ids = fetch_gene(
+                config["gene"], species or config.get("species", "homo_sapiens"),
+                gene_id=config.get("gene_id"), **net)
         except HTTPError as e:
             if e.code not in (400, 404):      # 400 is Ensembl's "no such symbol"
                 raise
             all_ids = []                      # a symbol Ensembl does not know
+        if all_ids and not set(all_ids) & set(needed):
+            # a symbol that names more than one gene gave another one: its transcripts are
+            # not this gene's, and for a pseudoautosomal gene they are this gene's sequence
+            raise ValueError(
+                "Ensembl gives %s for %s, and none of its %d transcripts is one the config "
+                "names, so the gene background would be another gene's. %s"
+                % (bg_gene_id, "gene_id %s" % config["gene_id"] if config.get("gene_id")
+                   else "the symbol %s" % config["gene"], len(all_ids),
+                   "Check the config's gene_id." if config.get("gene_id") else
+                   "A symbol can name more than one gene: add the config's \"gene_id\" "
+                   "(`annotate` records it), or pass --no-gene-background."))
         # all or nothing: this used to swallow any error part-way through and carry
         # on with whatever had arrived, which is a different answer, silently
         bg_seqs.update(ensembl.fetch_cdna_batch(
@@ -901,6 +925,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     if inputs_out is not None:
         inputs_out.update(sequences={t: seqs[t] for t in needed},
                           background_sequences=dict(bg_seqs),
+                          gene_id=bg_gene_id,
                           fetched_release=fetched_release,
                           k=k, window=window, canonical=canonical)
 
@@ -1061,6 +1086,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         "annotation": {"ensembl_release": config.get("ensembl_release"),
                        "fetched_release": fetched_release},
         "background": {
+            "gene_id": bg_gene_id,
             "gene_transcripts": sorted(bg_tracks),
             "fasta": str(background_fasta) if background_fasta else None,
             "n_background_transcripts": len(bg_tracks),
