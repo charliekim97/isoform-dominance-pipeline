@@ -154,6 +154,38 @@ versioning.
   last release.
 
 ### Fixed
+- **`annotate` chose silently between genes that share a symbol (issue #9).** Ensembl's
+  `lookup/symbol` returns one gene per symbol and does not say when there are others: for
+  the pseudoautosomal genes CD99, CRLF2, CSF2RA, IL3RA and SHOX it returns the chrY copy
+  (releases 110 and 116), and for HERC3 (110, 116) and DUSP13B (116) the newer of two genes
+  of that name on one chromosome, with 1 and 2 transcripts against 22 and 8. All 42
+  transcripts of `annotate --gene CD99` belonged to ENSG00000292348, on chrY.
+  `build_config` now also asks `xrefs/symbol` for the genes of the name and keeps, with one
+  `lookup/id`, those whose display name is the symbol and that lie on 1–22, X, Y or MT. Of
+  a chrX/chrY pair it takes the chrX gene and says so; on any other set it stops
+  (`annotate.AmbiguousGene`, exit 1) and lists them. `--gene-id` (`gene_id=`) names the
+  gene outright. The config records `gene_id`, and `_gene_choice` when there was a choice.
+  The chrX gene is the copy a GENCODE-built Salmon index keeps: Salmon keeps only the first
+  of identical sequences, GENCODE's FASTA lists chrX first and Ensembl's cDNA FASTA chrY
+  first. On a 132-record index of CD99's records, Salmon 2.7.0 kept chrX in GENCODE v50
+  order and chrY in Ensembl 116 order. A symbol with one gene costs one request more than
+  before (`xrefs/symbol`), the only request that lists every gene of a name.
+- **`extract` said nothing when `quant.sf` lacked the transcripts the config names
+  (issue #9).** In the GENCODE v50 reference-chromosome index Salmon removed 1,600
+  transcripts as duplicates, among them all 66 chrY transcripts of CD99, and the CD99
+  config above came out as 0.0000 TPM and a ratio of NA for every donor, with exit 0. A
+  cohort in which no donor's `quant.sf` has any configured transcript is now refused before
+  anything is written (`index_scope.NoConfiguredTranscripts`, exit 1). Some missing is one
+  warning for the cohort, with the count, the first five ids, the donors and the two usual
+  causes, and `missing_transcripts` in `<out>.index.json`.
+- **`identifiability` fetched the gene background by symbol (issue #9).** For a config of
+  CD99's chrX gene, that background was the chrY gene's 66 transcripts, whose sequence is
+  the configured one: no unique k-mer in either class and `not_identifiable`, against
+  `identifiable` (1,273 and 3,051 unique k-mers) with the same sequence and no gene
+  background. A config with `gene_id` is now looked up by id; one without it is looked up
+  by symbol as before, and refused when that gene holds none of the configured transcripts.
+  The report gives `background.gene_id`, `--save-inputs` records `gene_id`, and `--inputs`
+  refuses a config whose `gene_id` is another gene's.
 - **An archive alias that redirects to `rest.ensembl.org` itself was read as a retired
   archive.** The test for "still inside the REST service" accepted only hosts ending in
   `.rest.ensembl.org`, and `rest.ensembl.org` is not a subdomain of itself, so

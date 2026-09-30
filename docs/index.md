@@ -52,6 +52,13 @@ isoform-dominance annotate --gene LEPR --out config.json
 #   iso_896aa : 7 transcripts   (short / LepRa)
 #   iso_1165aa: 2 transcripts   (long / LepRb, canonical)
 ```
+A symbol can name more than one gene on the reference chromosomes, and Ensembl's
+`lookup/symbol` returns one of them without saying so: for pseudoautosomal genes such as
+CD99 and SHOX the chrY copy, for HERC3 the newer of two genes of that name. `annotate` looks
+for the others. Of a chrX/chrY pair it takes the chrX gene — Salmon keeps only the first of
+identical sequences, and a GENCODE FASTA lists chrX first — and says so; on any other set it
+stops and lists them, and `--gene-id` picks one. The config records `gene_id`, and
+`identifiability` fetches the gene background by it.
 
 **2. Identifiability guardrail (`identify`).** Short reads can only quantify an isoform group
 that has *unique* sequence. This checks per-group unique k-mers and **refuses to pretend** a
@@ -126,7 +133,10 @@ pseudoautosomal gene such as CD99 or SHOX, or a distinct gene sharing the name �
 out there, and reported from a GENCODE header as a possible copy. `extract` also writes
 `<out>.index.json`, which records the index each donor was quantified against (from
 Salmon's `aux_info/meta_info.json`), and it stops when one cohort mixes indexes, unless
-`--allow-mixed-index` is given.
+`--allow-mixed-index` is given. It also counts the configured transcripts in each
+`quant.sf`: a cohort with none of them is refused, and some missing is a warning. Salmon
+drops all but the first of identical sequences when it builds an index (the index's
+`duplicate_clusters.tsv` lists them), so a config that names a dropped copy finds nothing.
 
 ## Statistical notes
 

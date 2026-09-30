@@ -32,7 +32,7 @@ Propose isoform groups for a gene from Ensembl by clustering protein-coding
 transcripts on their 3' terminal-exon splice acceptor.
 
 **`annotate.fetch_transcripts(gene, species="homo_sapiens", server=None) -> dict`**
-Query Ensembl and return `{gene, species, strand, transcripts: [{id, protein_aa, terminal_acceptor, is_canonical}]}`. Raises `ValueError` if no protein-coding transcripts with a translation are found. `server` is a base URL from `ensembl.resolve_server`; None is the current release. Network access required.
+Query Ensembl for the gene `lookup/symbol` gives and return `{gene, gene_id, species, strand, transcripts: [{id, protein_aa, terminal_acceptor, is_canonical}]}` (`annotate.transcripts_of(record, gene)` does the same for an expanded lookup record). Raises `ValueError` if no protein-coding transcripts with a translation are found. `server` is a base URL from `ensembl.resolve_server`; None is the current release. Network access required.
 
 **`annotate.cluster_by_terminal_exon(info) -> list`**
 Group the transcripts from `fetch_transcripts` by terminal-exon acceptor coordinate; returns clusters sorted by size, each `{acceptor, rep_aa, n, canonical, ids}`.
@@ -43,11 +43,14 @@ Choose the canonical cluster and the largest alternative cluster, returning `gro
 **`annotate.alternative_ties(clusters, groups, primary) -> list`**
 The clusters the alternative class was chosen over on the tie-breaks rather than on transcript count: those, other than the two proposed, with as many transcripts as the alternative. Empty when the choice was not a tie. A release that adds one transcript to a tied cluster changes the proposal; across six releases of a 109-gene survey, 26 to 39 of 84 to 100 proposals were ties.
 
-**`annotate.build_config(gene, species="homo_sapiens", release=None) -> dict`**
-Convenience wrapper returning a complete, reviewable config dict (including `ensembl_release`, `_proposed` notes, `_clusters`, and `_proposal`: `alternative_rule` and `tied_with`, the clusters from `alternative_ties`). `release` is the Ensembl release to propose the groups from; None is the one `rest.ensembl.org` currently serves, and an earlier one is read from Ensembl's REST archive (see `ensembl.resolve_server`). `ensembl_release` records the release the server reported.
+**`annotate.choose_gene(gene, species, looked_up, **net) -> (record, choice)`**
+The gene a symbol means. `looked_up` is the expanded record `lookup/symbol` gave; `xrefs/symbol` lists the other genes of the name and one `lookup/id` keeps those whose display name is the symbol and that lie on 1–22, X, Y or MT (`xrefs/symbol/SMN1` also lists SMN2 and alternate-locus copies). One such gene: `(it, None)`, with no `lookup/id` when xrefs lists no other gene. A chrX/chrY pair — a pseudoautosomal gene — gives the chrX gene, the copy a GENCODE-built Salmon index keeps (`annotate.GENE_RULE`). Any other two or more raise `annotate.AmbiguousGene` (a `ValueError`) listing each gene's id, location and transcript count. `choice` is `{rule, chosen, candidates, reason}` when there was a choice to make, or when xrefs listed no gene and the others were not looked for.
 
-**`annotate.run(gene, out, species="homo_sapiens", release=None) -> dict`**
-As `build_config`, but also writes the config JSON to `out`. Backs the `annotate` CLI subcommand; `release` is `--ensembl-release`.
+**`annotate.build_config(gene, species="homo_sapiens", release=None, gene_id=None) -> dict`**
+Convenience wrapper returning a complete, reviewable config dict (including `gene_id`, the Ensembl gene the groups were proposed from, `ensembl_release`, `_proposed` notes, `_clusters`, and `_proposal`: `alternative_rule` and `tied_with`, the clusters from `alternative_ties`, and `_gene_choice` from `choose_gene` when there was a choice). `gene_id` names the gene outright, by `lookup/id`, and must be a gene of the symbol; it is `--gene-id`. `release` is the Ensembl release to propose the groups from; None is the one `rest.ensembl.org` currently serves, and an earlier one is read from Ensembl's REST archive (see `ensembl.resolve_server`). `ensembl_release` records the release the server reported.
+
+**`annotate.run(gene, out, species="homo_sapiens", release=None, gene_id=None) -> dict`**
+As `build_config`, but also writes the config JSON to `out`. Backs the `annotate` CLI subcommand; `release` is `--ensembl-release`, `gene_id` is `--gene-id`.
 
 ```python
 cfg = annotate.build_config("FLT1")
@@ -129,7 +132,7 @@ was supplied. Pass a dict as `inputs_out` to get back the sequence the run used
 (`sequences`, `background_sequences`, `fetched_release`) and the system it was built at
 (`k`, `window`, `canonical`, none of which is in the config), which `io.save_inputs`
 writes to a file. Returns a dict with `k`, `window`, `canonical`; `annotation`
-(`ensembl_release`, `fetched_release`); `background` (with `same_name_copies`, from `index_scope.fasta_copies`, when `background_fasta` is given); `design`; `groups` (per group:
+(`ensembl_release`, `fetched_release`); `background` (with `gene_id`, the gene the background was fetched as — by the config's `gene_id` when it has one, else by symbol, and a symbol whose gene holds none of the configured transcripts raises `ValueError` — and `same_name_copies`, from `index_scope.fasta_copies`, when `background_fasta` is given); `design`; `groups` (per group:
 `verdict`, `reasons`, `n_unique_kmers`, `unique_length`, `n_blocks`,
 `expected_informative_reads`, `estimable`, `conditioning_factor`, `gls_relative_se`,
 `min_resolvable_log2fc`, `coherence`, ...); `contrast` (the same estimability fields for
@@ -176,10 +179,13 @@ Run `extract` and write a per-donor CSV to `out`; returns the number of donors. 
 `<out>.index.json` (`"format": "isoform-dominance/index/1"`) records each donor's index
 from Salmon's `aux_info/meta_info.json` (`index_seq_hash`, `index_name_hash`,
 `num_valid_targets`, `keep_duplicates`, `salmon_version`; null for a donor without one),
-the distinct `index_seq_hashes`, `mixed`, `missing_meta_info` and `same_name_copies`.
-Donors quantified against different indexes raise `index_scope.MixedIndexError` (an
-`io.InputError`) before anything is written, unless `allow_mixed_index`. Warnings are
-appended to `notes` when a list is given.
+the distinct `index_seq_hashes`, `mixed`, `missing_meta_info`, `missing_transcripts`
+(`n_configured`, `n_missing`, `ids`, `warning`: configured transcripts absent from some
+donor's `quant.sf`) and `same_name_copies`. Donors quantified against different indexes
+raise `index_scope.MixedIndexError`, and a cohort in which no donor's `quant.sf` has any
+configured transcript `index_scope.NoConfiguredTranscripts` (both `io.InputError`s), before
+anything is written; the first unless `allow_mixed_index`. Warnings are appended to `notes`
+when a list is given.
 
 ---
 
@@ -237,8 +243,8 @@ TPM, per cohort (a control for whether a dominance signal is a cell-type artefac
 
 **`io.load_config(path, need_groups=True) -> dict`** — load a config JSON; `io.InputError` (a `ValueError`) if it is not JSON, not an object, or, unless `need_groups` is false, has no `groups` object.
 **`io.load_json(path, what) -> object`** — parse a JSON file; `io.InputError` naming `what` and the file if it is not JSON.
-**`io.save_inputs(path, captured, config, release, version, background_fasta=None) -> dict`** — write the sequence an `identifiability` run used (`captured`, from `analyze(..., inputs_out=...)`) with the release it came from, as `"format": "isoform-dominance/inputs/1"` (`io.INPUTS_FORMAT`). `analysis` records the `k`, `window` and `canonical` of the run, none of which the config holds. A `background_fasta` is recorded by path, size and SHA-256, not copied. Backs `--save-inputs`.
-**`io.load_inputs(path) -> dict`** — read a file `save_inputs` wrote; `io.InputError` if it is not one, and for every field the caller goes on to read: `sequences` and `background_sequences` as objects of id to sequence, an `ensembl_release` that is a number or null, an `analysis` with integer `k` and `window` and boolean `canonical`, and a `background_fasta` that is null or has a path and a sha256. Which transcripts are a class and which are background is decided by the config the rerun is given, not by the saved grouping. Backs `--inputs`.
+**`io.save_inputs(path, captured, config, release, version, background_fasta=None) -> dict`** — write the sequence an `identifiability` run used (`captured`, from `analyze(..., inputs_out=...)`) with the release it came from, as `"format": "isoform-dominance/inputs/1"` (`io.INPUTS_FORMAT`). `analysis` records the `k`, `window` and `canonical` of the run, none of which the config holds. A `background_fasta` is recorded by path, size and SHA-256, not copied. `gene_id` is the gene the background was fetched as, or the config's `gene_id`. Backs `--save-inputs`.
+**`io.load_inputs(path) -> dict`** — read a file `save_inputs` wrote; `io.InputError` if it is not one, and for every field the caller goes on to read: `sequences` and `background_sequences` as objects of id to sequence, an `ensembl_release` that is a number or null, an `analysis` with integer `k` and `window` and boolean `canonical`, a `gene_id` that is a string or null, and a `background_fasta` that is null or has a path and a sha256. Which transcripts are a class and which are background is decided by the config the rerun is given, not by the saved grouping. Backs `--inputs`.
 **`io.file_sha256(path) -> str`** — hex SHA-256 of a file's bytes.
 **`io.transcript_to_group(groups) -> dict`** — invert `{group: [ENST...]}` to `{ENST(no version): group}`.
 **`io.load_sample_map(path) -> dict`** — read a `donor,condition[,SRR]` CSV to `{donor: condition}`.
