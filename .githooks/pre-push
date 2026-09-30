@@ -1,0 +1,29 @@
+#!/bin/bash
+# Refuse a push that carries a commit crediting an AI assistant (trailer or identity), including
+# commits made with --no-verify, amended, or brought in by a merge.  bash 3.2 / BSD.
+# git passes the remote's name (or URL) as $1 and one "lref lsha rref rsha" line per ref on stdin.
+# Commits are skipped only when the tracking refs of that same remote already hold them: any other
+# remote-tracking ref (a fetched pull-request head, say) says nothing about what the remote has.
+remote=$1
+z=0000000000000000000000000000000000000000
+pat='^(co-authored-by:.*(claude|anthropic)|claude-session:)|generated with \[?claude|noreply@anthropic\.com'
+bad=0
+while read -r lref lsha rref rsha; do
+  [ "$lsha" = "$z" ] && continue                                 # deleting a remote ref
+  if [ "$rsha" != "$z" ] && git cat-file -e "$rsha^{commit}" 2>/dev/null; then
+    commits=$(git rev-list "$rsha..$lsha")                       # the remote tip is known here
+  elif [ -n "$remote" ]; then
+    commits=$(git rev-list "$lsha" --not --remotes="$remote")    # new ref, or remote tip not fetched
+  else
+    commits=$(git rev-list "$lsha")
+  fi || { echo "pre-push: could not list the commits for $rref; push refused." >&2; exit 1; }
+  for c in $commits; do
+    who=$(git log -1 --format='%an <%ae> | %cn <%ce>' "$c")
+    if printf '%s\n' "$who" | grep -Eiq 'claude|anthropic' \
+       || git log -1 --format=%B "$c" | grep -Eiq "$pat"; then
+      echo "pre-push: $(git log -1 --format='%h %s' "$c") credits an AI assistant ($who); push refused." >&2
+      bad=1
+    fi
+  done
+done
+exit $bad

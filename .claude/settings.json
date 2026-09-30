@@ -1,0 +1,20 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ \"$CLAUDE_CODE_REMOTE\" = true ]; then git -C \"$CLAUDE_PROJECT_DIR\" config core.hooksPath .githooks; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

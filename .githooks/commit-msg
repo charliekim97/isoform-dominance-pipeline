@@ -1,0 +1,20 @@
+#!/bin/bash
+# Refuse a commit that would credit an AI assistant: a Claude/Anthropic co-author trailer,
+# a Claude-Session line, "Generated with Claude", or an author/committer that is not a person.
+# Installed in .git/hooks of both repos (see tools/githooks/README).  bash 3.2 / BSD.
+msg=$1
+pat='^(co-authored-by:.*(claude|anthropic)|claude-session:)|generated with \[?claude|noreply@anthropic\.com'
+if grep -Eiq "$pat" "$msg"; then
+  echo "commit-msg: the message credits an AI assistant:" >&2
+  grep -Ein "$pat" "$msg" >&2
+  echo "Remove those lines (and turn attribution off in ~/.claude/settings.json)." >&2
+  exit 1
+fi
+for v in GIT_AUTHOR_IDENT GIT_COMMITTER_IDENT; do
+  id=$(git var "$v" 2>/dev/null)
+  if printf '%s\n' "$id" | grep -Eiq 'claude|anthropic'; then
+    echo "commit-msg: $v is '$id'; commits here are authored and committed by Sangeon Kim." >&2
+    exit 1
+  fi
+done
+exit 0
