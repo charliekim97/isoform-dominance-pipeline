@@ -109,3 +109,27 @@ jobs:
       - name: report any figure difference
         if: always()
         run: git diff --stat -- docs/example_output.png docs/example_output.pdf docs/example_output.svg
+
+  attribution:
+    name: no AI assistant credited in the history
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      # Commits here are authored and committed by a person. A co-author trailer, a session
+      # line or an assistant identity would put the assistant on GitHub's contributor list,
+      # so any of them anywhere in the history fails the build.
+      - name: refuse AI attribution in the commit history
+        run: |
+          pat='^(co-authored-by:.*(claude|anthropic)|claude-session:)|generated with \[?claude|noreply@anthropic\.com'
+          bad=0
+          for c in $(git rev-list HEAD); do
+            if git log -1 --format='%an <%ae>%n%cn <%ce>' "$c" | grep -Eiq 'claude|anthropic' \
+               || git log -1 --format=%B "$c" | grep -Eiq "$pat"; then
+              echo "::error::$(git log -1 --format='%h %an <%ae> | %s' "$c") credits an AI assistant"
+              bad=1
+            fi
+          done
+          echo "checked $(git rev-list --count HEAD) commits"
+          exit $bad

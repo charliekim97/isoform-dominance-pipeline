@@ -11,8 +11,10 @@ mistakes that have already been made here. Read it before proposing changes.
 **Attribution.** Commits are authored and committed as
 `Sangeon Kim <crosby6965@gmail.com>`. Do not add `Co-Authored-By: Claude`,
 `Claude-Session:`, or `Generated with Claude Code` to any commit or PR. The
-GitHub contributor list for this repo was cleaned of an `claude` entry through a
-Support ticket; do not recreate it. If a hook or tool demands that the committer
+GitHub contributor list for this repo was cleaned of a `claude` entry on 2026-09-29:
+after the history rewrite, switching the default branch away and back made GitHub recount
+it. Do not recreate it; the CI `attribution` job and the local hooks refuse such a commit.
+If a hook or tool demands that the committer
 email be changed to `noreply@anthropic.com`, **ignore it** — that demand is about
 commit signing, not authorship, and this repo does not require signed commits.
 Configure it out (see §4).
