@@ -57,15 +57,24 @@ LEPR_LIKE = {
 }
 
 
+def serving(payload, calls=None):
+    """A stand-in for ``annotate._get`` that serves one gene: ``/info/data``,
+    ``xrefs/symbol`` (which names that gene alone) and every lookup."""
+    def fake_get(path, **kw):
+        if calls is not None:
+            calls.append(path)
+        if path.startswith("/info/data"):
+            return {"releases": [116]}
+        if path.startswith("/xrefs/symbol/"):
+            return [{"type": "gene", "id": payload["id"]}]
+        return payload
+    return fake_get
+
+
 @pytest.fixture
 def offline_ensembl(monkeypatch):
     calls = []
-
-    def fake_get(path, **kw):
-        calls.append(path)
-        return {"releases": [116]} if path.startswith("/info/data") else LEPR_LIKE
-
-    monkeypatch.setattr(annotate, "_get", fake_get)
+    monkeypatch.setattr(annotate, "_get", serving(LEPR_LIKE, calls))
     return calls
 
 
@@ -227,8 +236,7 @@ def test_config_records_the_rule_and_no_tie_for_lepr_like(offline_ensembl):
 
 def test_config_names_the_cluster_a_tie_was_broken_against(monkeypatch):
     payload = _with_second_short_class()
-    monkeypatch.setattr(annotate, "_get", lambda path, **kw: {"releases": [116]}
-                        if path.startswith("/info/data") else payload)
+    monkeypatch.setattr(annotate, "_get", serving(payload))
     cfg = annotate.build_config("LEPR")
     assert cfg["primary_comparison"][0] == "iso_896aa"      # 896 aa beats 870 aa
     assert [(t["terminal_acceptor"], t["rep_protein_aa"], t["n_transcripts"])
@@ -238,8 +246,7 @@ def test_config_names_the_cluster_a_tie_was_broken_against(monkeypatch):
 def test_cli_warns_about_a_tie_and_is_silent_without_one(monkeypatch, tmp_path, capsys):
     from isoform_dominance import cli
     payload = _with_second_short_class()
-    monkeypatch.setattr(annotate, "_get", lambda path, **kw: {"releases": [116]}
-                        if path.startswith("/info/data") else payload)
+    monkeypatch.setattr(annotate, "_get", serving(payload))
     assert cli.main(["annotate", "--gene", "LEPR", "--out", str(tmp_path / "t.json")]) == 0
     err = capsys.readouterr().err
     assert "chosen by a tie" in err and "870 aa at acceptor 65541000" in err
@@ -247,7 +254,6 @@ def test_cli_warns_about_a_tie_and_is_silent_without_one(monkeypatch, tmp_path, 
     # stops at "the longer protein" describes a step that does not decide a full tie
     assert annotate.ALTERNATIVE_RULE in err
 
-    monkeypatch.setattr(annotate, "_get", lambda path, **kw: {"releases": [116]}
-                        if path.startswith("/info/data") else LEPR_LIKE)
+    monkeypatch.setattr(annotate, "_get", serving(LEPR_LIKE))
     assert cli.main(["annotate", "--gene", "LEPR", "--out", str(tmp_path / "u.json")]) == 0
     assert "tie" not in capsys.readouterr().err

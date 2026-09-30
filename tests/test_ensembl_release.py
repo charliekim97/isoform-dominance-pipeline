@@ -150,6 +150,10 @@ class Ensembl:
             if gene not in LOOKUPS[rel]:
                 raise _http_error(final_url, 400)
             return _Resp(json.dumps(LOOKUPS[rel][gene]), final_url)
+        if path.startswith("/xrefs/symbol/"):    # the one gene of the symbol, or none
+            gene = path.split("/")[4].split("?")[0]
+            return _Resp(json.dumps([{"type": "gene", "id": LOOKUPS[rel][gene]["id"]}]
+                                    if gene in LOOKUPS[rel] else []), final_url)
         if method == "POST" and path.startswith("/sequence/id"):
             ids = [i.split(".")[0] for i in json.loads(req.data)["ids"]]
             return _Resp(json.dumps([{"query": i, "id": i, "seq": SEQS[rel][i]}

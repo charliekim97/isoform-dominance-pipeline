@@ -6,13 +6,30 @@ splice acceptor — the alternative last exon that distinguishes functional isof
 (e.g. a long signalling form vs a short truncated form) — and proposes a two-group
 comparison (canonical-isoform cluster vs the largest alternative cluster) that the user
 reviews and renames before use.
+
+A symbol can name more than one gene on the reference chromosomes, and Ensembl's
+``lookup/symbol`` returns one of them without saying so: for the pseudoautosomal genes
+CD99, CRLF2, CSF2RA, IL3RA and SHOX the chrY copy, for HERC3 and DUSP13B the newer of two
+genes of that name.  :func:`build_config` looks for the others and chooses by
+:data:`GENE_RULE`, or stops.
 """
 import json
 
 from . import ensembl
 from .ensembl import DEFAULT_RETRIES, DEFAULT_RETRY_WAIT
+from .index_scope import REFERENCE_REGIONS
 
 ENSEMBL = ensembl.SERVER
+
+#: How :func:`build_config` chooses among genes that share the symbol; recorded in a
+#: config's ``_gene_choice`` whenever there was a choice to make.
+GENE_RULE = ("the gene on the reference chromosomes (1-22, X, Y, MT) whose name is the "
+             "symbol; of a chrX/chrY pair -- a pseudoautosomal gene -- the chrX one, the copy "
+             "a Salmon index built from GENCODE keeps; any other choice is --gene-id's")
+
+
+class AmbiguousGene(ValueError):
+    """A symbol names more than one gene on the reference chromosomes, and none is chosen."""
 
 
 def _get(path, timeout=ensembl.DEFAULT_TIMEOUT, retries=DEFAULT_RETRIES,
@@ -21,16 +38,28 @@ def _get(path, timeout=ensembl.DEFAULT_TIMEOUT, retries=DEFAULT_RETRIES,
                             retry_wait=retry_wait)
 
 
+def _post(path, body, timeout=ensembl.DEFAULT_TIMEOUT, retries=DEFAULT_RETRIES,
+          retry_wait=DEFAULT_RETRY_WAIT, server=None):
+    return ensembl.request_json(path, body, server=server, timeout=timeout, retries=retries,
+                                retry_wait=retry_wait)
+
+
 def fetch_transcripts(gene, species="homo_sapiens", retries=DEFAULT_RETRIES,
                       retry_wait=DEFAULT_RETRY_WAIT, server=None):
-    """Return {gene, species, strand, transcripts:[{id, protein_aa, terminal_acceptor, is_canonical}]}.
+    """Return {gene, gene_id, species, strand, transcripts:[{id, protein_aa, terminal_acceptor, is_canonical}]}.
 
-    The lookup is retried as described in :mod:`isoform_dominance.ensembl`.  ``server``
-    is a base URL from :func:`isoform_dominance.ensembl.resolve_server`; None means the
-    current release.
+    For the gene ``lookup/symbol`` gives; :func:`build_config` also checks for other genes
+    of the name.  The lookup is retried as described in :mod:`isoform_dominance.ensembl`.
+    ``server`` is a base URL from :func:`isoform_dominance.ensembl.resolve_server`; None
+    means the current release.
     """
     g = _get("/lookup/symbol/%s/%s?expand=1" % (species, gene),
              retries=retries, retry_wait=retry_wait, server=server)
+    return transcripts_of(g, gene, species)
+
+
+def transcripts_of(g, gene, species="homo_sapiens"):
+    """:func:`fetch_transcripts`' result for an expanded ``lookup`` record ``g``."""
     strand = g["strand"]
     canonical = (g.get("canonical_transcript") or "").split(".")[0]
     out = []
@@ -51,7 +80,71 @@ def fetch_transcripts(gene, species="homo_sapiens", retries=DEFAULT_RETRIES,
                     "is_canonical": (t.get("is_canonical", 0) == 1) or (tid == canonical)})
     if not out:
         raise ValueError("No protein-coding transcripts with a translation found for %s" % gene)
-    return {"gene": gene, "species": species, "strand": strand, "transcripts": out}
+    return {"gene": gene, "gene_id": g.get("id"), "species": species, "strand": strand,
+            "transcripts": out}
+
+
+def _where(g):
+    """A candidate as ``_gene_choice`` records it."""
+    return {"gene_id": g["id"],
+            "location": "%s:%s-%s" % (g.get("seq_region_name"), g.get("start"), g.get("end")),
+            "n_transcripts": len(g.get("Transcript") or [])}
+
+
+def choose_gene(gene, species, looked_up, **net):
+    """The gene ``gene`` means, and the record of a choice when there was one to make.
+
+    ``looked_up`` is the expanded record ``lookup/symbol`` gave.  The other genes of the
+    name come from ``xrefs/symbol``, which also lists genes that carry the symbol only as
+    a synonym (SMN2 for SMN1) and copies on alternate loci; one ``lookup/id`` for those
+    keeps the genes whose display name is the symbol and that lie on a reference
+    chromosome (:data:`isoform_dominance.index_scope.REFERENCE_REGIONS`).  With one such
+    gene nothing is recorded, and when xrefs/symbol lists no gene besides ``looked_up``
+    no ``lookup/id`` is made.  Of a chrX/chrY pair the chrX gene is taken
+    (:data:`GENE_RULE`).  Any other set of two or more raises :class:`AmbiguousGene`
+    listing them.
+
+    Returns ``(expanded gene record, choice or None)``.
+    """
+    xr = _get("/xrefs/symbol/%s/%s?object_type=gene" % (species, gene), **net)
+    if not isinstance(xr, list):
+        raise ValueError("Ensembl xrefs/symbol for %s answered a %s, not a list"
+                         % (gene, type(xr).__name__))
+    ids = sorted({x["id"] for x in xr if isinstance(x, dict) and x.get("type") == "gene"
+                  and str(x.get("id", "")).startswith("ENS")})
+    if not ids:
+        return looked_up, {"rule": GENE_RULE, "chosen": looked_up.get("id"),
+                           "candidates": [],
+                           "reason": "xrefs/symbol listed no gene for %s, so other genes of "
+                                     "that name were not looked for" % gene}
+    others = [i for i in ids if i != looked_up.get("id")]
+    if not others:
+        return looked_up, None
+    got = _post("/lookup/id", {"ids": others, "expand": 1}, **net)
+    name = (looked_up.get("display_name")
+            if (looked_up.get("display_name") or "").upper() == gene.upper() else gene)
+    records = [looked_up] + [got[i] for i in others if isinstance(got, dict) and got.get(i)]
+    genes = sorted((g for g in records if g.get("display_name") == name
+                    and g.get("seq_region_name") in REFERENCE_REGIONS), key=lambda g: g["id"])
+    if len(genes) <= 1:
+        return (genes[0] if genes else looked_up), None
+    choice = {"rule": GENE_RULE, "candidates": [_where(g) for g in genes]}
+    by_region = {g["seq_region_name"]: g for g in genes}
+    if len(genes) == 2 and set(by_region) == {"X", "Y"}:
+        x, y = by_region["X"], by_region["Y"]
+        choice.update(chosen=x["id"], reason=(
+            "%s is a pseudoautosomal gene: %s on chrX and %s on chrY, one sequence. Salmon "
+            "keeps only the first of identical sequences -- the chrX copy in a GENCODE FASTA, "
+            "the chrY copy in Ensembl's cDNA FASTA, which lists chrY first -- so the chrX "
+            "gene is used; for an index built from Ensembl cDNA, use --gene-id %s"
+            % (gene, x["id"], y["id"], y["id"])))
+        return x, choice
+    raise AmbiguousGene(
+        "%s names %d genes on the reference chromosomes: %s. Pick one with --gene-id"
+        % (gene, len(genes), "; ".join(
+            "%s at %s, %d transcript%s" % (c["gene_id"], c["location"], c["n_transcripts"],
+                                           "" if c["n_transcripts"] == 1 else "s")
+            for c in choice["candidates"])))
 
 
 def cluster_by_terminal_exon(info):
@@ -123,7 +216,7 @@ def propose_groups(info):
     return groups, primary, clusters
 
 
-def build_config(gene, species="homo_sapiens", release=None, **retry):
+def build_config(gene, species="homo_sapiens", release=None, gene_id=None, **retry):
     """Build a reviewable config.json dict for `gene` from Ensembl annotation.
 
     ``release`` is the Ensembl release to propose the groups from; None means the one
@@ -132,14 +225,30 @@ def build_config(gene, species="homo_sapiens", release=None, **retry):
     ``ensembl_release`` records the release the groups were proposed from, as the server
     reported it.  The identifiability verdict is a function of that release, so a
     config without it cannot be re-run to the same answer.
+
+    ``gene_id`` names the Ensembl gene outright, for a symbol that names several (see
+    :func:`choose_gene`); it must be a gene of that name.  ``gene_id`` in the config is the
+    gene the groups were proposed from, and ``_gene_choice`` records how it was chosen
+    when there was a choice.
     """
     server = ensembl.resolve_server(release, **retry)
-    info = fetch_transcripts(gene, species, server=server, **retry)
-    release = ensembl.release_number(_get("/info/data", server=server, **retry))
+    net = dict(retry, server=server)
+    if gene_id:
+        g = _get("/lookup/id/%s?expand=1" % gene_id.split(".")[0], **net)
+        if (g.get("display_name") or "").upper() != gene.upper():
+            raise ValueError("%s is %s, not %s" % (gene_id, g.get("display_name"), gene))
+        choice = {"rule": GENE_RULE, "chosen": g["id"], "candidates": [_where(g)],
+                  "reason": "given by --gene-id"}
+    else:
+        g = _get("/lookup/symbol/%s/%s?expand=1" % (species, gene), **net)
+        g, choice = choose_gene(gene, species, g, **net)
+    info = transcripts_of(g, gene, species)
+    release = ensembl.release_number(_get("/info/data", **net))
     groups, primary, clusters = propose_groups(info)
     ties = alternative_ties(clusters, groups, primary)
-    return {
-        "gene": gene, "species": species, "ensembl_release": release,
+    cfg = {
+        "gene": gene, "gene_id": info["gene_id"], "species": species,
+        "ensembl_release": release,
         "groups": groups, "primary_comparison": primary,
         "_proposal": {"alternative_rule": ALTERNATIVE_RULE,
                       "tied_with": [{"terminal_acceptor": c["acceptor"],
@@ -154,10 +263,13 @@ def build_config(gene, species="homo_sapiens", release=None, **retry):
                        "n_transcripts": c["n"], "contains_canonical": c["canonical"],
                        "transcripts": c["ids"]} for c in clusters],
     }
+    if choice:
+        cfg["_gene_choice"] = choice
+    return cfg
 
 
-def run(gene, out, species="homo_sapiens", release=None, **retry):
-    cfg = build_config(gene, species, release=release, **retry)
+def run(gene, out, species="homo_sapiens", release=None, gene_id=None, **retry):
+    cfg = build_config(gene, species, release=release, gene_id=gene_id, **retry)
     with open(out, "w") as f:
         json.dump(cfg, f, indent=2)
     return cfg

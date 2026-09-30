@@ -57,8 +57,8 @@ def _http_error(url, code, retry_after=None):
 
 
 class FakeEnsembl:
-    """Serves lookups, cDNA (one id per GET or up to 50 per POST) and the release, and logs
-    each call."""
+    """Serves lookups, xrefs/symbol, cDNA (one id per GET or up to 50 per POST) and the
+    release, and logs each call."""
 
     def __init__(self, fail=None, lookup=GENE_LOOKUP, release=116):
         self.calls = []
@@ -76,6 +76,8 @@ class FakeEnsembl:
             raise err
         if path.startswith("/lookup/symbol/"):
             return _Resp(json.dumps(self.lookup))
+        if path.startswith("/xrefs/symbol/"):     # the one gene of the symbol
+            return _Resp(json.dumps([{"type": "gene", "id": self.lookup["id"]}]))
         if path.startswith("/info/data"):
             return _Resp(json.dumps({"releases": [self.release]}))
         if call[0] == "POST" and path.startswith("/sequence/id"):

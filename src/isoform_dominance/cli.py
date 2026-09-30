@@ -85,7 +85,7 @@ def _release_fail(e):
 def cmd_annotate(a):
     try:
         cfg = annotate.run(a.gene, a.out, species=a.species, release=a.ensembl_release,
-                           retries=a.retries, retry_wait=a.retry_wait)
+                           gene_id=a.gene_id, retries=a.retries, retry_wait=a.retry_wait)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
     except ensembl.TRANSIENT as e:
@@ -100,6 +100,9 @@ def cmd_annotate(a):
     for g, ids in cfg["groups"].items():
         print("  %s: %d transcripts" % (g, len(ids)))
     print("  primary_comparison:", cfg["primary_comparison"])
+    choice = cfg.get("_gene_choice") or {}
+    if choice.get("reason") and choice["reason"] != "given by --gene-id":
+        print("  NOTE: %s" % choice["reason"], file=sys.stderr)
     proposal = cfg.get("_proposal", {})
     ties = proposal.get("tied_with") or []
     if ties:
@@ -529,6 +532,9 @@ def build_parser():
     s = _net(_json(sub.add_parser("annotate",
                                   help="gene symbol -> proposed isoform groups (Ensembl)")))
     s.add_argument("--gene", required=True); s.add_argument("--species", default="homo_sapiens")
+    s.add_argument("--gene-id", metavar="ENSG",
+                   help="the Ensembl gene to propose groups from, when the symbol names more "
+                        "than one on the reference chromosomes")
     s.add_argument("--out", required=True); s.set_defaults(func=cmd_annotate)
 
     s = _net(_json(sub.add_parser(
