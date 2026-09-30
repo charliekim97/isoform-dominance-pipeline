@@ -14,7 +14,7 @@ versioning.
 > and per-donor TPM summation — is unchanged in 2.3.0, and the bundled self-test still
 > reproduces the same reference numbers.
 
-## [Unreleased]
+## [2.4.0] - 2026-09-30
 
 ### Added
 - **`--ensembl-release N` on `annotate` and `identifiability`** (`release=` in
@@ -149,9 +149,8 @@ versioning.
   change in this package or in the archive, and the archive path has its own ways to
   break. Workflows use `actions/checkout@v5` and `actions/setup-python@v6`, which run on
   Node 24.
-- The version on `main` is `2.4.0.dev0`, so a saved-inputs file and a `--version` from an
-  unreleased tree cannot be mistaken for 2.3.0's. `CITATION.cff` still names 2.3.0, the
-  last release.
+- Until this release the version on `main` was `2.4.0.dev0`, so that a saved-inputs file
+  and a `--version` from an unreleased tree could not be mistaken for 2.3.0's.
 
 ### Fixed
 - **`identifiability --background-fasta` counted a record with a configured transcript's
