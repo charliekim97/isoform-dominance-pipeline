@@ -154,6 +154,27 @@ versioning.
   last release.
 
 ### Fixed
+- **`identifiability --background-fasta` counted a record with a configured transcript's
+  sequence as competing sequence (issue #10).** Such a record took every unique k-mer the
+  transcript had, and Salmon's index does not hold it: unless built with
+  `--keepDuplicates`, it keeps only the first of identical sequences. In GENCODE v50's
+  reference-chromosome index Salmon removed 1,600 (644,292 in the FASTA, 642,692 targets),
+  among them all 382 chrY transcripts of the 18 protein-coding genes on both chrX and chrY;
+  214 of the 1,600 were identical to a transcript of their own gene. A CD99 config of the
+  chrX gene (42 transcripts, each byte-identical to a chrY record) had no unique k-mer in
+  either class against a FASTA of CD99's chrX and chrY records, and 1,273 and 3,051 without
+  it. Against the whole reference-chromosome `transcripts.fa`, with the gene's other
+  transcripts as background too, it had none either (`weakly_identifiable`); it now has 615
+  and 2,546 and is `identifiable`, and LEPR's example config gives the same answer both
+  ways. A background FASTA record whose whole sequence, upper-cased and stripped, is a
+  configured transcript's is now left out, and reported under
+  `background.identical_to_configured` (record id -> the configured transcript) and in one
+  line on stderr. `--keep-duplicates` (`keep_duplicates=True`) counts it as before, for an
+  index built with `--keepDuplicates`; `--save-inputs` records the setting under
+  `analysis`, and a rerun from the file with the other setting is noted. Two configured
+  transcripts with one sequence are left as they were. The gene background fetched from
+  Ensembl is not changed: a transcript there identical to a configured one of the same gene
+  is still counted.
 - **`annotate` chose silently between genes that share a symbol (issue #9).** Ensembl's
   `lookup/symbol` returns one gene per symbol and does not say when there are others: for
   the pseudoautosomal genes CD99, CRLF2, CSF2RA, IL3RA and SHOX it returns the chrY copy

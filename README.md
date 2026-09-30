@@ -153,7 +153,11 @@ annotation release the transcripts came from, so it is reported in the output an
 > quantifier resolves fragments against the *whole* index, so any claim about what it
 > can separate should be judged against the same FASTA the index was built from. The
 > scan is streamed, so a whole-transcriptome background costs memory proportional to
-> the gene, not the file.
+> the gene, not the file. A record with the sequence of a configured transcript is not
+> counted, because Salmon's default index keeps one of identical sequences: in GENCODE
+> v50's reference-chromosome FASTA, all 382 chrY transcripts of the 18 protein-coding
+> genes on both chrX and chrY are such records. For an index built with Salmon's
+> `--keepDuplicates`, pass `--keep-duplicates`.
 
 > **Pin the release.** The verdict is a function of the annotation release. Rebuilt with
 > `--ensembl-release` against six Ensembl releases from 110 (GENCODE 44, July 2023) to 116,
