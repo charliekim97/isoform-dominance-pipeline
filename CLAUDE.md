@@ -108,7 +108,7 @@ In `~/.claude/settings.json` or `.claude/settings.local.json`:
   "attribution": {
     "commit": "",
     "pr": "",
-    "sessionUrl": ""
+    "sessionUrl": false
   }
 }
 ```
