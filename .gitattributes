@@ -1,0 +1,2 @@
+# fixtures compared byte for byte: never convert their line endings
+tests/data/** -text

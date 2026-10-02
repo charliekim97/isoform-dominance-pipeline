@@ -24,7 +24,10 @@ def extract(config, quantdir, samplemap, cohort, found_out=None):
     tx2grp = transcript_to_group(groups)
     cond = load_sample_map(samplemap)
     rows = []
-    for donor, q in sorted(quant_paths(quantdir).items()):
+    # in path order, as 2.3.0 globbed them, not donor order: the two part where one donor
+    # name is a prefix of another (D1-2/quant.sf < D1/quant.sf, D1 < D1-2), and `stats`
+    # bootstraps by row, so the order is part of the answer
+    for donor, q in sorted(quant_paths(quantdir).items(), key=lambda kv: kv[1]):
         gt = dict.fromkeys(groups, 0.0)
         seen = set()
         with open(q) as fh:
