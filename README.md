@@ -153,8 +153,9 @@ annotation release the transcripts came from, so it is reported in the output an
 > blind to pseudogenes, paralogues and homologous loci elsewhere in the index. A
 > quantifier resolves fragments against the *whole* index, so any claim about what it
 > can separate should be judged against the same FASTA the index was built from. The
-> scan is streamed, so a whole-transcriptome background costs memory proportional to
-> the gene, not the file. A record with the sequence of a configured transcript is not
+> scan is streamed one record at a time, so its memory is set by the longest record, not
+> by the file: one 20 Mb record took about 110 MB resident, 10,000 records of 2 kb
+> totalling the same 34 MB, at roughly 2 Mb of sequence a second (measured 2026-10-01). A record with the sequence of a configured transcript is not
 > counted, because Salmon's default index keeps one of identical sequences: in GENCODE
 > v50's reference-chromosome FASTA, all 382 chrY transcripts of the 18 protein-coding
 > genes on both chrX and chrY are such records. For an index built with Salmon's
@@ -313,11 +314,16 @@ drops all but the first of identical sequences when it builds an index (the inde
 Differential transcript usage (DTU) is a mature area, and for genome-wide
 discovery you should use the established tools — this one does **not** replace them:
 
-- **DEXSeq, DRIMSeq, satuRn** — genome-wide DTU testing. They assume you already
+- **DEXSeq** — differential *exon* usage, from exon-bin counts, with its own counting
+  scripts.
+- **DRIMSeq, satuRn** — genome-wide transcript-level DTU testing. They assume you already
   have a transcript-by-sample count matrix and defined transcript groups.
-- **IsoformSwitchAnalyzeR** — rich functional annotation of isoform switches
-  (domains, NMD, coding potential) in R/Bioconductor; grouping and import are
-  configured by the analyst.
+- **IsoformSwitchAnalyzeR** — genome-wide isoform-switch testing with rich functional
+  annotation of the switches (domains, NMD, coding potential) in R/Bioconductor; grouping
+  and import are configured by the analyst.
+- **Kmerator** ([doi:10.1093/nargab/lqab058](https://doi.org/10.1093/nargab/lqab058)) —
+  builds gene- and transcript-specific k-mer signatures against a reference, the
+  uniqueness question this package's first layer asks, without a verdict on a contrast.
 - **fishpond / swish** — rigorously propagates quantification uncertainty using
   Salmon inferential replicates.
 
@@ -355,8 +361,8 @@ in one direction only, and is silent on the second.
 
 `isoform-dominance` targets that question: *for one gene, which functional isoform class
 predominates?* The contribution is evaluating the **estimability of the user's own class
-contrast, before quantification** — a check none of the tools above performs, and none takes a
-bare gene symbol as input. Around that sit two conveniences rather than claims: `annotate` goes
+contrast, before quantification** — a check none of the tools above performs. Taking a gene
+name as input is not new (Kmerator does), and is not the claim. Around that sit two conveniences rather than claims: `annotate` goes
 from a gene symbol to a reviewed isoform-group proposal (presented for review, not treated as
 final), and the whole thing is a scriptable Python CLI with a download-free self-test, meant to
 ship alongside a manuscript.
@@ -367,12 +373,18 @@ truncations and the FLT1 soluble-decoy receptor), and an [API reference](docs/ap
 
 ## Statistical notes
 
-- Donor-level two-sided **exact Wilcoxon signed-rank** (`scipy.stats.wilcoxon`), per cohort.
+- Donor-level two-sided **Wilcoxon signed-rank** (`scipy.stats.wilcoxon`, `method="auto"`), per
+  cohort. It is exact only with neither a zero difference nor a tie among the absolute
+  differences (and n ≤ 50); otherwise SciPy runs an exhaustive permutation test at n ≤ 13 and
+  the normal approximation above that. Which one produced each p-value is reported
+  (`wilcoxon_method`) — at n = 14 with one tie the approximation can sit well above the
+  exact figure.
 - **Small-n floor is computed, not just documented.** `signed_rank_resolution_floor(n)`
   returns `2^(1-n)` — under the sign-permutation null exactly one assignment puts every
   difference on the same side. At n = 5 that is 0.0625, so no arrangement of five donors
-  reaches 0.05. Ties among the absolute differences do **not** raise it. Every test is
-  reported with its floor and flagged when the floor exceeds 0.05.
+  reaches 0.05. Ties among the absolute differences do **not** raise it. Each per-cohort test
+  and the donor-pooled one is reported with its floor and flagged when the floor exceeds
+  0.05; the Stouffer and stratified rows of the stats table carry none yet.
 - **Cohorts are combined three ways**, all reported: donor-**pooled** (what v2.1 reported alone),
   a weighted **Stouffer** combination of the per-cohort *exact* tests, and a weighted
   **stratified signed-rank** combination. The latter borrows van Elteren's design-free
@@ -402,7 +414,7 @@ aggregation in a leptin-receptor/LRP1 choroid-plexus manuscript (under revision)
 archived at [10.5281/zenodo.20738150](https://doi.org/10.5281/zenodo.20738150). Releasing a new
 version does **not** alter that record: Zenodo mints a separate version DOI and leaves the old
 one in place, and the `v2.1.1` tag and release are left untouched by policy — not because they
-are technically immutable, but because a published paper cites them. The `extract`
+are technically immutable, but because the manuscript under revision cites them. The `extract`
 aggregation behaviour those results rest on — transcript-to-group mapping and per-donor TPM
 summation — is unchanged through 2.4.0, and the bundled self-test still reproduces the same
 reference numbers. 2.4.0 adds two refusals to `extract` where 2.3.0 wrote a table: a cohort

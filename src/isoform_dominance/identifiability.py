@@ -173,7 +173,8 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
 
     Streams the file and never materialises the background's own k-mer set, so a
     whole-transcriptome FASTA (GENCODE, or the FASTA a Salmon index was built from)
-    can be used as background in memory proportional to the *query*, not the file.
+    can be used as background; one record is held at a time, so memory is set by the
+    query and the longest record, not the file (a single 20 Mb record: about 110 MB).
     Handles plain or gzipped input, told apart by the gzip magic bytes; ``exclude_ids`` drops records whose first
     ``|``- or whitespace-delimited field matches (version suffix ignored), which is
     how the transcripts under test are kept out of their own background.

@@ -21,7 +21,8 @@ cannot return a p-value below ``2^(1-n)``: at n = 5 the floor is 0.0625, so no
 arrangement of five donors is significant at 0.05.  Reporting a non-significant
 p-value without that context invites the reader to conclude the effect is absent when
 the design could never have shown it.  The floor is computed and reported alongside
-every test, and flagged when it exceeds 0.05.
+each per-cohort test and the donor-pooled one, and flagged when it exceeds 0.05; the
+Stouffer and stratified combinations do not carry one yet.
 
 *Effect size.*  A median fold-change with no interval is a point estimate presented
 as if it were a measurement; a donor-level bootstrap interval is reported with it.
@@ -148,7 +149,10 @@ def signed_rank_resolution_floor(n, alternative="two-sided"):
 # per-cohort statistics
 # --------------------------------------------------------------------------- #
 def paired_stat(A, B):
-    """Return (n, n_A>B, two-sided exact Wilcoxon P, median fold A/B).
+    """Return (n, n_A>B, two-sided Wilcoxon P, median fold A/B).
+
+    P is SciPy's ``method="auto"`` one: exact only without zeros or ties, see
+    :func:`paired_stat_detail`.
 
     Edge cases are handled explicitly: an empty input returns NaNs; if every pair
     is tied (no nonzero differences) the signed-rank test is undefined and P is

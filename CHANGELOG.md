@@ -149,8 +149,38 @@ versioning.
   digits, right only for 8-digit run numbers (`ERR2060213` is under `ERR206/003`, not
   `013`); it now follows ENA's rule for 6 to 9 digits and stops on anything else. The
   README gives the `salmon index` command for the filtered FASTA.
+- **Documentation that said what the code does not do.** The Wilcoxon test is SciPy's
+  `method="auto"`, exact only without zeros or ties (README, `docs/api.md`, `stats.py`, which
+  called it exact). Only the per-cohort and pooled tests carry a floor (README and `stats.py`
+  said every test). A `--background-fasta` scan holds one record at a time, so its memory is
+  set by the longest record (one 20 Mb record: about 110 MB resident), not by "the gene" or
+  "the query". `docs/api.md`: zero unique k-mers does not mean a class cannot be measured;
+  `kmers` folds to canonical by default; `stats.run` returns six keys, not two; the import
+  line lists `ensembl`. README: DEXSeq tests exon usage from its own exon-bin counts;
+  Kmerator also takes gene names, so that is not a claim; the v2.1.1 record is cited by the
+  manuscript under revision, not by a published paper. CONTRIBUTING lists the CI jobs.
 - **`extract` names a transcript that two groups share.** Its TPM still goes, as in 2.1.1,
   to the group the config lists last; the warning names the transcript and the groups.
+
+### Corrections to earlier entries
+The entries below are left as written; these sentences in them are wrong.
+- 2.4.0, saved inputs: "the rerun's whole `--json` report now equals the live one" — it
+  differed in `background.gene_id` (fixed above) and differs, by design, in the
+  `annotation` block, which says where the sequence came from.
+- 2.3.0, `DEFAULT_COMBINATION`: Stouffer's "inputs are the exact per-cohort tests, so it is
+  never anti-conservative". A per-cohort p is exact only without zero differences or ties;
+  otherwise it is a permutation p (n ≤ 13) or the normal approximation, as
+  `wilcoxon_method` reports, and the guarantee does not hold.
+- 2.3.0, the README LEPR example: "`weakly_identifiable` (exit 3)". With the default flags
+  2.3.0 exits 0 there: from 2.3.0 the verdict does not set the exit status, and exit 3
+  needs `--min-log2fc`.
+- 2.3.0, "`identifiability` exit code **1** is new … **0** groups distinguishable, **1**
+  invalid config, **2** a primary group has no unique k-mers", and "exit code 2 cannot
+  claim anything about sequencing depth": these describe the exit status before 2.3.0. From
+  2.3.0 it is 0 / 3 (`--min-log2fc` not resolved) / 2 (the gene total not estimable) / 1,
+  as that entry's "Breaking" item says.
+- 2.2.0, statistics: `min_achievable_p` — the key is `p_floor`, and the column
+  `resolution_floor_P`.
 
 ## [2.4.0] - 2026-09-30
 

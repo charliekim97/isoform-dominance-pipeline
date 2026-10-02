@@ -5,8 +5,8 @@ thin wrapper over a small public Python API. Each module is importable from the
 `isoform_dominance` package and can be used directly in scripts or notebooks.
 
 ```python
-from isoform_dominance import (annotate, identifiability, extract, index_scope, stats,
-                               contamination, io)
+from isoform_dominance import (annotate, contamination, ensembl, extract, identifiability,
+                               index_scope, io, stats)
 ```
 
 The config object passed throughout is a plain dict (loaded from JSON via
@@ -119,8 +119,10 @@ waits for its `Retry-After` instead) and `timeout=` (default `ensembl.DEFAULT_TI
 same `retries`/`retry_wait`; on the CLI they are `--retries` and `--retry-wait`. `server=`
 selects the host, as returned by `ensembl.resolve_server`.
 
-**`identifiability.kmers(seq, k) -> set`**
-Return the set of length-`k` substrings (k-mers) of `seq` (upper-cased).
+**`identifiability.kmers(seq, k, canonical=True) -> set`**
+Return the set of length-`k` substrings (k-mers) of `seq` (upper-cased), each folded to the
+smaller of itself and its reverse complement unless `canonical=False` (the strand-aware
+behaviour up to v2.1.1).
 
 **`identifiability.analyze(config, k=31, sequences=None, *, canonical=True, window=None, background_sequences=None, background_fasta=None, background_gene_transcripts="auto", species=None, read_length=100, frag_mean=200.0, frag_sd=60.0, paired=True, depth=30_000_000, mean_efflen=1500.0, tpm=10.0, n_donors=1, conditioning_tau=10.0, min_informative_reads=50.0, min_log2fc=None, ensembl_release=None, inputs_out=None, keep_duplicates=False, retries=5, retry_wait=1.0) -> dict`**
 The three layers the `identifiability` command reports -- sequence uniqueness, the read
@@ -161,9 +163,10 @@ None>, "fetched_release": <the release sequence was fetched from in this run, or
 `analyze(..., ensembl_release=N)` fetches from release `N` instead of the current one; it
 resolves nothing and makes no request when every sequence was supplied.
 
-A group with zero unique k-mers is not separable by short reads and is flagged
-(`distinguishable: False`). Neither this flag nor `verdict` sets the CLI's exit status:
-see the exit codes in the README.
+A group with zero unique k-mers is flagged `distinguishable: False`, which does **not**
+mean it cannot be measured: a class with no k-mer of its own is still estimable when a class
+it is nested in has unique sequence, so read `verdict` and the estimability fields. Neither
+the flag nor `verdict` sets the CLI's exit status: see the exit codes in the README.
 
 ---
 
@@ -219,13 +222,18 @@ for copies without a region it says they may be same-name genes on a reference c
 ## `stats`
 
 **`stats.paired_stat(A, B) -> (n, n_A>B, P, median_fold)`**
-Donor-level two-sided exact Wilcoxon signed-rank test (`scipy.stats.wilcoxon`) plus
+Donor-level two-sided Wilcoxon signed-rank test (`scipy.stats.wilcoxon`, `method="auto"`:
+exact only without zero differences or ties, otherwise a permutation test at n ≤ 13 and the
+normal approximation above; `paired_stat_detail` names which in `wilcoxon_method`) plus
 median fold-change. Handles edge cases: empty input → NaNs; all-tied pairs → P is
 NaN (test undefined); non-finite ratios are dropped from the fold-change.
 
 **`stats.run(config, condition, cohorts, out) -> dict`**
 `cohorts` is `{name: perdonor.csv}`. Writes `<out>.{png,pdf,svg}` and
-`<out>_stats.csv`, and returns `{"per_cohort": [...], "combined": (n, n_gt, P, fold)}`.
+`<out>_stats.csv`, and returns `{"per_cohort": [...], "combined": (n, n_gt, P, fold),
+"detail": [per-cohort paired_stat_detail], "pooled": paired_stat_detail of all donors,
+"combination": {"stouffer", "stratified_signed_rank", "pooled"}, "headline_combination":
+"stouffer"}`.
 
 ---
 
@@ -243,7 +251,7 @@ TPM, per cohort (a control for whether a dominance signal is a cell-type artefac
 
 **`io.load_config(path, need_groups=True) -> dict`** — load a config JSON; `io.InputError` (a `ValueError`) if it is not JSON, not an object, or, unless `need_groups` is false, has no `groups` object.
 **`io.load_json(path, what) -> object`** — parse a JSON file; `io.InputError` naming `what` and the file if it is not JSON.
-**`io.save_inputs(path, captured, config, release, version, background_fasta=None) -> dict`** — write the sequence an `identifiability` run used (`captured`, from `analyze(..., inputs_out=...)`) with the release it came from, as `"format": "isoform-dominance/inputs/1"` (`io.INPUTS_FORMAT`). `analysis` records the `k`, `window`, `canonical` and `keep_duplicates` of the run, none of which the config holds. A `background_fasta` is recorded by path, size and SHA-256, not copied. `gene_id` is the gene the background was fetched as, or the config's `gene_id`. Backs `--save-inputs`.
+**`io.save_inputs(path, captured, config, release, version, background_fasta=None) -> dict`** — write the sequence an `identifiability` run used (`captured`, from `analyze(..., inputs_out=...)`) with the release it came from, as `"format": "isoform-dominance/inputs/1"` (`io.INPUTS_FORMAT`). `analysis` records the `k`, `window`, `canonical` and `gene_background` of the run, and `keep_duplicates` when it had a background FASTA, none of which the config holds; `sequence_sources` gives each id's `"supplied"` or `"fetched:<release>"`, and `release` is recorded only when every sequence was fetched from it. A `background_fasta` is recorded by path, size and SHA-256, not copied. `gene_id` is the gene the background was fetched as, or the config's `gene_id`. Backs `--save-inputs`.
 **`io.load_inputs(path) -> dict`** — read a file `save_inputs` wrote; `io.InputError` if it is not one, and for every field the caller goes on to read: `sequences` and `background_sequences` as objects of id to sequence, an `ensembl_release` that is a number or null, an `analysis` with integer `k` and `window` and boolean `canonical` (and `keep_duplicates`, when present), a `gene_id` that is a string or null, and a `background_fasta` that is null or has a path and a sha256. Which transcripts are a class and which are background is decided by the config the rerun is given, not by the saved grouping. Backs `--inputs`.
 **`io.file_sha256(path) -> str`** — hex SHA-256 of a file's bytes.
 **`io.transcript_to_group(groups) -> dict`** — invert `{group: [ENST...]}` to `{ENST(no version): group}`.

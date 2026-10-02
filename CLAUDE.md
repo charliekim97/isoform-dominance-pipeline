@@ -119,18 +119,16 @@ In `~/.claude/settings.json` or `.claude/settings.local.json`:
 
 ## 5. Open items
 
-`paper.md` has an outstanding list of claims found false or overstated in an
-audit (see `PAPER-CLAIMS-091126.md`, kept outside this repository). Three
-require code changes:
+Resolved and no longer open: `selftest --json` and the self-test printing all three
+cohort combinations (f36a8f1), and the list of false or overstated claims in `paper.md`
+that `PAPER-CLAIMS-091126.md` recorded.
 
-- `selftest` does not accept `--json`, but `cli.py`'s module docstring says every
-  subcommand does.
-- `stats.py` writes an empty `resolution_floor_P` for the two `COMBINED_*`
-  combination rows, contradicting "every test is reported with the finest
-  p-value its own design could have resolved".
-- The self-test prints only the donor-pooled combination; the Stouffer and
-  stratified rows exist only in a CSV inside a temporary directory that is
-  deleted on exit.
+What is open, and in which round it is to be closed, is in `ROADMAP-PKG-092926.md`
+(kept outside this repository, beside the audit `AUDIT-POST240-092926.md` it rests on).
+Among them: `stats.py` still writes an empty `resolution_floor_P` for the two
+`COMBINED_*` combination rows (R4); `--background-fasta` records do not enter the
+estimability layer, and identical sequences in the Ensembl gene background are still
+counted as competitors (R2); the README and paper rewrite (R5).
 
 `docs/example_genes.md` shows an output format
 (`primary_comparison distinguishable by short reads: True`) that the current CLI
@@ -138,5 +136,5 @@ does not emit, and k-mer counts computed under v2.1 defaults (strand-aware,
 no gene background). Both defaults have since flipped. Regenerate against live
 Ensembl before citing those numbers.
 
-JOSS submission is gated on public history: the earliest eligible date is
-2026-12-12.
+JOSS submission is gated on public history of more than six months: the repository was
+created 2026-06-12T19:52Z, so the earliest eligible date is 2026-12-13.
