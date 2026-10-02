@@ -122,7 +122,8 @@ def primary_pair(config):
     return pc[0], pc[1]
 
 
-def save_inputs(path, captured, config, release, version, background_fasta=None):
+def save_inputs(path, captured, config, release, version, background_fasta=None,
+                decoys=None):
     """Write the sequence an ``identifiability`` run used, so it can be repeated offline.
 
     ``captured`` is what :func:`isoform_dominance.identifiability.analyze` put in
@@ -133,7 +134,7 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
 
     A ``background_fasta`` is not copied -- a transcriptome FASTA runs to hundreds of
     megabytes -- but its path, size and SHA-256 are recorded, so that a rerun from this
-    file can say when it is given no FASTA, or another one.
+    file can say when it is given no FASTA, or another one; and so are a ``decoys`` file's.
 
     ``analysis`` records the k, window and k-mer convention the run used.  None of the
     three is in the config, so without them nothing can tell a rerun from this file that
@@ -153,10 +154,9 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
     fetched, the config's ``gene_id`` -- so that a rerun can be refused a config of another
     gene of the same name.
     """
-    fasta = None
-    if background_fasta:
-        fasta = {"path": str(background_fasta), "bytes": os.path.getsize(background_fasta),
-                 "sha256": file_sha256(background_fasta)}
+    def _file(p):
+        return p and {"path": str(p), "bytes": os.path.getsize(p), "sha256": file_sha256(p)}
+    fasta = _file(background_fasta) or None
     doc = {"format": INPUTS_FORMAT, "package_version": version,
            "saved": datetime.date.today().isoformat(),
            "gene": config.get("gene"), "species": config.get("species", "homo_sapiens"),
@@ -167,6 +167,7 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
                             gene_background=bool(captured.get("gene_background",
                                                               captured["background_sequences"]))),
            "background_fasta": fasta,
+           "decoys": _file(decoys) or None,
            "sequence_sources": captured.get("sequence_sources"),
            "sequences": captured["sequences"],
            "background_sequences": captured["background_sequences"]}
@@ -227,10 +228,11 @@ def load_inputs(path):
         raise InputError("saved inputs %s: sequence_sources is %r, expected null or an object "
                          "of transcript id to \"supplied\" or \"fetched:<release>\""
                          % (path, sources))
-    fasta = doc.get("background_fasta")
-    if fasta is not None and not (isinstance(fasta, dict)
-                                  and isinstance(fasta.get("path"), str)
-                                  and isinstance(fasta.get("sha256"), str)):
-        raise InputError("saved inputs %s: background_fasta is %r, expected null or an "
-                         "object with a path and a sha256" % (path, fasta))
+    for key in ("background_fasta", "decoys"):
+        rec = doc.get(key)
+        if rec is not None and not (isinstance(rec, dict)
+                                    and isinstance(rec.get("path"), str)
+                                    and isinstance(rec.get("sha256"), str)):
+            raise InputError("saved inputs %s: %s is %r, expected null or an object with a "
+                             "path and a sha256" % (path, key, rec))
     return doc

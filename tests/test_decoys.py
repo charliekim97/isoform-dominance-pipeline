@@ -143,3 +143,37 @@ def test_a_decoy_is_matched_by_its_first_word_or_that_words_first_field(tmp_path
                                    decoys=["chrF"], stats=stats)
     assert list(got) == ["chrG"] and stats["decoys_skipped"] == 1
     assert stats["decoys_found"] == {"chrF"}
+
+
+# --------------------------------------------------------------------------- #
+# which files the answer came from
+# --------------------------------------------------------------------------- #
+def test_the_report_names_the_files_by_their_sha256(tmp_path, capsys, small_genome):
+    from isoform_dominance import io
+    decoys = _decoys(tmp_path, "chrF", "chrG")
+    rc, res, err = _run(tmp_path, capsys, GENTROME, "--decoys", decoys)
+    bg = res["background"]
+    assert bg["fasta_sha256"] == io.file_sha256(str(tmp_path / "bg.fa"))
+    assert bg["decoys_sha256"] == io.file_sha256(decoys)
+    none = I.analyze(CFG, sequences=SEQS, background_gene_transcripts=False)["background"]
+    assert none["fasta_sha256"] is None and none["decoys_sha256"] is None
+
+
+def test_saved_inputs_record_the_decoys_and_a_rerun_without_them_says_so(
+        tmp_path, capsys, small_genome):
+    from isoform_dominance import io
+    decoys = _decoys(tmp_path, "chrF", "chrG")
+    saved = tmp_path / "in.json"
+    _run(tmp_path, capsys, GENTROME, "--decoys", decoys, "--save-inputs", str(saved))
+    doc = io.load_inputs(str(saved))
+    assert doc["decoys"]["sha256"] == io.file_sha256(decoys)
+    argv = ["identifiability", "--config", str(tmp_path / "cfg.json"), "--inputs", str(saved),
+            "--background-fasta", str(tmp_path / "bg.fa")]
+    cli.main(argv)
+    assert "the saved run also used --decoys" in capsys.readouterr().err
+    cli.main(argv + ["--decoys", decoys])
+    assert "--decoys" not in capsys.readouterr().err.replace("pass --decoys", "")
+    other = _decoys(tmp_path, "chrF")
+    cli.main(argv + ["--decoys", other])
+    assert "--decoys %s is not the file the inputs were saved with" % other \
+        in capsys.readouterr().err

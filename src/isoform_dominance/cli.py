@@ -144,22 +144,23 @@ def _load_sequences(path, flag):
     return seqs
 
 
-def _fasta_note(saved, given):
+def _fasta_note(saved, given, flag="--background-fasta",
+                without="windows shared with other genes count as unique here"):
     """What to say when a rerun from saved inputs has another --background-fasta, or none.
 
     ``saved`` is the ``background_fasta`` record of the saved inputs (None if that run
-    used none); ``given`` is this run's --background-fasta.  None when they agree.
+    used none); ``given`` is this run's --background-fasta.  None when they agree.  With
+    ``flag`` and ``without``, the same for another file the run read, such as --decoys.
     """
     if saved is None:
         return None
     if not given:
-        return ("the saved run also used --background-fasta %s (sha256 %s...); without it, "
-                "windows shared with other genes count as unique here and the verdict can "
-                "differ. Pass it again." % (saved["path"], saved["sha256"][:12]))
+        return ("the saved run also used %s %s (sha256 %s...); without it, %s and the "
+                "verdict can differ. Pass it again."
+                % (flag, saved["path"], saved["sha256"][:12], without))
     if io.file_sha256(given) != saved["sha256"]:
-        return ("--background-fasta %s is not the file the inputs were saved with (%s, "
-                "sha256 %s...); the verdict can differ." % (given, saved["path"],
-                                                           saved["sha256"][:12]))
+        return ("%s %s is not the file the inputs were saved with (%s, sha256 %s...); the "
+                "verdict can differ." % (flag, given, saved["path"], saved["sha256"][:12]))
     return None
 
 
@@ -318,7 +319,10 @@ def cmd_identifiability(a):
         for note in (_analysis_note(inputs["analysis"], a.k, a.window, not a.strand_aware,
                                     a.keep_duplicates if a.background_fasta
                                     or background is not None else None),
-                     _fasta_note(inputs.get("background_fasta"), a.background_fasta)):
+                     _fasta_note(inputs.get("background_fasta"), a.background_fasta),
+                     _fasta_note(inputs.get("decoys"), a.decoys, "--decoys",
+                                 "the genome records it names are read as competing "
+                                 "sequence")):
             if note:
                 print("  NOTE: " + note, file=sys.stderr)
     code = _report(a, res)
@@ -338,7 +342,7 @@ def cmd_identifiability(a):
         if captured.get("gene_id") is None and inputs is not None:
             captured["gene_id"] = inputs.get("gene_id")
         io.save_inputs(a.save_inputs, captured, cfg, release, __version__,
-                       background_fasta=a.background_fasta)
+                       background_fasta=a.background_fasta, decoys=a.decoys)
         n_sup = sum(v == "supplied" for v in sources.values())
         print("  saved this run's sequence (%s) to %s; repeat it with no network: "
               "--inputs %s" % ("Ensembl release %s" % release if release is not None

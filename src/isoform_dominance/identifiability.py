@@ -1032,7 +1032,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         ``n_background_transcripts``, the gene background's columns;
         ``fasta_competitors``, the FASTA records that are columns, each with the number of
         distinct windows it shares with the configured transcripts, and
-        ``n_fasta_competitors``; ``sequence_from_fasta``, the gene-background transcripts
+        ``n_fasta_competitors``; ``fasta_sha256`` and ``decoys_sha256``, the SHA-256 of
+        the files' bytes; ``sequence_from_fasta``, the gene-background transcripts
         whose column is the FASTA's sequence; ``identical_to_configured`` and
         ``identical_to_background``, the background sequences left out as copies, each
         mapped to the transcript it equals, and ``identical_source``, where each came
@@ -1390,7 +1391,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             "gene_id": bg_gene_id,
             "gene_transcripts": gene_columns,
             "fasta": str(background_fasta) if background_fasta else None,
+            # which files: a path names a place, and the file there can change
+            "fasta_sha256": io.file_sha256(background_fasta) if background_fasta else None,
             "decoys": str(decoys) if decoys else None,
+            "decoys_sha256": io.file_sha256(decoys) if decoys else None,
             "decoys_listed": len(decoy_names) if decoys else None,
             "decoys_skipped": scan["decoys_skipped"] if decoys else None,
             "decoys_absent": (sorted(set(decoy_names) - scan["decoys_found"])
