@@ -329,35 +329,61 @@ def scan_fasta_competitors(path, query_kmers, k, canonical=True, exclude_ids=(),
     Every record reported, here or in ``identical_out``, has a name of its own: its id;
     ``record<N>`` when its header gives none, N its place among the file's headers; and
     for a later record with an id already reported, ``<id>#2`` (``#3``, ...) -- or
-    nothing, when its sequence is that record's, which makes it the same record again.
+    nothing, when its sequence is one already reported under that id, which makes it the
+    same record again.
     ``decoys`` and ``stats`` are described at :func:`_scan_records`; the other arguments
     are :func:`scan_background_fasta`'s.
     """
     keep = {str(i).split(".")[0] for i in keep_ids}
     keep_seqs = set(keep_sequences)
     keep_lengths = {len(x) for x in keep_seqs}
-    out, named = {}, {}                 # named: name -> the sequence reported under it
+    out, name = {}, _Names()
     for place, tid, seq, hits, same in _scan_records(
             path, query_kmers, k, canonical, exclude_ids, identical, None, seed, decoys,
             stats, every=True):
         if same is None and not (hits or tid in keep
                                  or (len(seq) in keep_lengths and seq in keep_seqs)):
             continue
-        rid = tid if tid else "record%d" % place
-        if rid in named:
-            if named[rid] == seq:
-                continue
-            m = 2
-            while "%s#%d" % (rid, m) in named:
-                m += 1
-            rid = "%s#%d" % (rid, m)
-        named[rid] = seq
+        rid = name(tid, place, seq)
+        if rid is None:
+            continue
         if same is not None:
             if identical_out is not None:
                 identical_out[rid] = same
         else:
             out[rid] = (seq, hits)
     return out
+
+
+class _Names:
+    """The name each reported record goes by; see :func:`scan_fasta_competitors`.
+
+    ``names(id, place, sequence)`` gives the name, or None for a record with an id and a
+    sequence already reported together.  Sequences are kept as digests.
+    """
+
+    def __init__(self):
+        self.taken = set()
+        self.seen = {}                  # id -> digests of the sequences reported under it
+
+    def __call__(self, tid, place, seq):
+        rid = tid if tid else "record%d" % place
+        digest = hashlib.blake2b(seq.encode(), digest_size=16).digest()
+        mine = self.seen.setdefault(rid, set())
+        if digest in mine:
+            return None
+        mine.add(digest)
+        name, m = rid, 2
+        while name in self.taken:
+            name, m = "%s#%d" % (rid, m), m + 1
+        self.taken.add(name)
+        return name
+
+    def claim(self, tid, seq):
+        """Reserve ``tid`` for a column with this sequence."""
+        self.taken.add(tid)
+        self.seen.setdefault(tid, set()).add(
+            hashlib.blake2b(seq.encode(), digest_size=16).digest())
 
 
 #: Default of ``max_window_records``: a FASTA record becomes a column of the system when it
@@ -395,19 +421,7 @@ def _whole_index(path, column_windows, configured_windows, gene_ids, gene_sequen
     """
     stats = {}
     exclude = list(exclude_ids)
-    named = {}                          # name -> the sequence reported under it
-
-    def _name(tid, place, seq):
-        rid = tid if tid else "record%d" % place
-        if rid in named:
-            if named[rid] == seq:
-                return None             # the same record again
-            m = 2
-            while "%s#%d" % (rid, m) in named:
-                m += 1
-            rid = "%s#%d" % (rid, m)
-        named[rid] = seq
-        return rid
+    _name = _Names()
 
     gene_records, same_conf, same_bg = {}, {}, {}
     gene_lengths = {len(x) for x in gene_sequences}
@@ -420,7 +434,7 @@ def _whole_index(path, column_windows, configured_windows, gene_ids, gene_sequen
             else configured, None, seed, decoys, stats, every=True):
         if tid in gene_ids and tid not in gene_records:
             gene_records[tid] = seq
-            named[tid] = seq            # the column's name: a later record of it is <id>#2
+            _name.claim(tid, seq)       # the column's name: a later record of it is <id>#2
             settled.add(place)
             continue
         if same is not None:
@@ -458,18 +472,20 @@ def _whole_index(path, column_windows, configured_windows, gene_ids, gene_sequen
         # m only grows, so a record none of whose configured windows is within the limit
         # now never will be: its sequence need not be kept
         hopeful = len(seq) <= LONG_RECORD and any(m[w] <= max_window_records for w in mine)
-        sharing.append((rid, place, hits, mine, seq if hopeful else None))
+        sharing.append((rid, place, hits, mine, seq if hopeful else None, digest))
 
     added = {}
     within = Counter()                  # per window, the added records that hold it
     left_places = set()
-    for rid, place, hits, mine, seq in sharing:
+    left_seqs = set()                   # digests of the left-out records, copies counted once
+    for rid, place, hits, mine, seq, digest in sharing:
         if seq is not None and any(m[w] <= max_window_records for w in mine):
             added[rid] = (seq, len(mine))
             within.update(hits)
             settled.add(place)
         else:
             left_places.add(place)
+            left_seqs.add(digest if digest is not None else place)
     # a column window held by more outside records than were added is held by a left-out one
     dropped = {w for w, n in m.items() if n > within[w]}
 
@@ -479,15 +495,22 @@ def _whole_index(path, column_windows, configured_windows, gene_ids, gene_sequen
         query.update(kmer_track(seq, window, canonical))
     query -= column_windows             # those were settled in pass 1
     if query:
-        for place, _, _, hits, _ in _scan_records(
+        for place, _, seq, hits, _ in _scan_records(
                 path, query, window, canonical, exclude, None, None, seed, decoys,
                 None, every=True):
             if hits and place not in settled:
-                dropped |= hits
-                left_places.add(place)
+                dropped |= hits         # a pass-1 left-out record's too
+                if place not in left_places:
+                    left_places.add(place)
+                    # a copy is no record: each sequence is one record left out
+                    left_seqs.add(place if keep_duplicates else
+                                  hashlib.blake2b(seq.encode(), digest_size=16).digest())
+    # a copy of a record left out is no column's copy: it is not reported as one
+    columns = set(gene_sequences.values()) | set(added)
+    same_bg = {rid: t for rid, t in same_bg.items() if t in columns}
     return {"gene_records": gene_records, "identical_to_configured": same_conf,
             "identical_to_background": same_bg, "added": added, "dropped": dropped,
-            "left_out": len(left_places), "stats": stats}
+            "left_out": len(left_seqs), "stats": stats}
 
 
 # --------------------------------------------------------------------------- #
@@ -1216,7 +1239,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         fetched from in this run -- None for both when absent), ``gene_total``
         (estimability of the sum of every column, with the transcripts that have no
         window at all, ``transcripts_without_windows``, and those whose every window was
-        dropped, ``transcripts_all_windows_dropped``, which the sum leaves out),
+        dropped, ``transcripts_all_windows_dropped``, which the sum leaves out; with windows
+        dropped a column sums to less than one, so the sum can be inestimable with no
+        transcript windowless, and the CLI's precondition reads
+        ``transcripts_without_windows``),
         ``effect_resolvable`` (whether both class totals and the contrast resolve
         ``min_log2fc``, none of them ``beyond_linear``; None without it), and -- for callers written against v2.1 --
         ``primary_distinguishable``.  Note that ``verdict`` supersedes
@@ -1517,10 +1543,17 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         c[idx[t]] -= 1.0
     contrast = estimability(A, c, svd=svd)
     contrast["label"] = "the class contrast"
-    if contrast["estimable"]:
+    # The figure is the delta-method SE of log(A/B), a quadratic form in its gradient
+    # c_a/a - c_b/b.  That is a standard error only when the gradient is estimable, which
+    # the difference c_a - c_b being estimable does not ensure: with class totals that are
+    # not, it read 0.87 where the system with more rows gave 3.06.
+    a_tot = float(class_indicator[pc[0]] @ theta)
+    b_tot = float(class_indicator[pc[1]] @ theta)
+    raw = float("inf")
+    if contrast["estimable"] and a_tot and b_tot and estimability(
+            A, class_indicator[pc[0]] / a_tot - class_indicator[pc[1]] / b_tot,
+            svd=svd)["estimable"]:
         raw = log_ratio_se(cov, class_indicator[pc[0]], class_indicator[pc[1]], theta)
-    else:
-        raw = float("inf")
     contrast["gls_relative_se"] = raw
     contrast["min_resolvable_log2fc"] = min_resolvable_log2fc(raw, n_donors)
     contrast["beyond_linear"] = raw > LINEARISATION_LIMIT

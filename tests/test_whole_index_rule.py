@@ -248,3 +248,126 @@ def test_a_column_whose_windows_are_all_dropped_is_no_precondition_failure(
               "--background-sequences", str(bs), "--background-fasta", fa, "--window", "15",
               "--k", "15", "--max-window-records", "2"])
     assert "every window of ENST00000000011 was dropped" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# cases an adversarial search found that the random systems above did not
+# --------------------------------------------------------------------------- #
+def _small(tmp_path, seqs, gene, records, n=0, **kw):
+    cfg = {"gene": "GENEX", "groups": {"A": [sorted(seqs)[0]], "B": [sorted(seqs)[1]]},
+           "primary_comparison": ["A", "B"]}
+    fa = _fasta(tmp_path, records, n)
+    here = _run(cfg, seqs, gene, background_fasta=fa, **kw)
+    exact = _run(cfg, seqs, dict(gene, **records),
+                 **{k: v for k, v in kw.items() if k == "keep_duplicates"})
+    return cfg, fa, here, exact
+
+
+def test_a_column_partly_dropped_is_no_precondition_failure(tmp_path, capsys):
+    """A record holding a gene-background transcript's tail, and nothing configured, is
+    left out at every M; the tail's windows go, and that column no longer sums to one.  The
+    gene total can then leave the row space with no transcript shorter than the window,
+    which is no reason for exit 2."""
+    import json
+    r = random.Random(1)
+    s, d, t2, f = _rand(r, 120), _rand(r, 80), _rand(r, 200), _rand(r, 60)
+    seqs = {"ENST00000000001": s, "ENST00000000002": t2}
+    gene = {"ENST00000000011": s + d}
+    records = {"ENST90000000001": s[-(K - 1):] + d + f}
+    cfg, fa, here, exact = _small(tmp_path, seqs, gene, records)
+    assert here["background"]["windows_dropped"]["columns"] == {"ENST00000000011": 80}
+    assert here["gene_total"]["transcripts_without_windows"] == []
+    assert cli._identifiability_exit(here) == cli._identifiability_exit(exact) \
+        == cli.EXIT_EFFECT_NOT_RESOLVED
+    cp, sq, bs = tmp_path / "c.json", tmp_path / "s.json", tmp_path / "b.json"
+    cp.write_text(json.dumps(cfg))
+    sq.write_text(json.dumps(seqs))
+    bs.write_text(json.dumps(gene))
+    rc = cli.main(["identifiability", "--config", str(cp), "--sequences", str(sq),
+                   "--background-sequences", str(bs), "--background-fasta", fa, "--window",
+                   "15", "--k", "15", "--min-log2fc", "0.5"])
+    err = capsys.readouterr().err
+    assert rc == cli.EXIT_EFFECT_NOT_RESOLVED and "PRECONDITION" not in err
+    assert "80 window(s) of the background's columns were dropped" in err
+
+
+def test_the_contrast_has_no_figure_where_its_log_ratio_is_not_estimable(tmp_path):
+    """The contrast c_a - c_b can be estimable while the class totals are not; the log
+    ratio's gradient c_a/a - c_b/b then lies outside the row space, and its quadratic form
+    is no standard error.  It read 0.87 here against 3.06 in the exact system."""
+    r = random.Random(10)
+    p1 = _rand(r, 250)
+    p2 = _rand(r, 2 * (250 - K + 1) + K - 1)
+    seqs = {"ENST00000000001": p1, "ENST00000000002": p2}
+    gene = {"ENST00000000011": p1 + p1 + p2}         # holds T1 twice and T2 once
+    records = {"ENST90000000001": _rand(r, 40) + p1[-(K - 1):] + p1[:K - 1] + _rand(r, 40),
+               "ENST90000000002": _rand(r, 40) + p1[-(K - 1):] + p2[:K - 1] + _rand(r, 40)}
+    for M in (0, 20):
+        _, _, here, exact = _small(tmp_path, seqs, gene, records, M, max_window_records=M)
+        assert not here["groups"]["A"]["estimable"] and here["contrast"]["estimable"]
+        assert here["contrast"]["gls_relative_se"] == float("inf")
+        _compare(here, exact)
+
+
+@pytest.mark.parametrize("first_shares", [True, False])
+def test_with_keep_duplicates_a_record_repeated_is_one_column(tmp_path, first_shares):
+    """R:X, R:Y, R:Y -- the third is the second again, whatever the first is."""
+    r = random.Random(12)
+    seqs = {"ENST00000000001": _rand(r, 300), "ENST00000000002": _rand(r, 300)}
+    x = (seqs["ENST00000000001"][:100] if first_shares else _rand(r, 100)) + _rand(r, 50)
+    y = seqs["ENST00000000001"][150:250] + _rand(r, 50)
+    fa = tmp_path / "bg.fa"
+    fa.write_text(">R.1\n%s\n>R.2\n%s\n>R.3\n%s\n" % (x, y, y))
+    cfg = {"gene": "GENEX", "groups": {"A": ["ENST00000000001"], "B": ["ENST00000000002"]},
+           "primary_comparison": ["A", "B"]}
+    here = _run(cfg, seqs, {}, background_fasta=str(fa), keep_duplicates=True)
+    assert len(here["background"]["fasta_competitors"]) == (2 if first_shares else 1)
+    query = I.kmers(seqs["ENST00000000001"], K)
+    assert len(I.scan_fasta_competitors(fa, query, K)) == (2 if first_shares else 1)
+
+
+def test_a_copy_is_no_left_out_record_and_no_copy_of_one(tmp_path):
+    r = random.Random(8)
+    p, q = _rand(r, 260), _rand(r, 260)
+    seqs = {"ENST00000000001": p, "ENST00000000002": q}
+    own = _rand(r, 80)
+    s = own[-40:] + _rand(r, 60)                    # second order: holds R1's own part
+    _, _, here, _ = _small(tmp_path, seqs, {},
+                           {"ENST90000000001": p[50:130] + own, "ENST90000000002": s,
+                            "ENST90000000003": s})
+    assert list(here["background"]["fasta_competitors"]) == ["ENST90000000001"]
+    assert here["background"]["fasta_left_out"] == 1          # one record, and its copy
+    rep = p[100:160]
+    # the repeat with other flanking bases than in T1, so that its windows are all shared
+    left = {"ENST9%010d" % i: _rand(r, 29) + ("A" if p[99] != "A" else "C") + rep
+            + ("G" if p[160] != "G" else "T") + _rand(r, 29) for i in range(3)}
+    left["ENST90000000099"] = left["ENST90000000000"]       # a copy of a record left out
+    _, _, here, _ = _small(tmp_path, seqs, {}, left, 1, max_window_records=2)
+    bg = here["background"]
+    assert bg["fasta_competitors"] == {} and bg["fasta_left_out"] == 3
+    assert bg["identical_to_background"] == {}               # not "counted once"
+
+
+def test_the_cli_says_which_records_are_columns():
+    sub = cli.build_parser()._subparsers._group_actions[0].choices["identifiability"]
+    helps = {x.option_strings[0]: x.help for x in sub._actions if x.option_strings}
+    assert "--max-window-records" in helps["--background-fasta"]
+    assert "every record" not in helps["--background-fasta"]
+
+
+def test_a_record_left_out_in_pass_1_still_takes_an_added_records_windows(tmp_path):
+    """L holds T1's repeat, found in more than M records, so it is left out in pass 1; it
+    also holds the own part of X, which is added.  X's windows that L holds go too."""
+    r = random.Random(21)
+    rep, xown = _rand(r, 40), _rand(r, 80)
+    t1 = _rand(r, 199) + "A" + rep + "C" + _rand(r, 99)
+    seqs = {"ENST00000000001": t1, "ENST00000000002": _rand(r, 300)}
+    records = {"ENST90000000001": t1[20:120] + xown}                  # X: added
+    for i in range(2, 6):                                              # the repeat, 4 more
+        records["ENST9%010d" % i] = _rand(r, 29) + "G" + rep + "T" + _rand(r, 29)
+    records["ENST90000000009"] = "G" + rep + "T" + xown[10:70]         # L
+    _, _, here, exact = _small(tmp_path, seqs, {}, records, max_window_records=3)
+    assert list(here["background"]["fasta_competitors"]) == ["ENST90000000001"]
+    shared = I.kmers(xown[10:70], K) & I.kmers(records["ENST90000000001"], K)
+    assert here["background"]["windows_dropped"]["columns"]["ENST90000000001"] >= len(shared)
+    _compare(here, exact)

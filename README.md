@@ -131,8 +131,8 @@ monotone positional skew) the 5' direction held for 35–36 of the 39 genes abov
 or form of skew was tested, and below that ratio nothing was measured, so nothing is said.
 
 Exit codes: **0** no `--min-log2fc` given, or it is resolved · **3** `--min-log2fc` given and
-not resolved at the stated design · **2** precondition failure: the gene total itself is not
-estimable, because a transcript shorter than `--window` has no windows · **1** config or
+not resolved at the stated design · **2** precondition failure: a transcript shorter than
+`--window` has no windows, so the gene total itself is not estimable · **1** config or
 network error. The structural verdict is never the exit status: it changes with the
 annotation release the transcripts came from, so it is reported in the output and in the
 `--json` report (`verdict`, with `gene_total` and `effect_resolvable` beside it).

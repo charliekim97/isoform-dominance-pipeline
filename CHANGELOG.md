@@ -60,6 +60,11 @@ versioning.
   `gene_total.transcripts_all_windows_dropped`. The `background:` line counts the FASTA's
   competing records. Saved inputs record `analysis.max_window_records` for a run with a
   FASTA, and a rerun at another M says so.
+- **Exit 2 is read from the precondition it names**, a transcript shorter than the window
+  (`gene_total.transcripts_without_windows`), not from `gene_total.estimable`. The two agree
+  while every column sums to one; with windows dropped by `--max-window-records` a column
+  sums to less, and the gene total can be inestimable with no transcript windowless, which
+  is no precondition failure. `gene_total.estimable` is still reported.
 - Saved inputs record `analysis.keep_duplicates` for a run with a gene background as well as
   for one with a FASTA, since the setting now applies to both; `INPUTS_FORMAT` is unchanged.
 
@@ -108,6 +113,14 @@ The first two entries change an answer.
   retried like an outage, and named as one when the retries run out.
 - **A `--background-fasta` header whose first `|`-field is empty** (`>|x`, `>|`) is read as a
   record without an id; through 2.4.1 it stopped the run with an `IndexError` traceback.
+- **The contrast's `gls_relative_se` and `min_resolvable_log2fc` are infinite when the log
+  ratio is not estimable.** The figure is the delta-method SE of log(A/B), a quadratic form
+  in its gradient `c_a/a - c_b/b`; through 2.4.1 it was computed whenever the difference
+  `c_a - c_b` was estimable, which with class totals that are not leaves the gradient
+  outside the row space, and the form is then no standard error (one constructed case read
+  0.87 where the system with more rows gave 3.06). The overall verdict and the exit status
+  do not change, since both class totals already fail there; the contrast's own verdict
+  and reasons can.
 - **A compatibility system too large for memory is one line and exit 1**, naming the
   allocation and the likely cause (a genome record, or a repeat many records share), not a
   `MemoryError` traceback.

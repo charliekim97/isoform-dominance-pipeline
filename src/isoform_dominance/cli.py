@@ -15,9 +15,9 @@ with ``--min-log2fc``:
   3   ``--min-log2fc`` given and not resolved -- including when an
       estimand has no finite figure at all, or one past the
       linearisation limit (``beyond_linear``)
-  2   precondition failure: the gene total itself is not estimable,
-      because a transcript shorter than ``--window`` has no windows
-      and an all-zero column. Not a verdict; checked first
+  2   precondition failure: a transcript shorter than ``--window``
+      has no windows and an all-zero column, so the gene total itself
+      is not estimable. Not a verdict; checked first
   1   config error or network failure
 ===== ==============================================================
 """
@@ -37,8 +37,15 @@ EXIT_EFFECT_NOT_RESOLVED = 3
 
 
 def _identifiability_exit(res):
-    """Exit status from the precondition and the requested effect size, never the verdict."""
-    if not res["gene_total"]["estimable"]:
+    """Exit status from the precondition and the requested effect size, never the verdict.
+
+    The precondition is that no transcript is shorter than the window.  Before 2.5 it was
+    read as the gene total being estimable, which is the same thing while every column
+    sums to one; with windows dropped (``--max-window-records``) a column sums to less, and
+    the gene total can leave the row space with no transcript windowless."""
+    gt = res["gene_total"]
+    windowless = gt.get("transcripts_without_windows")
+    if windowless if windowless is not None else not gt["estimable"]:
         return EXIT_NOT_IDENTIFIABLE
     if res["effect_resolvable"] is False:
         return EXIT_EFFECT_NOT_RESOLVED
@@ -313,9 +320,9 @@ def cmd_identifiability(a):
     except MemoryError as e:
         print("error: out of memory%s.%s" % (
             " (%s)" % e if str(e) else "",
-            " Each --background-fasta record that shares a window with a configured "
-            "transcript is a column of the compatibility system, so genome sequence (pass "
-            "--decoys) or a repeat that many records share can make the system too large."
+            " A --background-fasta record that holds a configured window found in at most "
+            "--max-window-records records is a column of the compatibility system: a "
+            "smaller --max-window-records, or --decoys for genome sequence, makes it smaller."
             if a.background_fasta else ""), file=sys.stderr)
         return 1
     if inputs is not None:
@@ -430,6 +437,12 @@ def _report(a, res):
               "sequences: %s. For an index built with Salmon's --keepDuplicates, pass "
               "--keep-duplicates." % (len(twins), _pairs(twins)), file=sys.stderr)
     gone = bg.get("windows_dropped") or {}
+    if gone.get("total") and not gone.get("configured"):
+        print("  NOTE: --background-fasta: %d window(s) of the background's columns were "
+              "dropped from the compatibility system, because FASTA records left out of it "
+              "hold them (%d record(s) left out); none is a configured transcript's. This can "
+              "only make the answer more conservative." % (gone["total"], bg["fasta_left_out"]),
+              file=sys.stderr)
     if gone.get("configured"):
         print("  NOTE: --background-fasta: %d of the configured transcripts' %d distinct windows "
               "(%.1f%%) were dropped from every layer, because FASTA records left out of the "
@@ -614,7 +627,7 @@ def _report(a, res):
           "class comparison actually is. The per-class figures above are for the class "
           "totals themselves.)", file=sys.stderr)
     gt = res["gene_total"]
-    if not gt["estimable"]:
+    if gt["transcripts_without_windows"]:
         print("  PRECONDITION FAILED: the gene total is not estimable. %s shorter than "
               "window=%d, so %s no windows and an all-zero column in the compatibility "
               "system; no class total or contrast built on it is well posed. This does "
@@ -780,9 +793,10 @@ def build_parser():
     s.add_argument("--background-fasta",
                    help="FASTA (optionally gzipped) to judge uniqueness against: the "
                         "transcript FASTA the Salmon index was built from, without the "
-                        "genome decoys (or pass --decoys). Each record that shares a window "
-                        "with a configured transcript is a column of the compatibility "
-                        "system")
+                        "genome decoys (or pass --decoys). A record that holds a configured "
+                        "transcript's window found in at most --max-window-records records is "
+                        "a column of the compatibility system; the windows that the records "
+                        "left out hold are dropped")
     s.add_argument("--max-window-records", type=_count, metavar="M",
                    default=identifiability.DEFAULT_MAX_WINDOW_RECORDS,
                    help="a --background-fasta record joins the compatibility system when it "

@@ -134,4 +134,4 @@ def test_a_system_too_large_for_memory_is_one_line_and_exit_1(tmp_path, capsys, 
     err = capsys.readouterr().err
     assert rc == 1 and len(err.strip().splitlines()) == 1
     assert err.startswith("error: out of memory (Unable to allocate 3.73 GiB")
-    assert "--decoys" in err
+    assert "--max-window-records" in err and "--decoys" in err
