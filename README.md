@@ -457,7 +457,7 @@ version does **not** alter that record: Zenodo mints a separate version DOI and 
 one in place, and the `v2.1.1` tag and release are left untouched by policy — not because they
 are technically immutable, but because the manuscript under revision cites them. The `extract`
 aggregation behaviour those results rest on — transcript-to-group mapping and per-donor TPM
-summation — is unchanged through 2.4.1, and the bundled self-test still reproduces the same
+summation — is unchanged through 2.5.0, and the bundled self-test still reproduces the same
 reference numbers. 2.4.0 adds two refusals to `extract` where 2.3.0 wrote a table: a cohort
 quantified against more than one Salmon index, and a config none of whose transcripts is in
 any donor's `quant.sf`. 2.4.1 counts an index with Salmon's decoys and one without as two,
