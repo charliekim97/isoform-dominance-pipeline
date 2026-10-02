@@ -18,6 +18,8 @@ versioning.
 > decoys and one without as two, and writes the rows in 2.1.1's order again (2.4.0 sorted
 > them by donor name).
 
+## [Unreleased]
+
 ## [2.4.1] - 2026-10-02
 
 ### Added
