@@ -130,3 +130,22 @@ def test_full_gencode_header_names_count_as_present(tmp_path, capsys):
     assert cli.main(_case(tmp_path, {"D1": names})) == cli.EXIT_OK
     assert "WARNING" not in capsys.readouterr().err
     assert _sidecar(tmp_path)["missing_transcripts"]["n_missing"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# a transcript in two groups: extract warns and sums as it always has
+# --------------------------------------------------------------------------- #
+def test_a_transcript_in_two_groups_is_named_and_summed_as_before(tmp_path, capsys):
+    # the 2.1.1 aggregation puts its TPM in the group listed last, and that is kept --
+    # changing it would change published numbers; the warning is what is new
+    shared = GROUPS["A"][0]
+    groups = {"A": GROUPS["A"], "B": GROUPS["B"] + [shared]}
+    argv = _case(tmp_path, {"D1": ALL[:3]}, groups=groups)     # TPM 5, 6, 7
+    assert cli.main(argv) == 0
+    err = capsys.readouterr().err
+    line = [ln for ln in err.splitlines() if shared in ln]
+    assert len(line) == 1 and "WARNING" in line[0]
+    assert '"A"' in line[0] and '"B"' in line[0]
+    head, row = open(tmp_path / "pd.csv").read().splitlines()[:2]
+    tpm = dict(zip(head.split(","), row.split(","), strict=True))
+    assert (tpm["A_TPM"], tpm["B_TPM"]) == ("6.0000", "12.0000")

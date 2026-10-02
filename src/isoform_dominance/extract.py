@@ -1,7 +1,7 @@
 """Extract per-donor isoform-group TPM from Salmon quant.sf (stdlib only)."""
 import csv, os, glob, json
 from . import index_scope
-from .io import InputError, transcript_to_group, load_sample_map
+from .io import InputError, load_sample_map, shared_transcripts, transcript_to_group
 
 
 class NoQuantFiles(InputError, FileNotFoundError):
@@ -169,6 +169,11 @@ def run(config, quantdir, samplemap, cohort, out, allow_mixed_index=False, notes
     """
     notes = [] if notes is None else notes
     quants = quant_paths(quantdir)
+    for tid, gs in sorted(shared_transcripts(config["groups"]).items()):
+        # summed as 2.1.1 summed it, into the group listed last; only the warning is new
+        notes.append("WARNING: transcript %s is in groups %s; its TPM is added to \"%s\" "
+                     "only, the group the config lists last"
+                     % (tid, ", ".join('"%s"' % g for g in gs), gs[-1]))
     prov = index_scope.index_provenance(quants)
     if prov["mixed"]:
         which = index_scope.mixed_index_message(prov)

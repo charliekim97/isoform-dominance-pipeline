@@ -53,6 +53,19 @@ def transcript_to_group(groups):
     return m
 
 
+def shared_transcripts(groups):
+    """``{transcript (no version): [group, ...]}`` for each transcript more than one group
+    names, groups in config order.  :func:`transcript_to_group` gives such a transcript to
+    the group listed last."""
+    seen = {}
+    for g, txs in groups.items():
+        for t in txs:
+            names = seen.setdefault(t.split(".")[0], [])
+            if g not in names:
+                names.append(g)
+    return {t: gs for t, gs in seen.items() if len(gs) > 1}
+
+
 def load_sample_map(path):
     """CSV with columns donor,condition[,SRR] -> {donor: condition}."""
     cond = {}
