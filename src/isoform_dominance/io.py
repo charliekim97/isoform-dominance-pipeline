@@ -1,6 +1,7 @@
 """Shared IO helpers: config, sample-map and saved-inputs loading."""
 import csv
 import datetime
+import gzip
 import hashlib
 import json
 import os
@@ -14,12 +15,25 @@ class InputError(ValueError):
 
 
 def load_json(path, what):
-    """Parse the JSON file ``path``; :class:`InputError` naming ``what`` if it is not JSON."""
-    with open(path) as f:
+    """Parse the JSON file ``path``; :class:`InputError` naming ``what`` if it is not JSON
+    in UTF-8, the only encoding JSON may be exchanged in (RFC 8259)."""
+    with open(path, encoding="utf-8") as f:
         try:
             return json.load(f)
         except json.JSONDecodeError as e:
             raise InputError("%s %s is not valid JSON (%s)" % (what, path, e)) from e
+        except UnicodeDecodeError as e:
+            raise InputError("%s %s is not UTF-8 text (byte 0x%02x at offset %d)"
+                             % (what, path, e.object[e.start], e.start)) from e
+
+
+def open_text(path):
+    """Open a possibly gzipped text file for reading, telling gzip by its first two bytes
+    (``1f 8b``) rather than by its name: a plain file called ``.gz`` and a gzipped one
+    called ``.GZ`` or nothing at all are both common."""
+    with open(path, "rb") as f:
+        gz = f.read(2) == b"\x1f\x8b"
+    return gzip.open(path, "rt") if gz else open(path)
 
 
 def load_config(path, need_groups=True):

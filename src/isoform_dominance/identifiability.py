@@ -174,7 +174,7 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
     Streams the file and never materialises the background's own k-mer set, so a
     whole-transcriptome FASTA (GENCODE, or the FASTA a Salmon index was built from)
     can be used as background in memory proportional to the *query*, not the file.
-    Handles plain or gzipped input; ``exclude_ids`` drops records whose first
+    Handles plain or gzipped input, told apart by the gzip magic bytes; ``exclude_ids`` drops records whose first
     ``|``- or whitespace-delimited field matches (version suffix ignored), which is
     how the transcripts under test are kept out of their own background.
 
@@ -184,8 +184,6 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
     the same with such a record: unless it is built with ``--keepDuplicates`` it keeps
     only the first of identical sequences, so the record competes with nothing.
     """
-    import gzip
-
     query = set(query_kmers)
     if not query:
         return set()
@@ -193,7 +191,6 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
     identical = identical or {}
     lengths = {len(s) for s in identical}
     seen = set()
-    opener = gzip.open if str(path).endswith((".gz", ".bgz")) else open
 
     def _consume(chunks, tid):
         if not chunks or tid in exclude:
@@ -211,7 +208,7 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
                 seen.add(km)
 
     chunks, tid = [], None
-    with opener(path, "rt") as fh:
+    with io.open_text(path) as fh:
         for line in fh:
             if line.startswith(">"):
                 _consume(chunks, tid)

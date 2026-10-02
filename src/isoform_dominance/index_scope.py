@@ -25,7 +25,7 @@ SMN2's gene ids.
 import json
 import os
 
-from .io import InputError
+from .io import InputError, open_text
 
 #: The ``format`` field of the ``<out>.index.json`` sidecar :mod:`extract` writes.
 INDEX_FORMAT = "isoform-dominance/index/1"
@@ -157,12 +157,9 @@ def copies_in(read_heads, target_ids, gene_names=()):
 
 
 def fasta_copies(path, target_ids, gene_names=()):
-    """:func:`copies_in` for a plain or gzipped FASTA."""
-    import gzip
-    opener = gzip.open if str(path).endswith((".gz", ".bgz")) else open
-
+    """:func:`copies_in` for a plain or gzipped FASTA (told by its magic bytes)."""
     def heads():
-        with opener(path, "rt") as fh:
+        with open_text(path) as fh:
             for line in fh:
                 if line.startswith(">"):
                     yield line[1:]

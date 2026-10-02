@@ -123,6 +123,17 @@ versioning.
   `InvalidURL` is not retried: one line saying the request could not be sent.
 - **`annotate --json` keeps its notes**, on stderr: the chrX/chrY choice and the tie that
   chose the alternative class were printed only without `--json`.
+- **A JSON file that is not UTF-8 is one line naming it** (config, `--sequences`,
+  `--background-sequences`, `--inputs`), not a `UnicodeDecodeError` traceback or, for
+  `--inputs`, a "config error" that named no file.
+- **A gzipped `--background-fasta` is told by its first two bytes** (`1f 8b`), not by
+  its name: a plain file named `.gz` was a `BadGzipFile` traceback, and a gzipped one named
+  `.GZ`, or with no extension, a "can't decode byte 0x8b" traceback.
+- **`qc` on a config without a complete `contamination_qc` is one line**, naming what is
+  missing (`target_group`, `marker_panels`, its `tissue` or `contaminant` list); README step
+  4 runs `qc` on the config `annotate` writes, which has none, and that was a traceback. A
+  marker or target table without the columns it needs, and a cohort with fewer than three
+  donors in both, are one line too (`io.InputError`, a `ValueError`).
 - **`extract` names a transcript that two groups share.** Its TPM still goes, as in 2.1.1,
   to the group the config lists last; the warning names the transcript and the groups.
 
