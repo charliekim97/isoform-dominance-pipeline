@@ -87,14 +87,20 @@ def test_with_decoys_the_gentrome_gives_the_transcripts_answer(tmp_path, capsys,
     assert "genome" not in err
 
 
-def test_without_decoys_the_genome_is_named_and_competes(tmp_path, capsys, small_genome):
+def test_without_decoys_the_genome_is_named_and_left_out(tmp_path, capsys, small_genome):
+    """A record longer than 1 Mb is never a column: it is left out, and every window it
+    holds is dropped, which can only make the answer more conservative."""
     alone = _run(tmp_path, capsys, TRANSCRIPTS)
     rc, res, err = _run(tmp_path, capsys, GENTROME)
     bg = res["background"]
     assert bg["fasta_long_records"] == {"chrF": len(CHROM)}
-    assert "chrF" in bg["fasta_competitors"]
-    # every window inside an exon now has a copy: only the junctions stay unique
+    assert "chrF" not in bg["fasta_competitors"] and bg["fasta_left_out"] >= 1
+    # every configured window the genome holds is dropped -- all inside an exon, and the
+    # junctions not, so some stay
+    held = I.kmers(CHROM, 31) & (I.kmers(SEQS[T1], 31) | I.kmers(SEQS[T2], 31))
+    assert bg["windows_dropped"]["configured"] == len(held)
     assert 0 < res["groups"]["A"]["n_unique_kmers"] < alone[1]["groups"]["A"]["n_unique_kmers"]
+    assert res["contrast"]["min_resolvable_log2fc"] >= alone[1]["contrast"]["min_resolvable_log2fc"]
     assert "looks like genome sequence" in err and "--decoys decoys.txt" in err
     assert "without the genome decoys" in err
 

@@ -56,6 +56,17 @@ def _release(value):
     return n
 
 
+def _count(value):
+    """argparse type for --max-window-records: an integer >= 0."""
+    try:
+        n = int(value)
+    except ValueError:
+        n = -1
+    if n < 0:
+        raise argparse.ArgumentTypeError("expected an integer >= 0, got %r" % value)
+    return n
+
+
 def _kv(items):
     out = {}
     for s in (items or []):
@@ -164,7 +175,8 @@ def _fasta_note(saved, given, flag="--background-fasta",
     return None
 
 
-def _analysis_note(saved, k, window, canonical, keep_duplicates=None):
+def _analysis_note(saved, k, window, canonical, keep_duplicates=None,
+                   max_window_records=None):
     """What to say when a rerun from saved inputs is at another window or convention,
     or -- ``keep_duplicates`` is None when this run has no background, gene or FASTA --
     counts background sequences identical to a configured transcript or to one another
@@ -184,6 +196,12 @@ def _analysis_note(saved, k, window, canonical, keep_duplicates=None):
         notes.append("the inputs were saved at %s; this run is at %s, which is a different "
                      "compatibility system on the same sequence, so the verdict can differ."
                      % (_say(saved), _say(mine)))
+    if (max_window_records is not None and "max_window_records" in saved
+            and saved["max_window_records"] != max_window_records):
+        notes.append("the inputs were saved at --max-window-records %d and this run is at %d: "
+                     "other FASTA records join the system and other windows are dropped, so "
+                     "the verdict can differ." % (saved["max_window_records"],
+                                                  max_window_records))
     if (keep_duplicates is not None and "keep_duplicates" in saved
             and saved["keep_duplicates"] != keep_duplicates):
         notes.append("the inputs were saved %s --keep-duplicates and this run is %s it: a "
@@ -281,6 +299,7 @@ def cmd_identifiability(a):
             conditioning_tau=a.tau, min_informative_reads=a.min_informative_reads,
             min_log2fc=a.min_log2fc, ensembl_release=a.ensembl_release,
             inputs_out=captured, keep_duplicates=a.keep_duplicates,
+            max_window_records=a.max_window_records,
             retries=a.retries, retry_wait=a.retry_wait)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
@@ -318,7 +337,8 @@ def cmd_identifiability(a):
                      "it" if len(inputs["left_out"]) == 1 else "them"), file=sys.stderr)
         for note in (_analysis_note(inputs["analysis"], a.k, a.window, not a.strand_aware,
                                     a.keep_duplicates if a.background_fasta
-                                    or background is not None else None),
+                                    or background is not None else None,
+                                    a.max_window_records if a.background_fasta else None),
                      _fasta_note(inputs.get("background_fasta"), a.background_fasta),
                      # --decoys means nothing without a FASTA, and the note above
                      # already asks for that
@@ -344,7 +364,8 @@ def cmd_identifiability(a):
         if captured.get("gene_id") is None and inputs is not None:
             captured["gene_id"] = inputs.get("gene_id")
         io.save_inputs(a.save_inputs, captured, cfg, release, __version__,
-                       background_fasta=a.background_fasta, decoys=a.decoys)
+                       background_fasta=a.background_fasta, decoys=a.decoys,
+                       max_window_records=a.max_window_records)
         n_sup = sum(v == "supplied" for v in sources.values())
         print("  saved this run's sequence (%s) to %s; repeat it with no network: "
               "--inputs %s" % ("Ensembl release %s" % release if release is not None
@@ -408,6 +429,25 @@ def _report(a, res):
               "the first of them, because Salmon's default index keeps one of identical "
               "sequences: %s. For an index built with Salmon's --keepDuplicates, pass "
               "--keep-duplicates." % (len(twins), _pairs(twins)), file=sys.stderr)
+    gone = bg.get("windows_dropped") or {}
+    if gone.get("configured"):
+        print("  NOTE: --background-fasta: %d of the configured transcripts' %d distinct windows "
+              "(%.1f%%) were dropped from every layer, because FASTA records left out of the "
+              "compatibility system hold them: they are found in more than %d records "
+              "(--max-window-records), or held by a record longer than 1 Mb. %d record(s) "
+              "were left out. Dropping windows can only make the answer more conservative: "
+              "whatever is estimable here is estimable with every such record a column, "
+              "with a standard error no smaller."
+              % (gone["configured"], gone["configured_of"],
+                 100.0 * gone["configured"] / max(1, gone["configured_of"]),
+                 bg["max_window_records"], bg["fasta_left_out"]), file=sys.stderr)
+    emptied = res["gene_total"].get("transcripts_all_windows_dropped") or []
+    if emptied:
+        print("  NOTE: every window of %s was dropped, so the system holds nothing of %s: a "
+              "class total that needs %s is not estimable here, and the gene total leaves "
+              "%s out." % (_listed(emptied), "it" if len(emptied) == 1 else "them",
+                           "it" if len(emptied) == 1 else "them",
+                           "it" if len(emptied) == 1 else "them"), file=sys.stderr)
     long = bg.get("fasta_long_records") or {}
     if long and not a.decoys:
         print("  NOTE: --background-fasta has %d record(s) longer than 1 Mb (%s), which looks "
@@ -743,6 +783,13 @@ def build_parser():
                         "genome decoys (or pass --decoys). Each record that shares a window "
                         "with a configured transcript is a column of the compatibility "
                         "system")
+    s.add_argument("--max-window-records", type=_count, metavar="M",
+                   default=identifiability.DEFAULT_MAX_WINDOW_RECORDS,
+                   help="a --background-fasta record joins the compatibility system when it "
+                        "holds a configured transcript's window found in at most M records; "
+                        "every window a record left out holds is dropped from every layer, "
+                        "which can only make the answer more conservative (default: "
+                        "%(default)s)")
     s.add_argument("--decoys", metavar="FILE",
                    help="Salmon's decoys.txt, one record name per line, when "
                         "--background-fasta is a decoy-aware index's gentrome: those records "

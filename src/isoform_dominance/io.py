@@ -123,7 +123,7 @@ def primary_pair(config):
 
 
 def save_inputs(path, captured, config, release, version, background_fasta=None,
-                decoys=None):
+                decoys=None, max_window_records=None):
     """Write the sequence an ``identifiability`` run used, so it can be repeated offline.
 
     ``captured`` is what :func:`isoform_dominance.identifiability.analyze` put in
@@ -141,7 +141,8 @@ def save_inputs(path, captured, config, release, version, background_fasta=None,
     it is building a different compatibility system on the same sequence.  It records
     ``keep_duplicates`` too, when the run had a background, gene or FASTA: whether a
     background sequence identical to a configured transcript or to another was counted;
-    and ``gene_background``: whether the run judged
+    and, with a FASTA, ``max_window_records``, which decides the FASTA records that join
+    the system; and ``gene_background``: whether the run judged
     uniqueness against the gene's other transcripts.  A rerun under another grouping moves a
     transcript the config no longer names into that background only if there was one.
 
@@ -171,6 +172,8 @@ def save_inputs(path, captured, config, release, version, background_fasta=None,
            "sequence_sources": captured.get("sequence_sources"),
            "sequences": captured["sequences"],
            "background_sequences": captured["background_sequences"]}
+    if background_fasta and max_window_records is not None:
+        doc["analysis"]["max_window_records"] = int(max_window_records)
     if background_fasta or doc["analysis"]["gene_background"]:
         # without a background there was no copy to count or not, and a rerun with one
         # must not be told that the setting changed
@@ -215,10 +218,12 @@ def load_inputs(path):
                     for key in ("k", "window"))
             and isinstance(analysis.get("canonical"), bool)
             and isinstance(analysis.get("keep_duplicates", False), bool)
+            and isinstance(analysis.get("max_window_records", 0), int)
+            and not isinstance(analysis.get("max_window_records", 0), bool)
             and isinstance(analysis.get("gene_background", False), bool)):
         raise InputError("saved inputs %s: analysis is %r, expected k and window as "
                          "integers, and canonical, keep_duplicates and gene_background as "
-                         "booleans" % (path, analysis))
+                         "booleans (and max_window_records an integer)" % (path, analysis))
     if not isinstance(doc.get("gene_id"), (str, type(None))):
         raise InputError("saved inputs %s: gene_id is %r, expected an Ensembl gene id or null"
                          % (path, doc["gene_id"]))
