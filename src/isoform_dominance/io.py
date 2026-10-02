@@ -58,6 +58,21 @@ def file_sha256(path, chunk=1 << 20):
     return h.hexdigest()
 
 
+def read_decoys(path):
+    """The record names in Salmon's ``decoys.txt``: one per line, its first word, any
+    leading ``>`` dropped; blank lines skipped.  A file with none is an :class:`InputError`.
+    """
+    names = []
+    with open_text(path) as f:
+        for line in f:
+            word = line.strip().lstrip(">").split()
+            if word:
+                names.append(word[0])
+    if not names:
+        raise InputError("--decoys %s names no record" % path)
+    return names
+
+
 def transcript_to_group(groups):
     """{group: [ENST,...]} -> {ENST(no version): group}."""
     m = {}
@@ -107,7 +122,8 @@ def primary_pair(config):
     return pc[0], pc[1]
 
 
-def save_inputs(path, captured, config, release, version, background_fasta=None):
+def save_inputs(path, captured, config, release, version, background_fasta=None,
+                decoys=None, max_window_records=None):
     """Write the sequence an ``identifiability`` run used, so it can be repeated offline.
 
     ``captured`` is what :func:`isoform_dominance.identifiability.analyze` put in
@@ -118,13 +134,15 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
 
     A ``background_fasta`` is not copied -- a transcriptome FASTA runs to hundreds of
     megabytes -- but its path, size and SHA-256 are recorded, so that a rerun from this
-    file can say when it is given no FASTA, or another one.
+    file can say when it is given no FASTA, or another one; and so are a ``decoys`` file's.
 
     ``analysis`` records the k, window and k-mer convention the run used.  None of the
     three is in the config, so without them nothing can tell a rerun from this file that
     it is building a different compatibility system on the same sequence.  It records
-    ``keep_duplicates`` too, when the run had a background FASTA: whether a record with a
-    configured transcript's sequence was counted; and ``gene_background``: whether the run judged
+    ``keep_duplicates`` too, when the run had a background, gene or FASTA: whether a
+    background sequence identical to a configured transcript or to another was counted;
+    and, with a FASTA, ``max_window_records``, which decides the FASTA records that join
+    the system; and ``gene_background``: whether the run judged
     uniqueness against the gene's other transcripts.  A rerun under another grouping moves a
     transcript the config no longer names into that background only if there was one.
 
@@ -137,10 +155,9 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
     fetched, the config's ``gene_id`` -- so that a rerun can be refused a config of another
     gene of the same name.
     """
-    fasta = None
-    if background_fasta:
-        fasta = {"path": str(background_fasta), "bytes": os.path.getsize(background_fasta),
-                 "sha256": file_sha256(background_fasta)}
+    def _file(p):
+        return p and {"path": str(p), "bytes": os.path.getsize(p), "sha256": file_sha256(p)}
+    fasta = _file(background_fasta) or None
     doc = {"format": INPUTS_FORMAT, "package_version": version,
            "saved": datetime.date.today().isoformat(),
            "gene": config.get("gene"), "species": config.get("species", "homo_sapiens"),
@@ -151,12 +168,15 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
                             gene_background=bool(captured.get("gene_background",
                                                               captured["background_sequences"]))),
            "background_fasta": fasta,
+           "decoys": _file(decoys) or None,
            "sequence_sources": captured.get("sequence_sources"),
            "sequences": captured["sequences"],
            "background_sequences": captured["background_sequences"]}
-    if background_fasta:
-        # without a FASTA there was no record to count or not, and a rerun with one must
-        # not be told that the setting changed
+    if background_fasta and max_window_records is not None:
+        doc["analysis"]["max_window_records"] = int(max_window_records)
+    if background_fasta or doc["analysis"]["gene_background"]:
+        # without a background there was no copy to count or not, and a rerun with one
+        # must not be told that the setting changed
         doc["analysis"]["keep_duplicates"] = bool(captured.get("keep_duplicates"))
     with open(path, "w") as f:
         json.dump(doc, f)
@@ -198,10 +218,12 @@ def load_inputs(path):
                     for key in ("k", "window"))
             and isinstance(analysis.get("canonical"), bool)
             and isinstance(analysis.get("keep_duplicates", False), bool)
+            and isinstance(analysis.get("max_window_records", 0), int)
+            and not isinstance(analysis.get("max_window_records", 0), bool)
             and isinstance(analysis.get("gene_background", False), bool)):
         raise InputError("saved inputs %s: analysis is %r, expected k and window as "
                          "integers, and canonical, keep_duplicates and gene_background as "
-                         "booleans" % (path, analysis))
+                         "booleans (and max_window_records an integer)" % (path, analysis))
     if not isinstance(doc.get("gene_id"), (str, type(None))):
         raise InputError("saved inputs %s: gene_id is %r, expected an Ensembl gene id or null"
                          % (path, doc["gene_id"]))
@@ -211,10 +233,11 @@ def load_inputs(path):
         raise InputError("saved inputs %s: sequence_sources is %r, expected null or an object "
                          "of transcript id to \"supplied\" or \"fetched:<release>\""
                          % (path, sources))
-    fasta = doc.get("background_fasta")
-    if fasta is not None and not (isinstance(fasta, dict)
-                                  and isinstance(fasta.get("path"), str)
-                                  and isinstance(fasta.get("sha256"), str)):
-        raise InputError("saved inputs %s: background_fasta is %r, expected null or an "
-                         "object with a path and a sha256" % (path, fasta))
+    for key in ("background_fasta", "decoys"):
+        rec = doc.get(key)
+        if rec is not None and not (isinstance(rec, dict)
+                                    and isinstance(rec.get("path"), str)
+                                    and isinstance(rec.get("sha256"), str)):
+            raise InputError("saved inputs %s: %s is %r, expected null or an object with a "
+                             "path and a sha256" % (path, key, rec))
     return doc

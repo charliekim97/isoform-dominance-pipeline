@@ -15,9 +15,9 @@ with ``--min-log2fc``:
   3   ``--min-log2fc`` given and not resolved -- including when an
       estimand has no finite figure at all, or one past the
       linearisation limit (``beyond_linear``)
-  2   precondition failure: the gene total itself is not estimable,
-      because a transcript shorter than ``--window`` has no windows
-      and an all-zero column. Not a verdict; checked first
+  2   precondition failure: a transcript shorter than ``--window``
+      has no windows and an all-zero column, so the gene total itself
+      is not estimable. Not a verdict; checked first
   1   config error or network failure
 ===== ==============================================================
 """
@@ -37,8 +37,15 @@ EXIT_EFFECT_NOT_RESOLVED = 3
 
 
 def _identifiability_exit(res):
-    """Exit status from the precondition and the requested effect size, never the verdict."""
-    if not res["gene_total"]["estimable"]:
+    """Exit status from the precondition and the requested effect size, never the verdict.
+
+    The precondition is that no transcript is shorter than the window.  Before 2.5 it was
+    read as the gene total being estimable, which is the same thing while every column
+    sums to one; with windows dropped (``--max-window-records``) a column sums to less, and
+    the gene total can leave the row space with no transcript windowless."""
+    gt = res["gene_total"]
+    windowless = gt.get("transcripts_without_windows")
+    if windowless if windowless is not None else not gt["estimable"]:
         return EXIT_NOT_IDENTIFIABLE
     if res["effect_resolvable"] is False:
         return EXIT_EFFECT_NOT_RESOLVED
@@ -53,6 +60,17 @@ def _release(value):
         n = 0
     if n < 1:
         raise argparse.ArgumentTypeError("expected a positive release number, got %r" % value)
+    return n
+
+
+def _count(value):
+    """argparse type for --max-window-records: an integer >= 0."""
+    try:
+        n = int(value)
+    except ValueError:
+        n = -1
+    if n < 0:
+        raise argparse.ArgumentTypeError("expected an integer >= 0, got %r" % value)
     return n
 
 
@@ -144,29 +162,32 @@ def _load_sequences(path, flag):
     return seqs
 
 
-def _fasta_note(saved, given):
+def _fasta_note(saved, given, flag="--background-fasta",
+                without="windows shared with other genes count as unique here"):
     """What to say when a rerun from saved inputs has another --background-fasta, or none.
 
     ``saved`` is the ``background_fasta`` record of the saved inputs (None if that run
-    used none); ``given`` is this run's --background-fasta.  None when they agree.
+    used none); ``given`` is this run's --background-fasta.  None when they agree.  With
+    ``flag`` and ``without``, the same for another file the run read, such as --decoys.
     """
     if saved is None:
         return None
     if not given:
-        return ("the saved run also used --background-fasta %s (sha256 %s...); without it, "
-                "windows shared with other genes count as unique here and the verdict can "
-                "differ. Pass it again." % (saved["path"], saved["sha256"][:12]))
+        return ("the saved run also used %s %s (sha256 %s...); without it, %s and the "
+                "verdict can differ. Pass it again."
+                % (flag, saved["path"], saved["sha256"][:12], without))
     if io.file_sha256(given) != saved["sha256"]:
-        return ("--background-fasta %s is not the file the inputs were saved with (%s, "
-                "sha256 %s...); the verdict can differ." % (given, saved["path"],
-                                                           saved["sha256"][:12]))
+        return ("%s %s is not the file the inputs were saved with (%s, sha256 %s...); the "
+                "verdict can differ." % (flag, given, saved["path"], saved["sha256"][:12]))
     return None
 
 
-def _analysis_note(saved, k, window, canonical, keep_duplicates=None):
+def _analysis_note(saved, k, window, canonical, keep_duplicates=None,
+                   max_window_records=None):
     """What to say when a rerun from saved inputs is at another window or convention,
-    or -- ``keep_duplicates`` is None when this run has no background FASTA -- counts
-    records identical to a configured transcript differently.
+    or -- ``keep_duplicates`` is None when this run has no background, gene or FASTA --
+    counts background sequences identical to a configured transcript or to one another
+    differently.
 
     None of these is recorded in the config, so nothing else can tell a rerun that it is
     not repeating the run that was saved.  ``k`` only sets the window when ``window`` is
@@ -182,11 +203,17 @@ def _analysis_note(saved, k, window, canonical, keep_duplicates=None):
         notes.append("the inputs were saved at %s; this run is at %s, which is a different "
                      "compatibility system on the same sequence, so the verdict can differ."
                      % (_say(saved), _say(mine)))
+    if (max_window_records is not None and "max_window_records" in saved
+            and saved["max_window_records"] != max_window_records):
+        notes.append("the inputs were saved at --max-window-records %d and this run is at %d: "
+                     "other FASTA records join the system and other windows are dropped, so "
+                     "the verdict can differ." % (saved["max_window_records"],
+                                                  max_window_records))
     if (keep_duplicates is not None and "keep_duplicates" in saved
             and saved["keep_duplicates"] != keep_duplicates):
         notes.append("the inputs were saved %s --keep-duplicates and this run is %s it: a "
-                     "--background-fasta record with a configured transcript's sequence was "
-                     "%s then and is %s now, so the verdict can differ."
+                     "background sequence identical to a configured transcript or to another "
+                     "was %s then and is %s now, so the verdict can differ."
                      % (("with", "without", "counted", "not counted") if saved["keep_duplicates"]
                         else ("without", "with", "not counted", "counted")))
     return " ".join(notes) or None
@@ -271,7 +298,7 @@ def cmd_identifiability(a):
             canonical=not a.strand_aware,
             window=a.window,
             background_sequences=background,
-            background_fasta=a.background_fasta,
+            background_fasta=a.background_fasta, decoys=a.decoys,
             background_gene_transcripts=(False if a.no_gene_background or inputs is not None
                                          else "auto"),
             read_length=a.read_length, frag_mean=a.frag_mean, frag_sd=a.frag_sd,
@@ -279,6 +306,7 @@ def cmd_identifiability(a):
             conditioning_tau=a.tau, min_informative_reads=a.min_informative_reads,
             min_log2fc=a.min_log2fc, ensembl_release=a.ensembl_release,
             inputs_out=captured, keep_duplicates=a.keep_duplicates,
+            max_window_records=a.max_window_records,
             retries=a.retries, retry_wait=a.retry_wait)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
@@ -289,8 +317,21 @@ def cmd_identifiability(a):
     except ValueError as e:
         print("config error: %s" % e, file=sys.stderr)
         return 1
+    except MemoryError as e:
+        print("error: out of memory%s.%s" % (
+            " (%s)" % e if str(e) else "",
+            " A --background-fasta record that holds a configured window found in at most "
+            "--max-window-records records is a column of the compatibility system: a "
+            "smaller --max-window-records, or --decoys for genome sequence, makes it smaller."
+            if a.background_fasta else ""), file=sys.stderr)
+        return 1
     if inputs is not None:
         res["annotation"]["inputs_release"] = inputs["ensembl_release"]
+        # a saved sequence reaches the run as supplied; the file says which were fetched
+        was = inputs.get("sequence_sources") or {}
+        for t, src in (res["background"].get("identical_source") or {}).items():
+            if src == "sequences" and was.get(t, "").startswith("fetched:"):
+                res["background"]["identical_source"][t] = "gene"
         if background is not None and res["background"]["gene_id"] is None:
             # the gene the live run fetched its background as, which the file recorded
             res["background"]["gene_id"] = inputs.get("gene_id")
@@ -302,8 +343,15 @@ def cmd_identifiability(a):
                      "is" if len(inputs["left_out"]) == 1 else "are",
                      "it" if len(inputs["left_out"]) == 1 else "them"), file=sys.stderr)
         for note in (_analysis_note(inputs["analysis"], a.k, a.window, not a.strand_aware,
-                                    a.keep_duplicates if a.background_fasta else None),
-                     _fasta_note(inputs.get("background_fasta"), a.background_fasta)):
+                                    a.keep_duplicates if a.background_fasta
+                                    or background is not None else None,
+                                    a.max_window_records if a.background_fasta else None),
+                     _fasta_note(inputs.get("background_fasta"), a.background_fasta),
+                     # --decoys means nothing without a FASTA, and the note above
+                     # already asks for that
+                     _fasta_note(inputs.get("decoys"), a.decoys, "--decoys",
+                                 "the genome records it names are read as competing "
+                                 "sequence") if a.background_fasta else None):
             if note:
                 print("  NOTE: " + note, file=sys.stderr)
     code = _report(a, res)
@@ -323,7 +371,8 @@ def cmd_identifiability(a):
         if captured.get("gene_id") is None and inputs is not None:
             captured["gene_id"] = inputs.get("gene_id")
         io.save_inputs(a.save_inputs, captured, cfg, release, __version__,
-                       background_fasta=a.background_fasta)
+                       background_fasta=a.background_fasta, decoys=a.decoys,
+                       max_window_records=a.max_window_records)
         n_sup = sum(v == "supplied" for v in sources.values())
         print("  saved this run's sequence (%s) to %s; repeat it with no network: "
               "--inputs %s" % ("Ensembl release %s" % release if release is not None
@@ -336,30 +385,114 @@ def cmd_identifiability(a):
     return code
 
 
+def _listed(ids, n=5):
+    """The first ``n`` of ``ids``, and how many more."""
+    ids = sorted(ids)
+    return ", ".join(ids[:n]) + (" and %d more" % (len(ids) - n) if len(ids) > n else "")
+
+
 def _report(a, res):
     """Print the report of one run -- JSON on stdout with ``--json`` -- and return the exit
     status."""
-    same = res["background"].get("identical_to_configured") or {}
-    # a copy with a configured transcript's sequence is the NOTE below, not this warning
+    bg = res["background"]
+    same = bg.get("identical_to_configured") or {}
+    twins = bg.get("identical_to_background") or {}
+    where = bg.get("identical_source") or {}
+    # a copy with the sequence of a configured transcript, or of a background one, takes no
+    # read the configured transcripts would get: the NOTEs below, not this warning
     warning = index_scope.copy_warning(
-        index_scope.without_identical(res["background"]["same_name_copies"], same),
+        index_scope.without_identical(bg["same_name_copies"], dict(same, **twins)),
         "--background-fasta %s" % a.background_fasta)
     if warning:
         print("  " + warning, file=sys.stderr)
-    if same:
-        shown = ", ".join("%s (= %s)" % (r, same[r]) for r in sorted(same)[:5])
-        if len(same) > 5:
-            shown += " and %d more" % (len(same) - 5)
+
+    def _pairs(d):
+        ids = sorted(d)
+        return ", ".join("%s (= %s)" % (r, d[r]) for r in ids[:5]) + (
+            " and %d more" % (len(ids) - 5) if len(ids) > 5 else "")
+    from_fasta = {r: t for r, t in same.items() if where.get(r, "fasta") == "fasta"}
+    from_gene = {r: t for r, t in same.items() if r not in from_fasta}
+    if from_fasta:
         print("  NOTE: --background-fasta: %d record(s) with the sequence of a configured "
               "transcript were not counted as competing sequence, because Salmon's default "
               "index keeps one of identical sequences: %s. For an index built with Salmon's "
-              "--keepDuplicates, pass --keep-duplicates." % (len(same), shown), file=sys.stderr)
+              "--keepDuplicates, pass --keep-duplicates."
+              % (len(from_fasta), _pairs(from_fasta)), file=sys.stderr)
+    if from_gene:
+        print("  NOTE: the gene background: %d transcript(s) with the sequence of a "
+              "configured transcript were not counted as competing sequence, because "
+              "Salmon's default index keeps one of identical sequences: %s. For an index "
+              "built with Salmon's --keepDuplicates, pass --keep-duplicates."
+              % (len(from_gene), _pairs(from_gene)), file=sys.stderr)
+    if same:
+        print("  NOTE: of identical sequences, Salmon's default index keeps the one that comes "
+              "first in the FASTA it is built from. Where that is the copy above rather than "
+              "the configured transcript, quant.sf names only the copy and `extract`, which "
+              "sums the configured ids, does not count those reads. Put the copy in the same "
+              "group as the transcript it equals, or build the index with Salmon's "
+              "--keepDuplicates and pass --keep-duplicates here.", file=sys.stderr)
+    if twins:
+        print("  NOTE: %d background sequence(s) identical to another were counted once, as "
+              "the first of them, because Salmon's default index keeps one of identical "
+              "sequences: %s. For an index built with Salmon's --keepDuplicates, pass "
+              "--keep-duplicates." % (len(twins), _pairs(twins)), file=sys.stderr)
+    gone = bg.get("windows_dropped") or {}
+    if gone.get("total") and not gone.get("configured"):
+        print("  NOTE: --background-fasta: %d window(s) of the background's columns were "
+              "dropped from the compatibility system, because FASTA records left out of it "
+              "hold them (%d record(s) left out); none is a configured transcript's. This can "
+              "only make the answer more conservative." % (gone["total"], bg["fasta_left_out"]),
+              file=sys.stderr)
+    if gone.get("configured"):
+        print("  NOTE: --background-fasta: %d of the configured transcripts' %d distinct windows "
+              "(%.1f%%) were dropped from every layer, because FASTA records left out of the "
+              "compatibility system hold them: they are found in more than %d records "
+              "(--max-window-records), or held by a record longer than 1 Mb. %d record(s) "
+              "were left out. Dropping windows can only make the answer more conservative: "
+              "whatever is estimable here is estimable with every such record a column, "
+              "with a standard error no smaller."
+              % (gone["configured"], gone["configured_of"],
+                 100.0 * gone["configured"] / max(1, gone["configured_of"]),
+                 bg["max_window_records"], bg["fasta_left_out"]), file=sys.stderr)
+    emptied = res["gene_total"].get("transcripts_all_windows_dropped") or []
+    if emptied:
+        print("  NOTE: every window of %s was dropped, so the system holds nothing of %s: a "
+              "class total that needs %s is not estimable here, and the gene total leaves "
+              "%s out." % (_listed(emptied), "it" if len(emptied) == 1 else "them",
+                           "it" if len(emptied) == 1 else "them",
+                           "it" if len(emptied) == 1 else "them"), file=sys.stderr)
+    long = bg.get("fasta_long_records") or {}
+    if long and not a.decoys:
+        print("  NOTE: --background-fasta has %d record(s) longer than 1 Mb (%s), which looks "
+              "like genome sequence: the gentrome of a decoy-aware index. Salmon sets aside "
+              "only the reads that map better to a decoy than to any transcript, so a genome "
+              "record competes with no read the transcripts explain as well, and judged "
+              "against it every window inside an exon loses its uniqueness. Pass --decoys "
+              "decoys.txt, or the transcript FASTA the index was built from (without the "
+              "genome decoys)." % (len(long), _listed(long)), file=sys.stderr)
+    elif long:
+        print("  NOTE: --background-fasta has %d record(s) longer than 1 Mb that --decoys %s "
+              "does not name (%s); they were read as competing sequence. If they are genome "
+              "sequence, add them to it." % (len(long), a.decoys, _listed(long)),
+              file=sys.stderr)
+    if bg.get("decoys_absent"):
+        print("  NOTE: --decoys %s names %d record(s) that --background-fasta does not hold "
+              "(%s); %d decoy record(s) were left out." % (
+                  a.decoys, len(bg["decoys_absent"]), _listed(bg["decoys_absent"]),
+                  bg["decoys_skipped"]), file=sys.stderr)
+    # one taken from the FASTA that is a copy is said by the copy NOTEs above
+    replaced = [t for t in bg.get("sequence_from_fasta") or [] if t not in same
+                and t not in twins]
+    if replaced:
+        print("  NOTE: --background-fasta holds other sequence for %d transcript(s) of the "
+              "gene background, as another release would: %s. Each is counted once, with its "
+              "sequence taken from --background-fasta, which is what an index built from that "
+              "FASTA holds." % (len(replaced), _listed(replaced)), file=sys.stderr)
 
     if a.json:
         _emit(res)
         return _identifiability_exit(res)
 
-    bg = res["background"]
     # every layer is built from the window; k only sets it when --window is not given
     print("Identifiability (window=%d, %s k-mers)"
           % (res["window"], "canonical" if res["canonical"] else "strand-aware"))
@@ -404,16 +537,18 @@ def _report(a, res):
                   file=sys.stderr)
     print("  background: %d same-gene transcript(s)%s"
           % (bg["n_background_transcripts"],
-             ", FASTA %s" % bg["fasta"] if bg["fasta"] else ""))
+             ", FASTA %s: %d competing record(s)" % (bg["fasta"], bg["n_fasta_competitors"])
+             if bg["fasta"] else ""))
     if not bg["fasta"]:
         scope = ("this gene's other transcripts"
                  if bg["n_background_transcripts"] else "the configured groups only")
         print("  NOTE: uniqueness judged against %s. A quantifier resolves fragments "
               "against the whole index, so pseudogenes, paralogues and homologous "
               "loci outside this gene are not accounted for here. Pass "
-              "--background-fasta <the FASTA the Salmon index was built from> for the "
-              "answer that matches what the quantifier actually sees; that is the "
-              "recommended way to run this command." % scope, file=sys.stderr)
+              "--background-fasta <the transcript FASTA the Salmon index was built from, "
+              "without the genome decoys> for the answer that matches what the quantifier "
+              "actually sees; that is the recommended way to run this command."
+              % scope, file=sys.stderr)
     d = res["design"]
     print("  design: %s %dbp reads, fragments %.0f+-%.0f, depth %.0fM, TPM %.3g, n=%d"
           % ("paired" if d["paired"] else "single", d["read_length"],
@@ -492,7 +627,7 @@ def _report(a, res):
           "class comparison actually is. The per-class figures above are for the class "
           "totals themselves.)", file=sys.stderr)
     gt = res["gene_total"]
-    if not gt["estimable"]:
+    if gt["transcripts_without_windows"]:
         print("  PRECONDITION FAILED: the gene total is not estimable. %s shorter than "
               "window=%d, so %s no windows and an all-zero column in the compatibility "
               "system; no class total or contrast built on it is well posed. This does "
@@ -656,13 +791,31 @@ def build_parser():
     s.add_argument("--sequences", help="optional JSON {transcript_id: cdna} (offline)")
     s.add_argument("--background-sequences", help="optional JSON {transcript_id: cdna} of background transcripts")
     s.add_argument("--background-fasta",
-                   help="FASTA (optionally gzipped) to judge uniqueness against -- "
-                        "ideally the one the Salmon index was built from")
+                   help="FASTA (optionally gzipped) to judge uniqueness against: the "
+                        "transcript FASTA the Salmon index was built from, without the "
+                        "genome decoys (or pass --decoys). A record that holds a configured "
+                        "transcript's window found in at most --max-window-records records is "
+                        "a column of the compatibility system; the windows that the records "
+                        "left out hold are dropped")
+    s.add_argument("--max-window-records", type=_count, metavar="M",
+                   default=identifiability.DEFAULT_MAX_WINDOW_RECORDS,
+                   help="a --background-fasta record joins the compatibility system when it "
+                        "holds a configured transcript's window found in at most M records; "
+                        "every window a record left out holds is dropped from every layer, "
+                        "which can only make the answer more conservative (default: "
+                        "%(default)s)")
+    s.add_argument("--decoys", metavar="FILE",
+                   help="Salmon's decoys.txt, one record name per line, when "
+                        "--background-fasta is a decoy-aware index's gentrome: those records "
+                        "are skipped, as Salmon sets aside only reads that map better to a "
+                        "decoy than to any transcript")
     s.add_argument("--keep-duplicates", action="store_true",
-                   help="the Salmon index was built with --keepDuplicates: count a "
-                        "--background-fasta record with a configured transcript's sequence as "
-                        "competing sequence (by default it is not, as Salmon's default index "
-                        "keeps one of identical sequences)")
+                   help="the Salmon index was built with --keepDuplicates: count every copy "
+                        "in the background -- a transcript of the gene background or a "
+                        "--background-fasta record with the sequence of a configured "
+                        "transcript or of another background sequence -- as competing "
+                        "sequence (by default a copy is not counted, or counted once, as "
+                        "Salmon's default index keeps one of identical sequences)")
     s.add_argument("--no-gene-background", action="store_true",
                    help="do not fetch the gene's other transcripts as background (v2.1 behaviour)")
     s.add_argument("--strand-aware", action="store_true",

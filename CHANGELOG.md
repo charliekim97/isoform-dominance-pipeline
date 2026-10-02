@@ -18,6 +18,113 @@ versioning.
 > decoys and one without as two, and writes the rows in 2.1.1's order again (2.4.0 sorted
 > them by donor name).
 
+## [Unreleased]
+
+### Added
+- **`identifiability --decoys FILE`** (`analyze(..., decoys=)`), Salmon's `decoys.txt`, for a
+  `--background-fasta` that is a decoy-aware index's gentrome: the records it names are
+  skipped unread (issue #3). Every exon is in the genome, so judged against it every window
+  inside an exon loses its uniqueness, and the genome record becomes a column of the
+  system; but Salmon sets aside only the reads that map better to a decoy than to any
+  transcript, so a decoy competes for no read the transcripts explain as well. Without
+  `--decoys`, a record longer than 1 Mb (`identifiability.LONG_RECORD`) is listed in
+  `background.fasta_long_records` with a NOTE; `--decoys` without `--background-fasta` is
+  refused; names the FASTA does not hold are listed in `background.decoys_absent` with a
+  NOTE. The CLI and the README now recommend "the transcript FASTA the index was built
+  from, without the genome decoys".
+- **`identifiability --max-window-records M`** (`analyze(..., max_window_records=)`, default
+  20), which bounds the `--background-fasta` records that join the system (issue #14; see
+  Fixed).
+- **The report names its files by SHA-256**: `background.fasta_sha256` and
+  `background.decoys_sha256`, as saved inputs already did for the FASTA. Saved inputs record
+  the decoys file too, and a rerun without it, or with another, says so.
+- `identifiability.scan_fasta_competitors`, the scan's per-record answer;
+  `identifiability.estimability(..., svd=)`; `io.read_decoys`.
+
+### Changed
+- **The `--background-fasta` scan is 28 to 45 times faster, with the same answer.**
+  Each query window is looked up in both orientations, so a record's windows are no longer
+  folded, and a window is read only where a 16-nt seed of it, at a stride of `k - 15`,
+  matches the configured transcripts: every matching window holds such a seed, so this is
+  exact. A synthetic 210 Mb FASTA took 3.0 s plain and 4.7 s gzipped, against 132 s; a test
+  keeps 2.4.1's function and compares the two on 600 random cases. Building and solving the
+  compatibility system is faster too (one decomposition for every estimand, no container per
+  private window), with figures equal to the last digit; a test keeps the 2.4.1 functions.
+- `background` in `--json`: `n_background_transcripts` and `gene_transcripts` count the gene
+  background's columns, so a copy of a configured transcript left out is no longer among
+  them; `identical_to_configured` is an object whenever `--keep-duplicates` is off (it was
+  None without a FASTA); new are `fasta_competitors`, `n_fasta_competitors`,
+  `sequence_from_fasta`, `identical_to_background`, `identical_source`, `fasta_sha256`,
+  `decoys`, `decoys_sha256`, `decoys_listed`, `decoys_skipped`, `decoys_absent`,
+  `fasta_long_records`, `max_window_records`, `fasta_left_out` and `windows_dropped`; and
+  `gene_total.transcripts_all_windows_dropped`. The `background:` line counts the FASTA's
+  competing records. Saved inputs record `analysis.max_window_records` for a run with a
+  FASTA, and a rerun at another M says so.
+- **Exit 2 is read from the precondition it names**, a transcript shorter than the window
+  (`gene_total.transcripts_without_windows`), not from `gene_total.estimable`. The two agree
+  while every column sums to one; with windows dropped by `--max-window-records` a column
+  sums to less, and the gene total can be inestimable with no transcript windowless, which
+  is no precondition failure. `gene_total.estimable` is still reported.
+- Saved inputs record `analysis.keep_duplicates` for a run with a gene background as well as
+  for one with a FASTA, since the setting now applies to both; `INPUTS_FORMAT` is unchanged.
+
+### Fixed
+The first two entries change an answer.
+
+- **A `--background-fasta` competitor is a column of the compatibility system** (issue #14).
+  Through 2.4.1 a FASTA record took windows from the uniqueness layer only, and the system
+  was built from the gene background alone; the same competitor passed with
+  `--background-sequences` was a column. So the route the CLI recommends gave the
+  optimistic answer: on a synthetic two-class case rank 2 and contrast min |log2FC| 0.469,
+  exit 0 at `--min-log2fc 0.5`, against rank 3, 0.546 and exit 3. Now a record that holds
+  a configured transcript's window found in at most M records of the FASTA
+  (`--max-window-records`, default 20) is a column, so a competitor found once gives one
+  answer by either route; a record longer than 1 Mb never is. Every window of the system
+  that a record left out holds is dropped from every layer -- the unique windows, the read
+  model and the system -- for the columns' windows in a first pass over the FASTA and for
+  the added records' in a second. The system is then the one with every record a column
+  less the rows that touch a left-out record, so its answer is never more optimistic than
+  that one's, at any order: a record that shares windows only with a background
+  transcript is left out, and the windows it holds go too. A property test compares the
+  two on random systems with repeats shared by many records, for M from 0 up. One column
+  per sharing record would not run: on a synthetic FASTA in which 3,000 records carried a
+  repeat of the configured transcripts it took 2.7 GB, against 90 MB now. A record with
+  the id of a gene-background transcript is that transcript, once; when the FASTA holds
+  other sequence for it, the column is the FASTA's, with a NOTE.
+- **An identical copy in the background is no competitor, wherever it comes from**
+  (issue #15). Salmon's default index keeps one of identical sequences. 2.4.1 applied that
+  to a FASTA record with a configured transcript's sequence and to nothing else: a
+  transcript of the gene background with a configured transcript's sequence took every
+  window that transcript had (on a synthetic case, a class with 800 unique windows and
+  `identifiable` had none and was `not_identifiable`), and a FASTA record with a
+  gene-background transcript's sequence -- the chrY copy of a pseudoautosomal transcript --
+  was warned about as a copy that splits reads. The rule
+  now covers the whole background: the gene's transcripts fetched from Ensembl,
+  `--background-sequences`, the saved background of `--inputs`, and FASTA records. A copy
+  of a configured transcript is left out; a copy of another background sequence counts
+  once, as the first (gene background by id, then the FASTA in file order); the copy
+  warning leaves out both. A NOTE says what a twin means for `extract` when the index keeps
+  the twin's name, and how to avoid it. `--keep-duplicates` counts every copy, as before.
+- **Only a redirect to Ensembl's page on archives is a retired archive** (issue #12). Any
+  redirect that ended outside the REST service was taken for a retirement and not retried,
+  so a run that met a maintenance page reported a retired archive. A redirect to
+  `www.ensembl.org/help/articles/archives` (or the same path on `ensembl.org`) is
+  retirement, with the same message; one that ends anywhere else off the service is
+  retried like an outage, and named as one when the retries run out.
+- **A `--background-fasta` header whose first `|`-field is empty** (`>|x`, `>|`) is read as a
+  record without an id; through 2.4.1 it stopped the run with an `IndexError` traceback.
+- **The contrast's `gls_relative_se` and `min_resolvable_log2fc` are infinite when the log
+  ratio is not estimable.** The figure is the delta-method SE of log(A/B), a quadratic form
+  in its gradient `c_a/a - c_b/b`; through 2.4.1 it was computed whenever the difference
+  `c_a - c_b` was estimable, which with class totals that are not leaves the gradient
+  outside the row space, and the form is then no standard error (one constructed case read
+  0.87 where the system with more rows gave 3.06). The overall verdict and the exit status
+  do not change, since both class totals already fail there; the contrast's own verdict
+  and reasons can.
+- **A compatibility system too large for memory is one line and exit 1**, naming the
+  allocation and the likely cause (a genome record, or a repeat many records share), not a
+  `MemoryError` traceback.
+
 ## [2.4.1] - 2026-10-02
 
 ### Added

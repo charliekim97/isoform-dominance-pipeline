@@ -131,8 +131,8 @@ monotone positional skew) the 5' direction held for 35–36 of the 39 genes abov
 or form of skew was tested, and below that ratio nothing was measured, so nothing is said.
 
 Exit codes: **0** no `--min-log2fc` given, or it is resolved · **3** `--min-log2fc` given and
-not resolved at the stated design · **2** precondition failure: the gene total itself is not
-estimable, because a transcript shorter than `--window` has no windows · **1** config or
+not resolved at the stated design · **2** precondition failure: a transcript shorter than
+`--window` has no windows, so the gene total itself is not estimable · **1** config or
 network error. The structural verdict is never the exit status: it changes with the
 annotation release the transcripts came from, so it is reported in the output and in the
 `--json` report (`verdict`, with `gene_total` and `effect_resolvable` beside it).
@@ -152,14 +152,42 @@ annotation release the transcripts came from, so it is reported in the output an
 > transcripts, which is better than comparing the configured classes alone but still
 > blind to pseudogenes, paralogues and homologous loci elsewhere in the index. A
 > quantifier resolves fragments against the *whole* index, so any claim about what it
-> can separate should be judged against the same FASTA the index was built from. The
-> scan is streamed one record at a time, so its memory is set by the longest record, not
-> by the file: one 20 Mb record took about 110 MB resident, 10,000 records of 2 kb
-> totalling the same 34 MB, at roughly 2 Mb of sequence a second (measured 2026-10-01). A record with the sequence of a configured transcript is not
-> counted, because Salmon's default index keeps one of identical sequences: in GENCODE
-> v50's reference-chromosome FASTA, all 382 chrY transcripts of the 18 protein-coding
-> genes on both chrX and chrY are such records. For an index built with Salmon's
-> `--keepDuplicates`, pass `--keep-duplicates`.
+> can separate should be judged against the transcript FASTA the index was built from
+> (without the genome decoys). A record that holds a configured transcript's window found
+> in at most M records of the FASTA (`--max-window-records M`, default 20) becomes a column
+> of the compatibility system, as a transcript of the gene background is, so a competitor
+> found once gives one answer whether it comes from the FASTA or from
+> `--background-sequences`; a record longer than 1 Mb never does. Every window of the
+> system that a record left out holds — a repeat's, a low-complexity stretch's, a genome
+> record's — is dropped from every layer, so the system is the one with every record a
+> column less the rows that touch a left-out record, and its answer is never more
+> optimistic than that one's. The scan is streamed one record at a time, so its memory is set
+> by the longest record, not by the file: one 20 Mb record took about 125 MB resident,
+> 10,000 records of 2 kb about 47 MB (the whole process, Python and numpy included). It
+> reads a window only where a 16-nt seed of it matches the configured transcripts, which
+> gives the answer reading every window gives: a synthetic 210 Mb FASTA took 3.0 s plain
+> and 4.7 s gzipped, against 132 s for the 2.4.1 scan (measured 2026-10-02); the FASTA is
+> read twice, once for the columns' windows and once for the windows of the records added.
+> M bounds the system: on synthetic FASTAs in which 1,000 and 3,000 records carried a
+> diverged copy of a repeat in the configured transcripts, 35 and 25 records joined, 840
+> and 2,501 were left out, 270 and 272 of 7,262 configured windows were dropped, and each
+> run took under 2 s and 90 MB, where one column per record that shares a window had taken
+> 6.7 s and 0.5 GB, and 56 s and 2.7 GB. A NOTE says how many configured windows were
+> dropped. Salmon's default index keeps one of identical sequences, so a background
+> sequence — the gene's, `--background-sequences` or a FASTA record — with a configured
+> transcript's sequence is not counted, and one with the
+> sequence of another background sequence is counted once: in GENCODE v50's
+> reference-chromosome FASTA, all 382 chrY transcripts of the 18 protein-coding genes on
+> both chrX and chrY are such records. Where the index keeps the copy's name rather than the
+> configured transcript's, `extract` cannot count those reads, and the command says how to
+> avoid that. For an index built with Salmon's `--keepDuplicates`, pass
+> `--keep-duplicates`. For a decoy-aware index, pass its transcript FASTA, or its gentrome
+> with `--decoys decoys.txt`: Salmon sets aside only the reads that map better to a decoy
+> than to any transcript, so a decoy competes for no read the transcripts explain as well,
+> while judged against the genome every window inside an exon would lose its uniqueness. A
+> record longer than 1 Mb read without `--decoys` is named in a NOTE and left out, so every
+> exon window it holds is dropped: a gentrome without `--decoys` gives the most
+> conservative answer, not a wrong one.
 
 > **Pin the release.** The verdict is a function of the annotation release. Rebuilt with
 > `--ensembl-release` against six Ensembl releases from 110 (GENCODE 44, July 2023) to 116,
@@ -188,8 +216,9 @@ annotation release the transcripts came from, so it is reported in the output an
 > class and background sequence and splits it again by the config in hand, so a class the
 > config has narrowed still has the transcripts it dropped in the background, where a
 > live run puts them, and a transcript moved the other way is used rather than refused.
-> `--background-fasta` is not copied into that file, but its SHA-256 is, and a rerun given
-> no FASTA or another one says so, as does one at another k or window. A verdict quoted
+> `--background-fasta` and `--decoys` are not copied into that file, but their SHA-256 is,
+> and a rerun given neither or another file says so, as does one at another k or window.
+> The `--json` report names both files by SHA-256 too. A verdict quoted
 > without a release is not a reproducible claim.
 
 | Layer | Reports | Why it is not the layer above |
@@ -297,7 +326,9 @@ Without `--gencode`, `quant.sf` names keep the whole GENCODE header, which is wh
 
 The package checks for such an index where it can. `identifiability
 --background-fasta` warns when the FASTA holds a transcript with the configured gene's
-name under another gene id, and so does `extract` when `quant.sf` names carry the whole
+name under another gene id, unless its sequence is a configured or a background
+transcript's (of identical sequences the index keeps one, so such a copy splits no read),
+and so does `extract` when `quant.sf` names carry the whole
 GENCODE header (an index built without Salmon's `--gencode`). Only an Ensembl header says
 where a gene lies, so a same-name gene on a reference chromosome — the chrY copy of a
 pseudoautosomal gene such as CD99 or SHOX, or a distinct gene sharing the name — is left

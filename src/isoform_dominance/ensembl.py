@@ -35,9 +35,11 @@ Releases
     receives a 301, 302 or 303 as a GET with no body, and Ensembl answers that with
     ``400 {"error":"ID '' not found"}``.  The release a host reports is checked against
     the one asked for before anything is fetched from it.  An archive Ensembl has retired
-    redirects off the REST service instead, to a web page about archives.  On 2026-09-24
-    releases 90 to 104 did so, except 94; 94 and 75 to 89 answered 503; 105 onward
-    answered, 106 and 111 intermittently.
+    redirects off the REST service instead, to its web page on archives
+    (``www.ensembl.org/help/articles/archives``).  On 2026-09-24 releases 90 to 104 did
+    so, except 94; 94 and 75 to 89 answered 503; 105 onward answered, 106 and 111
+    intermittently.  A redirect that ends anywhere else off the REST service is retried
+    like an outage: only that page is taken for a retirement.
 """
 import http.client
 import json
@@ -209,21 +211,48 @@ def _in_rest_service(host):
     return host == _REST_HOST or (host or "").endswith("." + _REST_HOST)
 
 
+#: Where Ensembl sends a retired REST archive: its web page on archives.
+RETIRED_HOSTS = frozenset({"www.ensembl.org", "ensembl.org"})
+RETIRED_PATH = "/help/articles/archives"
+
+
+def _retired(url):
+    """Is ``url`` the page a retired REST archive redirects to?"""
+    parts = urllib.parse.urlsplit(url)
+    return parts.hostname in RETIRED_HOSTS and parts.path.startswith(RETIRED_PATH)
+
+
+class _OffService(URLError):
+    """A redirect that ended outside the REST service, but not on the page on archives: a
+    maintenance page, say.  A ``URLError``, so it is retried like an outage."""
+
+
 def _archive(alias, release, **net):
     """The host ``alias`` redirects to, provided it reports exactly ``release``.
 
     A 200 that is not a one-release listing -- a maintenance page, say -- raises
     :class:`_NotAListing`, which :func:`resolve_server` treats as an archive it could not
-    reach rather than as a config error.
+    reach rather than as a config error.  A redirect to Ensembl's page on archives
+    (:data:`RETIRED_HOSTS`, a path under :data:`RETIRED_PATH`) is a retired archive, and
+    raises :class:`ReleaseNotServed` at once.  One that ends anywhere else outside the REST
+    service is retried under ``net``'s policy, and then raises :class:`_OffService`.
     """
+    def _read(r):
+        final = r.geturl()
+        if _retired(final):
+            # how Ensembl retires an archive (e100, e103, e104 on 2026-10-02, and 90-104
+            # but 94 on 2026-09-24): certain, so not retried
+            raise ReleaseNotServed("the REST archive for Ensembl release %d is retired: %s "
+                                   "redirects to %s, outside the REST service"
+                                   % (release, alias, final))
+        if not _in_rest_service(urllib.parse.urlsplit(final).hostname):
+            # a maintenance page for an hour is not a retirement
+            raise _OffService("%s redirects to %s, outside the REST service"
+                              % (alias, final))
+        return r.read(), final
+
     raw, final = _with_retries(alias + "/info/data", None, {"Accept": "application/json"},
-                               lambda r: (r.read(), r.geturl()), **net)
-    if not _in_rest_service(urllib.parse.urlsplit(final).hostname):
-        # a retired archive's host redirects off the REST service, to a web page about
-        # archives (releases 90-104 but 94, 2026-09-24): certain, so not retried
-        raise ReleaseNotServed("the REST archive for Ensembl release %d is retired: %s "
-                               "redirects to %s, outside the REST service"
-                               % (release, alias, final))
+                               _read, **net)
     base = final.split("/info/data", 1)[0]
     try:
         got = release_number(json.loads(raw))
@@ -250,9 +279,10 @@ def resolve_server(release=None, *, timeout=DEFAULT_TIMEOUT, retries=DEFAULT_RET
 
     Raises :class:`ReleaseNotServed` for a release later than the current one, for an
     archive that reports a different release, for an archive whose alias now redirects
-    off the REST service -- which is how Ensembl retires one -- and for an archive that
-    cannot be reached once the retries are spent, which is an outage or a retirement that
-    looks like one.
+    to Ensembl's page on archives -- which is how Ensembl retires one -- and for an archive
+    that cannot be reached once the retries are spent, which is an outage or a retirement
+    that looks like one; a redirect that ends elsewhere off the REST service is one of
+    those.
     """
     if release is None:
         return SERVER

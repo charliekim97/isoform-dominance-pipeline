@@ -300,9 +300,10 @@ def test_the_saved_file_records_the_analysis_parameters(ens, tmp_path, capsys):
                      "--k", "25", "--window", "40", "--strand-aware", "--json"]) == 0
     capsys.readouterr()
     doc = json.loads(open(saved).read())
-    # no --background-fasta, so nothing to say about duplicates of a configured sequence
+    # no --background-fasta, but a gene background, where a copy of a configured
+    # transcript is left out unless --keep-duplicates counts it (2.5.0)
     assert doc["analysis"] == {"k": 25, "window": 40, "canonical": False,
-                               "gene_background": True}
+                               "gene_background": True, "keep_duplicates": False}
 
 
 def test_a_rerun_at_another_window_or_k_says_so(ens, tmp_path, capsys, monkeypatch):
