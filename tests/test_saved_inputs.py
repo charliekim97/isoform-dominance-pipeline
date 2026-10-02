@@ -300,8 +300,9 @@ def test_the_saved_file_records_the_analysis_parameters(ens, tmp_path, capsys):
                      "--k", "25", "--window", "40", "--strand-aware", "--json"]) == 0
     capsys.readouterr()
     doc = json.loads(open(saved).read())
+    # no --background-fasta, so nothing to say about duplicates of a configured sequence
     assert doc["analysis"] == {"k": 25, "window": 40, "canonical": False,
-                               "keep_duplicates": False, "gene_background": True}
+                               "gene_background": True}
 
 
 def test_a_rerun_at_another_window_or_k_says_so(ens, tmp_path, capsys, monkeypatch):
@@ -555,3 +556,76 @@ def test_a_resaved_rerun_keeps_the_sources(ens, tmp_path, capsys, monkeypatch):
     a, b = json.loads(first.read_text()), json.loads(again.read_text())
     assert b["sequence_sources"] == a["sequence_sources"]
     assert b["ensembl_release"] is None
+
+
+# --------------------------------------------------------------------------- #
+# B10: the small things a saved file got wrong
+# --------------------------------------------------------------------------- #
+def test_a_run_without_a_fasta_says_nothing_about_duplicates_to_a_rerun_with_one(
+        no_network, tmp_path, capsys):
+    # no FASTA, no record identical to anything: --keep-duplicates did nothing then, so a
+    # rerun with a FASTA must not be told a record "was not counted then"
+    saved = tmp_path / "s.json"
+    seqs = tmp_path / "seqs.json"
+    seqs.write_text(json.dumps({t: SEQS[OLD][t] for t in GROUP_A + GROUP_B}))
+    cfg = _cfg(tmp_path, ensembl_release=OLD)
+    assert cli.main(["identify", "--config", cfg, "--sequences", str(seqs),
+                     "--save-inputs", str(saved)]) == 0
+    assert "keep_duplicates" not in json.loads(saved.read_text())["analysis"]
+    fa = _fasta(tmp_path, "bg.fa", SEQS[OLD][GROUP_A[0]])
+    capsys.readouterr()
+    cli.main(["identify", "--config", cfg, "--inputs", str(saved), "--background-fasta", fa,
+              "--keep-duplicates"])
+    assert "saved without --keep-duplicates" not in capsys.readouterr().err
+
+
+def test_a_rerun_of_inputs_with_a_release_is_not_called_unreproducible(no_network, tmp_path,
+                                                                     capsys):
+    cfg = {k: v for k, v in CONFIG.items() if k != "ensembl_release"}
+    p = tmp_path / "c.json"
+    p.write_text(json.dumps(cfg))
+    cli.main(["identify", "--config", str(p), "--inputs", _save(tmp_path, release=OLD)])
+    assert "not reproducible" not in capsys.readouterr().err
+    cli.main(["identify", "--config", str(p), "--inputs", _save(tmp_path, release=None)])
+    assert "not reproducible" in capsys.readouterr().err
+
+
+def test_a_rerun_reports_the_gene_id_the_live_run_did(rest_cd99, tmp_path, capsys,
+                                                      monkeypatch):
+    cfg, saved = rest_cd99
+    live = _run(["identifiability", "--config", cfg], capsys)
+    assert live["background"]["gene_id"]
+
+    def refuse(req, *a, **k):
+        raise AssertionError("network request %s" % req.full_url)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    offline = _run(["identifiability", "--config", cfg, "--inputs", saved], capsys)
+    assert _without_provenance(offline) == _without_provenance(live)
+
+
+@pytest.fixture
+def rest_cd99(monkeypatch, tmp_path, capsys):
+    from test_gene_choice import CD99_X, Rest, _ids
+    monkeypatch.setattr(urllib.request, "urlopen", Rest())
+    tids = sorted(_ids(CD99_X))
+    cfg = tmp_path / "cd99.json"
+    cfg.write_text(json.dumps({"gene": "CD99", "gene_id": CD99_X["id"],
+                               "groups": {"A": tids[:1], "B": tids[1:2]},
+                               "primary_comparison": ["A", "B"], "ensembl_release": 116}))
+    saved = tmp_path / "cd99.inputs.json"
+    assert cli.main(["identifiability", "--config", str(cfg),
+                     "--save-inputs", str(saved)]) == 0
+    capsys.readouterr()
+    return str(cfg), str(saved)
+
+
+def test_a_saved_file_with_versioned_ids_is_read_as_unversioned(no_network, tmp_path, capsys):
+    saved = tmp_path / "v.json"
+    io.save_inputs(str(saved), _captured({t + ".3": SEQS[OLD][t] for t in GROUP_A + GROUP_B}),
+                   dict(CONFIG), OLD, "test")
+    plain = tmp_path / "p.json"
+    io.save_inputs(str(plain), _captured({t: SEQS[OLD][t] for t in GROUP_A + GROUP_B}),
+                   dict(CONFIG), OLD, "test")
+    cfg = _cfg(tmp_path, ensembl_release=OLD)
+    versioned = _run(["identify", "--config", cfg, "--inputs", str(saved)], capsys)
+    assert versioned == _run(["identify", "--config", cfg, "--inputs", str(plain)], capsys)

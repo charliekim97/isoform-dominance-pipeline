@@ -90,6 +90,21 @@ versioning.
   the contrast, and in any two its column entered the system twice with the first copy all
   zero, so the run reported "the gene total is not estimable", exit 2, naming no
   transcript.
+- **`identifiability --save-inputs` checks that it can write before the run, and saves
+  after the report.** A directory without write permission failed after the run, and the
+  failed save came before the report, so the answer was lost with it.
+- **Saved inputs say where each sequence came from.** A run with part of its sequence
+  supplied (`--sequences`, `--background-sequences`) and the rest fetched stamped the
+  fetched release on the whole file. `sequence_sources` gives `"supplied"` or
+  `"fetched:<release>"` per id, and `ensembl_release` is recorded only when every sequence
+  was fetched from it. A rerun that saves again keeps the sources of the file it ran from.
+- **Saved inputs, small things.** A run without `--background-fasta` no longer records
+  `keep_duplicates`, so a rerun with a FASTA is not told a record "was not counted then".
+  A rerun from inputs that record their release is not called unreproducible for a config
+  that records none. A rerun reports the gene id the live run fetched its background as
+  (`background.gene_id`), which makes its `--json` report equal the live one apart from
+  the `annotation` block, which says where the sequence came from. Saved ids with a version
+  (`ENST….3`) are compared without it, as `--sequences` ids are.
 - **`extract` names a transcript that two groups share.** Its TPM still goes, as in 2.1.1,
   to the group the config lists last; the warning names the transcript and the groups.
 

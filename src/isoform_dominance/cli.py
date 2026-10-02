@@ -205,7 +205,9 @@ def _load_saved_inputs(a, cfg):
     if saved_id and cfg_id and saved_id.split(".")[0] != cfg_id.split(".")[0]:
         raise ValueError("the saved inputs are for gene %s and the config for gene %s"
                          % (saved_id, cfg_id))
-    pool = dict(inputs["background_sequences"], **inputs["sequences"])
+    # ids compared without their version, as --sequences ids are
+    pool = {t.split(".")[0]: s for t, s in inputs["background_sequences"].items()}
+    pool.update((t.split(".")[0], s) for t, s in inputs["sequences"].items())
     needed = {t.split(".")[0] for ids in cfg["groups"].values() for t in ids}
     absent = sorted(needed - set(pool))
     if absent:
@@ -277,6 +279,9 @@ def cmd_identifiability(a):
         return 1
     if inputs is not None:
         res["annotation"]["inputs_release"] = inputs["ensembl_release"]
+        if background is not None and res["background"]["gene_id"] is None:
+            # the gene the live run fetched its background as, which the file recorded
+            res["background"]["gene_id"] = inputs.get("gene_id")
         if inputs["left_out"]:
             print("  NOTE: the saved run had no gene background, so %s, saved but not named "
                   "by this config, %s left out rather than used as background, as a live "
@@ -366,7 +371,8 @@ def _report(a, res):
                               else "record no one release: some or all of their sequence "
                               "was supplied, not fetched"),
               file=sys.stderr)
-    if rel is None:
+    if rel is None and not (a.inputs and saved is not None):
+        # a rerun from inputs that record their release repeats that release's answer
         print("  NOTE: the config records no Ensembl release, and the verdict is a function "
               "of the release its transcripts came from, so this verdict is not "
               "reproducible. Re-run `annotate` to record one, or set \"ensembl_release\" in "
