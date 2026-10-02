@@ -849,8 +849,9 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         A dict to fill with the sequence this run used: ``sequences`` (the configured
         transcripts), ``background_sequences`` (the gene background, after the configured
         transcripts are removed from it), ``gene_background`` (whether this run had one, fetched
-        or supplied), ``fetched_release``, and the ``k``, ``window`` and ``canonical`` the
-        system was built at -- none of which is in the config.
+        or supplied), ``fetched_release``, ``sequence_sources`` (each id's ``"supplied"`` or
+        ``"fetched:<release>"``), and the ``k``, ``window`` and ``canonical`` the system was
+        built at -- none of which is in the config.
         Written to a file by :func:`isoform_dominance.io.save_inputs`, it repeats the run
         with no request at all, after the release's REST archive is gone.
     retries, retry_wait
@@ -915,6 +916,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
 
     # ---- background transcripts of the same gene -------------------------- #
     bg_seqs = {t.split(".")[0]: s for t, s in (background_sequences or {}).items()}
+    supplied = set(seqs) | set(bg_seqs)         # for inputs_out's sequence_sources
     if background_gene_transcripts == "auto":
         # only reach for the network when we are already going there for sequence
         background_gene_transcripts = any(t not in seqs for t in needed)
@@ -982,6 +984,9 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
                           gene_id=bg_gene_id,
                           keep_duplicates=keep_duplicates,
                           fetched_release=fetched_release,
+                          sequence_sources={
+                              t: "supplied" if t in supplied else "fetched:%s" % fetched_release
+                              for t in list(needed) + sorted(bg_seqs)},
                           k=k, window=window, canonical=canonical)
 
     # ---- window tracks ---------------------------------------------------- #

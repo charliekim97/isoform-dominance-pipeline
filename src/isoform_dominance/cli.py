@@ -292,16 +292,29 @@ def cmd_identifiability(a):
     code = _report(a, res)
     # after the report, so a save that fails cannot take the answer with it
     if captured is not None:
-        release = res["annotation"]["fetched_release"]
-        if release is None and inputs is not None:
-            release = inputs["ensembl_release"]
+        sources = captured["sequence_sources"]
+        if inputs is not None:
+            # a rerun supplies its saved sequence: where it came from is the file's record
+            was = inputs.get("sequence_sources") or {}
+            default = ("fetched:%s" % inputs["ensembl_release"]
+                       if inputs["ensembl_release"] is not None else "supplied")
+            sources = captured["sequence_sources"] = {t: was.get(t, default) for t in sources}
+        kinds = sorted(set(sources.values()))
+        # one release only when every sequence came from it
+        release = (int(kinds[0].split(":", 1)[1])
+                   if len(kinds) == 1 and kinds[0].startswith("fetched:") else None)
         if captured.get("gene_id") is None and inputs is not None:
             captured["gene_id"] = inputs.get("gene_id")
         io.save_inputs(a.save_inputs, captured, cfg, release, __version__,
                        background_fasta=a.background_fasta)
+        n_sup = sum(v == "supplied" for v in sources.values())
         print("  saved this run's sequence (%s) to %s; repeat it with no network: "
               "--inputs %s" % ("Ensembl release %s" % release if release is not None
-                               else "release unknown: supplied offline",
+                               else "release unknown: supplied offline" if n_sup == len(sources)
+                               else "%d supplied, %d fetched from %s; no one release recorded"
+                               % (n_sup, len(sources) - n_sup, ", ".join(
+                                   "release " + k.split(":", 1)[1] for k in kinds
+                                   if k != "supplied")),
                                a.save_inputs, a.save_inputs), file=sys.stderr)
     return code
 
@@ -350,7 +363,8 @@ def _report(a, res):
     if a.inputs and rel is not None and saved != rel:
         print("  NOTE: the config was annotated against Ensembl release %s, and the saved "
               "inputs %s." % (rel, "are from release %s" % saved if saved is not None
-                              else "record no release: their sequence was supplied offline"),
+                              else "record no one release: some or all of their sequence "
+                              "was supplied, not fetched"),
               file=sys.stderr)
     if rel is None:
         print("  NOTE: the config records no Ensembl release, and the verdict is a function "

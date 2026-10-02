@@ -145,7 +145,7 @@ def test_no_release_is_named_none(no_network, tmp_path, capsys):
     out = capsys.readouterr()
     assert "None" not in out.out + out.err
     assert "saved inputs (release not recorded" in out.out
-    assert "record no release: their sequence was supplied offline" in out.err
+    assert "record no one release: some or all of their sequence was supplied" in out.err
 
 
 def _fasta(tmp_path, name, seq):
@@ -506,3 +506,52 @@ def test_a_save_that_fails_after_the_run_leaves_the_report_out(ens, tmp_path, ca
     out = capsys.readouterr()
     assert json.loads(out.out)["verdict"]                 # the report is out
     assert "Permission denied" in out.err and str(saved) in out.err
+
+
+# --------------------------------------------------------------------------- #
+# a run on partly supplied sequence does not claim one release for all of it
+# --------------------------------------------------------------------------- #
+def test_saved_inputs_say_where_each_sequence_came_from(ens, tmp_path, capsys):
+    # class A supplied from release 116's sequence; class B and the background fetched
+    # from release 110: the file must not stamp 110 on A
+    supplied = tmp_path / "a.json"
+    supplied.write_text(json.dumps({t: SEQS[CURRENT][t] for t in GROUP_A}))
+    saved = tmp_path / "mixed.json"
+    assert cli.main(["identify", "--config", _cfg(tmp_path, ensembl_release=OLD),
+                     "--sequences", str(supplied), "--ensembl-release", str(OLD),
+                     "--save-inputs", str(saved), "--json"]) == 0
+    err = capsys.readouterr().err
+    doc = json.loads(saved.read_text())
+    assert doc["ensembl_release"] is None
+    src = doc["sequence_sources"]
+    assert {src[t] for t in GROUP_A} == {"supplied"}
+    assert {src[t] for t in GROUP_B} == {"fetched:%d" % OLD}
+    assert {src[t] for t in doc["background_sequences"]} == {"fetched:%d" % OLD}
+    assert "%d supplied" % len(GROUP_A) in err
+
+
+def test_a_run_wholly_fetched_keeps_its_release(ens, tmp_path, capsys):
+    saved = tmp_path / "s.json"
+    assert cli.main(["identify", "--config", _cfg(tmp_path, ensembl_release=OLD),
+                     "--ensembl-release", str(OLD), "--save-inputs", str(saved)]) == 0
+    doc = json.loads(saved.read_text())
+    assert doc["ensembl_release"] == OLD
+    assert set(doc["sequence_sources"].values()) == {"fetched:%d" % OLD}
+
+
+def test_a_resaved_rerun_keeps_the_sources(ens, tmp_path, capsys, monkeypatch):
+    supplied = tmp_path / "a.json"
+    supplied.write_text(json.dumps({t: SEQS[CURRENT][t] for t in GROUP_A}))
+    first, again = tmp_path / "first.json", tmp_path / "again.json"
+    cfg = _cfg(tmp_path, ensembl_release=OLD)
+    assert cli.main(["identify", "--config", cfg, "--sequences", str(supplied),
+                     "--ensembl-release", str(OLD), "--save-inputs", str(first)]) == 0
+
+    def refuse(req, *a, **k):
+        raise AssertionError("network request %s" % req.full_url)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    assert cli.main(["identify", "--config", cfg, "--inputs", str(first),
+                     "--save-inputs", str(again)]) == 0
+    a, b = json.loads(first.read_text()), json.loads(again.read_text())
+    assert b["sequence_sources"] == a["sequence_sources"]
+    assert b["ensembl_release"] is None

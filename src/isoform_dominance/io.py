@@ -114,6 +114,11 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
     uniqueness against the gene's other transcripts.  A rerun under another grouping moves a
     transcript the config no longer names into that background only if there was one.
 
+    ``sequence_sources`` gives each sequence's origin, ``"supplied"`` or
+    ``"fetched:<release>"``.  ``release`` is recorded only when every sequence was fetched
+    from it: a run on partly supplied sequence did not use one release, and saying it did
+    would date the supplied sequence to a release it may not come from.
+
     ``gene_id`` is the Ensembl gene the gene background was fetched as -- or, when none was
     fetched, the config's ``gene_id`` -- so that a rerun can be refused a config of another
     gene of the same name.
@@ -133,6 +138,7 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
                             gene_background=bool(captured.get("gene_background",
                                                               captured["background_sequences"]))),
            "background_fasta": fasta,
+           "sequence_sources": captured.get("sequence_sources"),
            "sequences": captured["sequences"],
            "background_sequences": captured["background_sequences"]}
     with open(path, "w") as f:
@@ -182,6 +188,12 @@ def load_inputs(path):
     if not isinstance(doc.get("gene_id"), (str, type(None))):
         raise InputError("saved inputs %s: gene_id is %r, expected an Ensembl gene id or null"
                          % (path, doc["gene_id"]))
+    sources = doc.get("sequence_sources")
+    if sources is not None and not (isinstance(sources, dict) and all(
+            isinstance(k, str) and isinstance(v, str) for k, v in sources.items())):
+        raise InputError("saved inputs %s: sequence_sources is %r, expected null or an object "
+                         "of transcript id to \"supplied\" or \"fetched:<release>\""
+                         % (path, sources))
     fasta = doc.get("background_fasta")
     if fasta is not None and not (isinstance(fasta, dict)
                                   and isinstance(fasta.get("path"), str)
