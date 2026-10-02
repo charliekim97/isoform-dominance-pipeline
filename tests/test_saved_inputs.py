@@ -5,6 +5,7 @@ release 111's timed out on every lookup on 2026-09-24.  A saved-inputs file hold
 sequence a run used, with the release it came from, and repeats the run with no request.
 """
 import json
+import os
 import time
 import urllib.request
 
@@ -463,3 +464,45 @@ def test_k_and_tpm_help_say_what_they_do(capsys):
     text = " ".join(capsys.readouterr().out.split())
     assert "sets the default window when --window is not given" in text
     assert "TPM given to every transcript of the gene, background included" in text
+
+
+# --------------------------------------------------------------------------- #
+# --save-inputs: a directory that cannot be written to is refused before the run,
+# and a save that fails anyway comes after the report, not instead of it
+# --------------------------------------------------------------------------- #
+def test_an_unwritable_save_directory_is_refused_before_anything_is_fetched(
+        tmp_path, capsys, monkeypatch):
+    def refuse(req, *a, **k):
+        raise AssertionError("fetched before the save path was checked: %s" % req.full_url)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    real = os.access
+    # root may write anywhere, so the permission is simulated as well as set
+    monkeypatch.setattr(os, "access", lambda p, mode, *a, **k: (
+        False if os.path.abspath(p) == str(locked) and mode & os.W_OK
+        else real(p, mode, *a, **k)))
+    os.chmod(locked, 0o555)
+    try:
+        assert cli.main(["identify", "--config", _cfg(tmp_path, ensembl_release=OLD),
+                         "--ensembl-release", str(OLD),
+                         "--save-inputs", str(locked / "run.json")]) == 1
+    finally:
+        os.chmod(locked, 0o755)
+    err = capsys.readouterr().err
+    assert "--save-inputs %s: directory %s is not writable" % (locked / "run.json", locked) \
+        in err and len(err.strip().splitlines()) == 1
+
+
+def test_a_save_that_fails_after_the_run_leaves_the_report_out(ens, tmp_path, capsys,
+                                                               monkeypatch):
+    def fail(path, *a, **k):
+        raise PermissionError(13, "Permission denied", path)
+    monkeypatch.setattr(io, "save_inputs", fail)
+    saved = tmp_path / "run.json"
+    assert cli.main(["identify", "--config", _cfg(tmp_path, ensembl_release=OLD),
+                     "--ensembl-release", str(OLD), "--save-inputs", str(saved),
+                     "--json"]) == 1
+    out = capsys.readouterr()
+    assert json.loads(out.out)["verdict"]                 # the report is out
+    assert "Permission denied" in out.err and str(saved) in out.err

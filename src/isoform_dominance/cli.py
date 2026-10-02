@@ -233,6 +233,9 @@ def cmd_identifiability(a):
         if not os.path.isdir(where):
             raise io.InputError("--save-inputs %s: directory %s does not exist"
                                 % (a.save_inputs, where))
+        if not os.access(where, os.W_OK):
+            raise io.InputError("--save-inputs %s: directory %s is not writable"
+                                % (a.save_inputs, where))
     inputs = None
     try:
         if a.inputs:
@@ -286,6 +289,8 @@ def cmd_identifiability(a):
                      _fasta_note(inputs.get("background_fasta"), a.background_fasta)):
             if note:
                 print("  NOTE: " + note, file=sys.stderr)
+    code = _report(a, res)
+    # after the report, so a save that fails cannot take the answer with it
     if captured is not None:
         release = res["annotation"]["fetched_release"]
         if release is None and inputs is not None:
@@ -298,7 +303,12 @@ def cmd_identifiability(a):
               "--inputs %s" % ("Ensembl release %s" % release if release is not None
                                else "release unknown: supplied offline",
                                a.save_inputs, a.save_inputs), file=sys.stderr)
+    return code
 
+
+def _report(a, res):
+    """Print the report of one run -- JSON on stdout with ``--json`` -- and return the exit
+    status."""
     same = res["background"].get("identical_to_configured") or {}
     # a copy with a configured transcript's sequence is the NOTE below, not this warning
     warning = index_scope.copy_warning(
