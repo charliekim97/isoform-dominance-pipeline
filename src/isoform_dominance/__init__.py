@@ -9,4 +9,4 @@ extract         Salmon quant.sf -> per-donor isoform-group TPM
 stats           paired Wilcoxon + figure
 contamination   marker-based contamination control
 """
-__version__ = "2.4.0"
+__version__ = "2.4.1.dev0"
