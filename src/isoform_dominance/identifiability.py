@@ -43,6 +43,7 @@ All three are computed offline from sequence alone; nothing here needs the reads
 """
 import math
 import urllib.parse
+from collections import Counter
 from urllib.error import HTTPError
 
 import numpy as np
@@ -145,12 +146,7 @@ def kmers(seq, k, canonical=True):
     itself and its reverse complement.  Pass ``canonical=False`` for the strand-aware
     behaviour of releases up to v2.1.1.
     """
-    seq = seq.upper()
-    if k <= 0 or len(seq) < k:
-        return set()
-    if canonical:
-        return {canonical_kmer(seq[i:i + k]) for i in range(len(seq) - k + 1)}
-    return {seq[i:i + k] for i in range(len(seq) - k + 1)}
+    return set(kmer_track(seq, k, canonical))
 
 
 def kmer_track(seq, k, canonical=True):
@@ -160,11 +156,15 @@ def kmer_track(seq, k, canonical=True):
     block-structure and read-model calculations need.
     """
     seq = seq.upper()
-    if k <= 0 or len(seq) < k:
+    n = len(seq)
+    if k <= 0 or n < k:
         return []
     if canonical:
-        return [canonical_kmer(seq[i:i + k]) for i in range(len(seq) - k + 1)]
-    return [seq[i:i + k] for i in range(len(seq) - k + 1)]
+        # :func:`canonical_kmer` of each window, with one reverse complement of the whole
+        # sequence: the window at i reads, on the other strand, as its slice at n - i - k
+        rc = seq.translate(_COMPLEMENT)[::-1]
+        return [min(seq[i:i + k], rc[n - i - k:n - i]) for i in range(n - k + 1)]
+    return [seq[i:i + k] for i in range(n - k + 1)]
 
 
 #: Length of the seeds the background-FASTA scan looks up before it reads a window.
@@ -726,20 +726,36 @@ def compatibility_matrix(tracks, transcript_ids):
     and gets an all-zero column, so ``A`` is column-stochastic only when every
     transcript is at least ``window`` long.
     """
-    sig = {}
+    # A window's signature, built without a container for the windows only one transcript
+    # has -- most of them, and millions once many background records join -- and with one
+    # frozenset per signature, shared by all its windows, which a dictionary lookup then
+    # tells apart by identity rather than element by element.
+    sig, shared = {}, []
     for tid in transcript_ids:
-        for w in tracks.get(tid, []):
-            sig.setdefault(w, set()).add(tid)
+        for w in set(tracks.get(tid, [])):
+            have = sig.get(w)
+            if have is None:
+                sig[w] = tid                    # this transcript's alone, so far
+            elif isinstance(have, list):
+                have.append(tid)
+            else:
+                sig[w] = [have, tid]
+                shared.append(w)
+    interned = {}
+    for w in shared:
+        key = frozenset(sig[w])
+        sig[w] = interned.setdefault(key, key)
 
     # positions carrying each signature, per transcript -- see the docstring on why
     # this is not a count of distinct window sequences
     pos_counts = {}
-    class_keys = set()
     for tid in transcript_ids:
-        for w in tracks.get(tid, []):
-            key = frozenset(sig[w])
-            class_keys.add(key)
-            pos_counts[(key, tid)] = pos_counts.get((key, tid), 0) + 1
+        for key, n in Counter(map(sig.__getitem__, tracks.get(tid, []))).items():
+            if not isinstance(key, frozenset):  # a window no other transcript has
+                key = frozenset((key,))
+                key = interned.setdefault(key, key)
+            pos_counts[(key, tid)] = pos_counts.get((key, tid), 0) + n
+    class_keys = set(interned)
 
     idx = {t: j for j, t in enumerate(transcript_ids)}
     n_windows = {t: max(1, len(tracks.get(t, []))) for t in transcript_ids}
@@ -751,8 +767,12 @@ def compatibility_matrix(tracks, transcript_ids):
     return A, [sorted(c) for c in classes]
 
 
-def estimability(A, c, rcond=1e-10):
+def estimability(A, c, rcond=1e-10, *, svd=None):
     """Is the linear functional ``c'theta`` estimable from ``E[y] = A theta``, and how well?
+
+    ``svd`` is ``np.linalg.svd(A.T, full_matrices=False)[:2]``, for a caller that asks
+    about several functionals of one ``A``: the answer is the one this function gives
+    without it, computed once.
 
     **Structure.**  ``c'theta`` is estimable exactly when ``c`` lies in the row space of
     ``A``.  The residual of projecting ``c`` onto that row space, relative to ``||c||``,
@@ -794,7 +814,7 @@ def estimability(A, c, rcond=1e-10):
     # band of directions on both sides of the line at once, where a contrast is
     # declared estimable and its conditioning direction is simultaneously projected
     # away, reporting 0.0 (the best possible score) for the worst-conditioned case.
-    u, s, _ = np.linalg.svd(A.T, full_matrices=False)
+    u, s = svd if svd is not None else np.linalg.svd(A.T, full_matrices=False)[:2]
     tol = max(A.shape) * (s[0] if s.size else 0.0) * rcond
     r = int((s > tol).sum())
     if not np.any(c):
@@ -1185,6 +1205,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     all_tracks.update(bg_tracks)
     A, classes = compatibility_matrix(all_tracks, all_tids)
     idx = {t: j for j, t in enumerate(all_tids)}
+    # every estimand below is a functional of this one A: one decomposition serves them all
+    svd = np.linalg.svd(A.T, full_matrices=False)[:2] if A.size else None
 
     # Expected fragments per transcript at the stated design, used as the plug-in for the
     # Poisson weights.  Flat in TPM across the gene's transcripts, which is the same
@@ -1201,7 +1223,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         c = np.zeros(len(all_tids))
         for t in ids:
             c[idx[t]] = 1.0
-        report[g].update(estimability(A, c))
+        report[g].update(estimability(A, c, svd=svd))
         report[g]["label"] = "the %s class total" % g
         report[g]["coherence"] = class_coherence(tracks, ids)
         class_indicator[g] = c
@@ -1217,7 +1239,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         c[idx[t]] += 1.0
     for t in group_ids[pc[1]]:
         c[idx[t]] -= 1.0
-    contrast = estimability(A, c)
+    contrast = estimability(A, c, svd=svd)
     contrast["label"] = "the class contrast"
     if contrast["estimable"]:
         raw = log_ratio_se(cov, class_indicator[pc[0]], class_indicator[pc[1]], theta)
@@ -1248,7 +1270,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     # column is all zero, which happens when a transcript is shorter than ``window``.
     # That is a precondition of the system, not a judgement about the classes: it does
     # not depend on the grouping, the design or a threshold.
-    gene_total = estimability(A, np.ones(len(all_tids)))
+    gene_total = estimability(A, np.ones(len(all_tids)), svd=svd)
     gene_total["transcripts_without_windows"] = [
         t for t in all_tids if not A[:, idx[t]].any()]
 
