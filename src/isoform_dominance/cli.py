@@ -320,9 +320,11 @@ def cmd_identifiability(a):
                                     a.keep_duplicates if a.background_fasta
                                     or background is not None else None),
                      _fasta_note(inputs.get("background_fasta"), a.background_fasta),
+                     # --decoys means nothing without a FASTA, and the note above
+                     # already asks for that
                      _fasta_note(inputs.get("decoys"), a.decoys, "--decoys",
                                  "the genome records it names are read as competing "
-                                 "sequence")):
+                                 "sequence") if a.background_fasta else None):
             if note:
                 print("  NOTE: " + note, file=sys.stderr)
     code = _report(a, res)
@@ -425,7 +427,9 @@ def _report(a, res):
               "(%s); %d decoy record(s) were left out." % (
                   a.decoys, len(bg["decoys_absent"]), _listed(bg["decoys_absent"]),
                   bg["decoys_skipped"]), file=sys.stderr)
-    replaced = res["background"].get("sequence_from_fasta") or []
+    # one taken from the FASTA that is a copy is said by the copy NOTEs above
+    replaced = [t for t in bg.get("sequence_from_fasta") or [] if t not in same
+                and t not in twins]
     if replaced:
         print("  NOTE: --background-fasta holds other sequence for %d transcript(s) of the "
               "gene background, as another release would: %s. Each is counted once, with its "
@@ -745,10 +749,12 @@ def build_parser():
                         "are skipped, as Salmon sets aside only reads that map better to a "
                         "decoy than to any transcript")
     s.add_argument("--keep-duplicates", action="store_true",
-                   help="the Salmon index was built with --keepDuplicates: count a "
-                        "--background-fasta record with a configured transcript's sequence as "
-                        "competing sequence (by default it is not, as Salmon's default index "
-                        "keeps one of identical sequences)")
+                   help="the Salmon index was built with --keepDuplicates: count every copy "
+                        "in the background -- a transcript of the gene background or a "
+                        "--background-fasta record with the sequence of a configured "
+                        "transcript or of another background sequence -- as competing "
+                        "sequence (by default a copy is not counted, or counted once, as "
+                        "Salmon's default index keeps one of identical sequences)")
     s.add_argument("--no-gene-background", action="store_true",
                    help="do not fetch the gene's other transcripts as background (v2.1 behaviour)")
     s.add_argument("--strand-aware", action="store_true",

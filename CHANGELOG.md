@@ -91,6 +91,8 @@ The first two entries change an answer.
   `www.ensembl.org/help/articles/archives` (or the same path on `ensembl.org`) is
   retirement, with the same message; one that ends anywhere else off the service is
   retried like an outage, and named as one when the retries run out.
+- **A `--background-fasta` header whose first `|`-field is empty** (`>|x`, `>|`) is read as a
+  record without an id; through 2.4.1 it stopped the run with an `IndexError` traceback.
 - **A compatibility system too large for memory is one line and exit 1**, naming the
   allocation and the likely cause (a genome record, or a repeat many records share), not a
   `MemoryError` traceback.

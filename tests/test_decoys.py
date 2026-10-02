@@ -192,3 +192,32 @@ def _write_cfg(tmp_path):
     (tmp_path / "seqs.json").write_text(json.dumps(SEQS))
     (tmp_path / "bg.fa").write_text(TRANSCRIPTS)
     return cfg
+
+
+def test_decoys_are_not_called_absent_when_the_fasta_was_not_read(tmp_path, capsys):
+    """A config whose transcripts are all shorter than the window has no window to look
+    for, and the FASTA is not read: nothing is known about the decoys it holds."""
+    short = {T1: E2[:20], T2: E3[:25]}
+    cfg, sq, fa = tmp_path / "cfg.json", tmp_path / "seqs.json", tmp_path / "bg.fa"
+    cfg.write_text(json.dumps(CFG))
+    sq.write_text(json.dumps(short))
+    fa.write_text(GENTROME)
+    rc = cli.main(["identifiability", "--config", str(cfg), "--sequences", str(sq),
+                   "--background-fasta", str(fa), "--decoys", _decoys(tmp_path, "chrF"),
+                   "--json"])
+    out, err = capsys.readouterr()
+    assert rc == cli.EXIT_NOT_IDENTIFIABLE
+    assert json.loads(out)["background"]["decoys_absent"] is None
+    assert "does not hold" not in err
+
+
+def test_a_rerun_without_a_fasta_is_not_told_to_pass_decoys_alone(tmp_path, capsys,
+                                                                  small_genome):
+    decoys = _decoys(tmp_path, "chrF", "chrG")
+    saved = tmp_path / "in.json"
+    _run(tmp_path, capsys, GENTROME, "--decoys", decoys, "--save-inputs", str(saved))
+    cli.main(["identifiability", "--config", str(tmp_path / "cfg.json"), "--inputs",
+              str(saved)])
+    err = capsys.readouterr().err
+    assert "the saved run also used --background-fasta" in err
+    assert "the saved run also used --decoys" not in err

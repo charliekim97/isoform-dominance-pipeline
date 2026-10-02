@@ -156,7 +156,12 @@ The records of a background FASTA that share a window with `query_kmers`, as
 unless its id is in `keep_ids` or its sequence in `keep_sequences`. `exclude_ids` are
 skipped, as are records whose sequence is a key of `identical` (each goes to
 `identical_out` as record id -> `identical[sequence]`) and records named in `decoys`.
-`stats` receives `decoys_skipped`, `decoys_found` and `long_records`.
+`stats` receives `read` (False when the query is empty and the file was not read),
+`decoys_skipped`, `decoys_found` and `long_records`. Every record reported, among the
+competitors or in `identical_out`, has a name of its own: its id; `record<N>` when its
+header gives none, N its place among the file's headers; `<id>#2` (`#3`, ...) for a later
+record with an id already reported and other sequence (one with the same sequence is the
+same record again, and is left out). A record with no sequence is no record.
 `identifiability.scan_background_fasta(path, query_kmers, k, ...)` returns the union of
 the windows, as through 2.4.1. Each query window is looked up in both orientations, and a
 record's window is read only where a `seed`-long substring at a stride of

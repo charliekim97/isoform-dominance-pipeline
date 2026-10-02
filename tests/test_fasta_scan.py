@@ -200,6 +200,8 @@ def _records_ref(path, query_kmers, k, canonical=True, exclude_ids=(), identical
             if identical_out is not None:
                 identical_out[tid] = identical[seq]
             return
+        if not seq:
+            return              # blank lines only: no window, and no record to compete
         hits = set()
         for i in range(len(seq) - k + 1):
             km = I.canonical_kmer(seq[i:i + k]) if canonical else seq[i:i + k]
@@ -212,8 +214,8 @@ def _records_ref(path, query_kmers, k, canonical=True, exclude_ids=(), identical
         for line in fh:
             if line.startswith(">"):
                 _consume(chunks, tid)
-                head = line[1:].strip()
-                tid = head.split("|")[0].split()[0].split(".")[0] if head else None
+                first = line[1:].strip().split("|")[0].split()
+                tid = first[0].split(".")[0] if first else None
                 chunks = []
             else:
                 chunks.append(line.strip())

@@ -273,4 +273,19 @@ def test_a_copy_whose_header_gives_no_id_is_still_reported(tmp_path, capsys):
     fa.write_text(">\n%s\n>%s\n%s\n" % (SEQS[T1], CHRY, SEQS[T1]))
     rc, res, err = _run(_files(tmp_path, {OTHER: BG[OTHER]}) + ["--background-fasta", str(fa)],
                         capsys)
-    assert res["background"]["identical_to_configured"] == {"(no id 1)": T1, CHRY: T1}
+    assert res["background"]["identical_to_configured"] == {"record1": T1, CHRY: T1}
+
+
+def test_keep_duplicates_help_says_it_counts_every_copy():
+    sub = cli.build_parser()._subparsers._group_actions[0].choices["identifiability"]
+    action = next(x for x in sub._actions if "--keep-duplicates" in x.option_strings)
+    assert "gene background" in action.help and "another background" in action.help
+
+
+def test_a_gene_transcript_the_fasta_holds_as_a_copy_gets_one_note(tmp_path, capsys):
+    fa = tmp_path / "bg.fa"
+    fa.write_text(_gencode(OTHER, GENE_ID, SEQS[T1]))
+    rc, res, err = _run(_files(tmp_path, {OTHER: BG[OTHER]}) + ["--background-fasta", str(fa)],
+                        capsys)
+    assert "%s (= %s)" % (OTHER, T1) in err
+    assert "holds other sequence" not in err     # said by the note above, not twice
