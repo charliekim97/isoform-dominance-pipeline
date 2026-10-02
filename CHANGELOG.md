@@ -35,9 +35,11 @@ versioning.
 
 ### Fixed
 The first three entries change an answer: each makes the code do what the documentation
-already said, or refuses an input that gave a wrong answer. The rest stop a traceback, a
-misleading message or a wrong record. `extract`'s transcript-to-group mapping and TPM
-sums are unchanged.
+already said, or refuses an input that gave a wrong answer. Five more change what 2.4.0
+gave for an input it accepted: `extract`'s row order and its decoy rule, an unknown
+`gene_id`, a regrouped `--inputs` rerun, and a symbol of another species. The rest stop a
+traceback or a misleading message, or fix a record, a script or the documentation.
+`extract`'s transcript-to-group mapping and TPM sums are unchanged.
 
 - **`identifiability --min-log2fc`: an estimand past the linearisation limit counts as not
   resolved** (exit 3), as `paper.md` and the 2.3.0 entry below already said it did. Through
