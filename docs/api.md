@@ -46,6 +46,8 @@ The clusters the alternative class was chosen over on the tie-breaks rather than
 **`annotate.choose_gene(gene, species, looked_up, **net) -> (record, choice)`**
 The gene a symbol means. `looked_up` is the expanded record `lookup/symbol` gave; `xrefs/symbol` lists the other genes of the name and one `lookup/id` keeps those whose display name is the symbol and that lie on 1–22, X, Y or MT (`xrefs/symbol/SMN1` also lists SMN2 and alternate-locus copies). One such gene: `(it, None)`, with no `lookup/id` when xrefs lists no other gene. A chrX/chrY pair — a pseudoautosomal gene — gives the chrX gene, the copy a GENCODE-built Salmon index keeps (`annotate.GENE_RULE`). Any other two or more raise `annotate.AmbiguousGene` (a `ValueError`) listing each gene's id, location and transcript count. `choice` is `{rule, chosen, candidates, reason}` when there was a choice to make, or when xrefs listed no gene and the others were not looked for.
 
+`annotate.NotOnReference` (a `ValueError`) is raised for a human symbol none of whose genes lies on a reference chromosome (1-22, X, Y, MT); the message lists each gene with its region, and `gene_id=` takes one of them anyway. The region and chrX/chrY rules apply to `homo_sapiens` only (`annotate.REFERENCE_SPECIES`); for any other species two genes of the name are `AmbiguousGene`.
+
 **`annotate.build_config(gene, species="homo_sapiens", release=None, gene_id=None) -> dict`**
 Convenience wrapper returning a complete, reviewable config dict (including `gene_id`, the Ensembl gene the groups were proposed from, `ensembl_release`, `_proposed` notes, `_clusters`, and `_proposal`: `alternative_rule` and `tied_with`, the clusters from `alternative_ties`, and `_gene_choice` from `choose_gene` when there was a choice). `gene_id` names the gene outright, by `lookup/id`, and must be a gene of the symbol; it is `--gene-id`. `release` is the Ensembl release to propose the groups from; None is the one `rest.ensembl.org` currently serves, and an earlier one is read from Ensembl's REST archive (see `ensembl.resolve_server`). `ensembl_release` records the release the server reported.
 
@@ -217,6 +219,8 @@ None, as a possible copy.
 **`index_scope.copy_warning(copies, source) -> str | None`** — the warning the CLI prints;
 for copies without a region it says they may be same-name genes on a reference chromosome.
 
+**`index_scope.without_identical(copies, identical) -> list`** — `copies` less the records `identical` (record id -> configured transcript, the report's `identical_to_configured`) names; the CLI warns only about what is left, since Salmon's default index keeps one of identical sequences.
+
 ---
 
 ## `stats`
@@ -254,6 +258,8 @@ TPM, per cohort (a control for whether a dominance signal is a cell-type artefac
 **`io.save_inputs(path, captured, config, release, version, background_fasta=None) -> dict`** — write the sequence an `identifiability` run used (`captured`, from `analyze(..., inputs_out=...)`) with the release it came from, as `"format": "isoform-dominance/inputs/1"` (`io.INPUTS_FORMAT`). `analysis` records the `k`, `window`, `canonical` and `gene_background` of the run, and `keep_duplicates` when it had a background FASTA, none of which the config holds; `sequence_sources` gives each id's `"supplied"` or `"fetched:<release>"`, and `release` is recorded only when every sequence was fetched from it. A `background_fasta` is recorded by path, size and SHA-256, not copied. `gene_id` is the gene the background was fetched as, or the config's `gene_id`. Backs `--save-inputs`.
 **`io.load_inputs(path) -> dict`** — read a file `save_inputs` wrote; `io.InputError` if it is not one, and for every field the caller goes on to read: `sequences` and `background_sequences` as objects of id to sequence, an `ensembl_release` that is a number or null, an `analysis` with integer `k` and `window` and boolean `canonical` (and `keep_duplicates`, when present), a `gene_id` that is a string or null, and a `background_fasta` that is null or has a path and a sha256. Which transcripts are a class and which are background is decided by the config the rerun is given, not by the saved grouping. Backs `--inputs`.
 **`io.file_sha256(path) -> str`** — hex SHA-256 of a file's bytes.
+**`io.open_text(path)`** — open a text file for reading, gunzipping it when its first two bytes are the gzip magic (`1f 8b`), whatever its name.
+**`io.shared_transcripts(groups) -> dict`** — `{transcript: [group, ...]}` for each transcript more than one group names; `identifiability` refuses such a config and `extract` warns.
 **`io.transcript_to_group(groups) -> dict`** — invert `{group: [ENST...]}` to `{ENST(no version): group}`.
 **`io.load_sample_map(path) -> dict`** — read a `donor,condition[,SRR]` CSV to `{donor: condition}`.
 **`io.primary_pair(config) -> (gA, gB)`** — the two groups named in `primary_comparison`.
