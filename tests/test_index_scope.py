@@ -235,7 +235,9 @@ def test_extract_records_the_index_in_a_sidecar(tmp_path):
     assert side["missing_meta_info"] == []
     assert side["donors"]["D1"] == {"salmon_version": "1.10.3", "index_seq_hash": "58f7",
                                     "index_name_hash": "n58f7",
-                                    "num_valid_targets": 642692, "keep_duplicates": False}
+                                    "num_valid_targets": 642692, "keep_duplicates": False,
+                                    "index_decoy_seq_hash": None, "num_decoy_targets": None}
+    assert side["unreadable_meta_info"] == {}
     # the per-donor CSV itself is untouched: no comment lines for `stats` to trip on
     assert open(tmp_path / "pd.csv").read().splitlines()[0].startswith("cohort,donor,")
 

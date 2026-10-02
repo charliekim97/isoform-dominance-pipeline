@@ -151,7 +151,8 @@ def run(config, quantdir, samplemap, cohort, out, allow_mixed_index=False, notes
     """Write the per-donor CSV ``out`` and, beside it, ``<out>.index.json``: which Salmon
     index quantified each donor, from its ``aux_info/meta_info.json``.
 
-    Donors quantified against different indexes (different ``index_seq_hash``) are
+    Donors quantified against different indexes (different ``index_seq_hash``, or different
+    ``index_decoy_seq_hash`` where both record one) are
     refused with :class:`index_scope.MixedIndexError` before anything is written, unless
     ``allow_mixed_index``, and a cohort in which no donor's quant.sf has any transcript the
     config names with :class:`index_scope.NoConfiguredTranscripts`.  Warnings -- a combined
@@ -172,6 +173,11 @@ def run(config, quantdir, samplemap, cohort, out, allow_mixed_index=False, notes
         notes.append("WARNING: the donors of cohort %s were quantified against different "
                      "Salmon indexes (%s); combined because of --allow-mixed-index"
                      % (cohort, which))
+    for donor, why in prov["unreadable_meta_info"].items():
+        notes.append("WARNING: could not read Salmon's meta_info.json for donor %s (%s), so "
+                     "it is treated as missing: which index quantified this donor is not "
+                     "recorded, and a mix of indexes involving it cannot be detected"
+                     % (donor, why))
     if prov["missing_meta_info"]:
         notes.append("WARNING: no aux_info/meta_info.json for donor(s) %s, so which index "
                      "quantified them is not recorded, and a mix of indexes cannot be "

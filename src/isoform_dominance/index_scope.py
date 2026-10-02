@@ -30,9 +30,15 @@ from .io import InputError
 #: The ``format`` field of the ``<out>.index.json`` sidecar :mod:`extract` writes.
 INDEX_FORMAT = "isoform-dominance/index/1"
 
-#: What is kept of a Salmon ``aux_info/meta_info.json``.
+#: What is kept of a Salmon ``aux_info/meta_info.json``.  The decoy fields matter because
+#: two indexes of one transcriptome, one with decoys and one without, share
+#: ``index_seq_hash``; Salmon hashes the decoys separately (the SHA-256 of nothing,
+#: ``e3b0c442...``, when there are none).  An older Salmon writes no decoy fields.
 META_KEYS = ("salmon_version", "index_seq_hash", "index_name_hash", "num_valid_targets",
-             "keep_duplicates")
+             "keep_duplicates", "index_decoy_seq_hash", "num_decoy_targets")
+
+#: The fields that say which index quantified a donor; each must be a string when present.
+_HASH_KEYS = ("index_seq_hash", "index_decoy_seq_hash")
 
 _ENSEMBL_REGION_KINDS = ("chromosome:", "scaffold:", "primary_assembly:")
 
@@ -210,30 +216,65 @@ def copy_warning(copies, source):
     return "WARNING: " + " ".join(parts)
 
 
+class UnreadableMetaInfo(Exception):
+    """A meta_info.json that is there but cannot be read as Salmon's; the message names it."""
+
+
 def read_meta_info(quant_path):
     """The index fields of the Salmon ``aux_info/meta_info.json`` beside a quant.sf, or
-    None when there is none (kallisto, or an older Salmon)."""
+    None when there is none (kallisto, or an older Salmon).
+
+    Raises :class:`UnreadableMetaInfo` when the file is there but is not a JSON object in
+    UTF-8 whose hashes are strings: :func:`index_provenance` treats that donor as having
+    none, and says so, rather than refusing the cohort or failing with a traceback.
+    """
     path = os.path.join(os.path.dirname(quant_path), "aux_info", "meta_info.json")
     if not os.path.isfile(path):
         return None
-    with open(path) as f:
-        try:
+    try:
+        with open(path, encoding="utf-8") as f:
             meta = json.load(f)
-        except json.JSONDecodeError as e:
-            raise InputError("%s is not valid JSON (%s)" % (path, e)) from e
+    except (ValueError, OSError) as e:          # JSONDecodeError and UnicodeDecodeError
+        raise UnreadableMetaInfo("%s: %s" % (path, e)) from e
+    if not isinstance(meta, dict):
+        raise UnreadableMetaInfo("%s: a JSON %s, not an object" % (path, type(meta).__name__))
+    for key in _HASH_KEYS:
+        if meta.get(key) is not None and not isinstance(meta[key], str):
+            raise UnreadableMetaInfo("%s: %s is %r, not a string" % (path, key, meta[key]))
     return {key: meta.get(key) for key in META_KEYS}
+
+
+def _index_key(meta):
+    """``(index_seq_hash, index_decoy_seq_hash)``, the second None when not recorded."""
+    return meta["index_seq_hash"], meta.get("index_decoy_seq_hash")
 
 
 def index_provenance(donor_quants):
     """``{donor: quant.sf path}`` -> the sidecar document: each donor's index fields, the
-    distinct ``index_seq_hash`` values, whether there is more than one, and the donors
-    with no meta_info.json."""
-    donors = {d: read_meta_info(q) for d, q in sorted(donor_quants.items())}
-    hashes = sorted({m["index_seq_hash"] for m in donors.values()
-                     if m and m.get("index_seq_hash")})
+    distinct ``index_seq_hash`` and ``index_decoy_seq_hash`` values, whether there is more
+    than one index, the donors with no meta_info.json, and those whose meta_info.json could
+    not be read (``{donor: why}``; their entry in ``donors`` is None too).
+
+    Two donors are on different indexes when their ``index_seq_hash`` differs, or when both
+    record an ``index_decoy_seq_hash`` and it differs.  A donor whose Salmon recorded no
+    decoy hash is compared on the transcripts alone.
+    """
+    donors, unreadable = {}, {}
+    for d, q in sorted(donor_quants.items()):
+        try:
+            donors[d] = read_meta_info(q)
+        except UnreadableMetaInfo as e:
+            donors[d], unreadable[d] = None, str(e)
+    known = [m for m in donors.values() if m and m.get("index_seq_hash")]
+    hashes = sorted({m["index_seq_hash"] for m in known})
+    decoys = sorted({m["index_decoy_seq_hash"] for m in known
+                     if m.get("index_decoy_seq_hash") is not None})
     return {"format": INDEX_FORMAT, "donors": donors, "index_seq_hashes": hashes,
-            "mixed": len(hashes) > 1,
-            "missing_meta_info": [d for d, m in donors.items() if m is None]}
+            "index_decoy_seq_hashes": decoys,
+            "mixed": len(hashes) > 1 or len(decoys) > 1,
+            "missing_meta_info": [d for d, m in donors.items()
+                                  if m is None and d not in unreadable],
+            "unreadable_meta_info": unreadable}
 
 
 def mixed_index_message(prov):
@@ -241,7 +282,16 @@ def mixed_index_message(prov):
     by = {}
     for d, m in prov["donors"].items():
         if m and m.get("index_seq_hash"):
-            by.setdefault(m["index_seq_hash"], []).append(d)
-    return "; ".join("index_seq_hash %s (%s targets): %s"
-                     % (h, prov["donors"][ds[0]].get("num_valid_targets"), ", ".join(ds))
-                     for h, ds in sorted(by.items()))
+            by.setdefault(_index_key(m), []).append(d)
+
+    def _one(key, ds):
+        seq, decoy = key
+        first = prov["donors"][ds[0]]
+        if decoy is None:
+            return ("index_seq_hash %s (%s targets): %s"
+                    % (seq, first.get("num_valid_targets"), ", ".join(ds)))
+        return ("index_seq_hash %s, index_decoy_seq_hash %s (%s targets, %s decoys): %s"
+                % (seq, decoy, first.get("num_valid_targets"), first.get("num_decoy_targets"),
+                   ", ".join(ds)))
+    return "; ".join(_one(key, ds)
+                     for key, ds in sorted(by.items(), key=lambda kv: (kv[0][0], kv[0][1] or "")))
