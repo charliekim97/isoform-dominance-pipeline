@@ -46,7 +46,7 @@ from urllib.error import HTTPError
 
 import numpy as np
 
-from . import ensembl, index_scope
+from . import ensembl, index_scope, io
 from .ensembl import DEFAULT_RETRIES, DEFAULT_RETRY_WAIT
 
 ENSEMBL = ensembl.SERVER
@@ -894,6 +894,21 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         raise ValueError(
             "primary_comparison names group(s) not in config['groups']: %r" % (missing,))
 
+    shared = io.shared_transcripts(groups)
+    if shared:
+        # in the two compared classes its +1 and -1 cancel and the contrast silently drops
+        # it; in any two, its column enters the system twice
+        t, gs = sorted(shared.items())[0]
+        raise ValueError("transcript %s is in groups %s%s; a transcript belongs to one class"
+                         % (t, " and ".join('"%s"' % g for g in gs),
+                            " (and %d more transcript(s) are in two groups)"
+                            % (len(shared) - 1) if len(shared) > 1 else ""))
+    if window > read_length:
+        # no read holds a whole window, so no fragment is informative and every class
+        # reads as unmeasurable for a reason that is not the gene's
+        raise ValueError("window %d exceeds the read length %d: no read can hold a whole "
+                         "window, so no fragment would count as informative; pass a "
+                         "--window no longer than --read-length" % (window, read_length))
     group_ids = {g: [t.split(".")[0] for t in ids] for g, ids in groups.items()}
     needed = [t for ids in group_ids.values() for t in ids]
     seqs = {tid.split(".")[0]: s for tid, s in (sequences or {}).items()}

@@ -83,6 +83,13 @@ versioning.
   separates the class's unique k-mers from its best transcript's stretch, blocks and
   informative reads. `--k` and `--tpm` say in `--help` what they set; `--tpm` is given to
   every transcript of the gene, background included.
+- **Two configurations that gave a wrong answer are refused** (exit 1, one line).
+  A `--window` longer than `--read-length`: no read can hold a whole window, so the
+  informative fraction is zero whatever the gene (0.119 at window 100, 0.0 at 101, with
+  100-nt reads). A transcript in two groups: in the compared pair its +1 and -1 cancel in
+  the contrast, and in any two its column entered the system twice with the first copy all
+  zero, so the run reported "the gene total is not estimable", exit 2, naming no
+  transcript.
 - **`extract` names a transcript that two groups share.** Its TPM still goes, as in 2.1.1,
   to the group the config lists last; the warning names the transcript and the groups.
 
