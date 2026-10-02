@@ -22,7 +22,21 @@ versioning.
 - The author's ORCID in `CITATION.cff`, from which Zenodo takes the creators of each
   release's record.
 
+### Changed
+- Files gain fields, and readers of the old ones still work. The `extract` sidecar keeps
+  `index_decoy_seq_hash` and `num_decoy_targets` per donor and lists
+  `index_decoy_seq_hashes` and `unreadable_meta_info`. Saved inputs record
+  `analysis.gene_background` and `sequence_sources`, and `analysis.keep_duplicates` only
+  for a run with `--background-fasta`; `INPUTS_FORMAT` is unchanged.
+- The `identifiability` header names the window and no longer `k`, and each class line
+  reads `class N unique k-mers; best transcript B bp in K block(s), ~R informative reads`.
+
 ### Fixed
+The first three entries change an answer: each makes the code do what the documentation
+already said, or refuses an input that gave a wrong answer. The rest stop a traceback, a
+misleading message or a wrong record. `extract`'s transcript-to-group mapping and TPM
+sums are unchanged.
+
 - **`identifiability --min-log2fc`: an estimand past the linearisation limit counts as not
   resolved** (exit 3), as `paper.md` and the 2.3.0 entry below already said it did. Through
   2.4.0 `effect_resolvable` compared the figure with `--min-log2fc` and ignored
@@ -30,6 +44,20 @@ versioning.
   "resolved" an effect of 1.5 and exited 0. The `EFFECT SIZE` line names the estimands past
   the limit, and the verdict gives it as a reason. The figures and the `beyond_linear` flags
   in `--json` are unchanged.
+- **Two configurations that gave a wrong answer are refused** (exit 1, one line).
+  A `--window` longer than `--read-length`: no read can hold a whole window, so the
+  informative fraction is zero whatever the gene (0.119 at window 100, 0.0 at 101, with
+  100-nt reads). A transcript in two groups: in the compared pair its +1 and -1 cancel in
+  the contrast, and in any two its column entered the system twice with the first copy all
+  zero, so the run reported "the gene total is not estimable", exit 2, naming no
+  transcript.
+- **`annotate` stops on a human symbol none of whose genes is on a reference chromosome.**
+  It proposed groups from an alternate-locus gene and recorded nothing: HLA-DRB3 at release
+  116 came from a gene on `CHR_HSCHR6_MHC_APD_CTG1`, and Ensembl 116's `cdna.all` holds 23
+  such protein-coding symbols (GSTT1, HLA-DRB4, KIR*, LILRA3, TAS2R45 among them), none of
+  which the recommended reference-chromosome index contains. It now exits 1 listing each
+  gene of the name with its region (`annotate.NotOnReference`, a `ValueError`); `--gene-id`
+  takes one of them anyway, with a NOTE that the recommended index does not contain it.
 - **`extract` writes its rows in `quant.sf` path order again**, as 2.3.0 did. 2.4.0 sorted
   by donor name; the two orders part when one donor name is a prefix of another and the
   next character sorts before `/` (`D1`, `D1-2`, `D1.5`), and `stats` bootstraps the fold
@@ -53,6 +81,8 @@ versioning.
   (`extract.NoQuantFiles`, still a `FileNotFoundError`), a sample map with no `donor`
   column, a per-donor table without a class's `_TPM` column, and a `stats --condition` no
   donor has.
+- **`extract` names a transcript that two groups share.** Its TPM still goes, as in 2.1.1,
+  to the group the config lists last; the warning names the transcript and the groups.
 - **`identifiability --inputs` gives a regrouped rerun no gene background its run lacked.**
   The saved file did not say whether the run had one, and a rerun under another grouping put
   every saved transcript the config no longer names into the background. A run saved with
@@ -83,13 +113,6 @@ versioning.
   separates the class's unique k-mers from its best transcript's stretch, blocks and
   informative reads. `--k` and `--tpm` say in `--help` what they set; `--tpm` is given to
   every transcript of the gene, background included.
-- **Two configurations that gave a wrong answer are refused** (exit 1, one line).
-  A `--window` longer than `--read-length`: no read can hold a whole window, so the
-  informative fraction is zero whatever the gene (0.119 at window 100, 0.0 at 101, with
-  100-nt reads). A transcript in two groups: in the compared pair its +1 and -1 cancel in
-  the contrast, and in any two its column entered the system twice with the first copy all
-  zero, so the run reported "the gene total is not estimable", exit 2, naming no
-  transcript.
 - **`identifiability --save-inputs` checks that it can write before the run, and saves
   after the report.** A directory without write permission failed after the run, and the
   failed save came before the report, so the answer was lost with it.
@@ -105,13 +128,6 @@ versioning.
   (`background.gene_id`), which makes its `--json` report equal the live one apart from
   the `annotation` block, which says where the sequence came from. Saved ids with a version
   (`ENST….3`) are compared without it, as `--sequences` ids are.
-- **`annotate` stops on a human symbol none of whose genes is on a reference chromosome.**
-  It proposed groups from an alternate-locus gene and recorded nothing: HLA-DRB3 at release
-  116 came from a gene on `CHR_HSCHR6_MHC_APD_CTG1`, and Ensembl 116's `cdna.all` holds 23
-  such protein-coding symbols (GSTT1, HLA-DRB4, KIR*, LILRA3, TAS2R45 among them), none of
-  which the recommended reference-chromosome index contains. It now exits 1 listing each
-  gene of the name with its region (`annotate.NotOnReference`, a `ValueError`); `--gene-id`
-  takes one of them anyway, with a NOTE that the recommended index does not contain it.
 - **`annotate` applies the reference-chromosome rule to human only.** The region filter
   and the chrX/chrY rule were applied to every species, so a zebrafish gene on chr23 (or a
   fly gene on 2L, a worm gene on chrI) was dropped for a same-name gene on a chromosome
@@ -159,8 +175,6 @@ versioning.
   line lists `ensembl`. README: DEXSeq tests exon usage from its own exon-bin counts;
   Kmerator also takes gene names, so that is not a claim; the v2.1.1 record is cited by the
   manuscript under revision, not by a published paper. CONTRIBUTING lists the CI jobs.
-- **`extract` names a transcript that two groups share.** Its TPM still goes, as in 2.1.1,
-  to the group the config lists last; the warning names the transcript and the groups.
 
 ### Corrections to earlier entries
 The entries below are left as written; these sentences in them are wrong.
