@@ -32,6 +32,9 @@ versioning.
   refused; names the FASTA does not hold are listed in `background.decoys_absent` with a
   NOTE. The CLI and the README now recommend "the transcript FASTA the index was built
   from, without the genome decoys".
+- **`identifiability --max-window-records M`** (`analyze(..., max_window_records=)`, default
+  20), which bounds the `--background-fasta` records that join the system (issue #14; see
+  Fixed).
 - **The report names its files by SHA-256**: `background.fasta_sha256` and
   `background.decoys_sha256`, as saved inputs already did for the FASTA. Saved inputs record
   the decoys file too, and a rerun without it, or with another, says so.
@@ -52,25 +55,37 @@ versioning.
   them; `identical_to_configured` is an object whenever `--keep-duplicates` is off (it was
   None without a FASTA); new are `fasta_competitors`, `n_fasta_competitors`,
   `sequence_from_fasta`, `identical_to_background`, `identical_source`, `fasta_sha256`,
-  `decoys`, `decoys_sha256`, `decoys_listed`, `decoys_skipped`, `decoys_absent` and
-  `fasta_long_records`. The `background:` line counts the FASTA's competing records.
+  `decoys`, `decoys_sha256`, `decoys_listed`, `decoys_skipped`, `decoys_absent`,
+  `fasta_long_records`, `max_window_records`, `fasta_left_out` and `windows_dropped`; and
+  `gene_total.transcripts_all_windows_dropped`. The `background:` line counts the FASTA's
+  competing records. Saved inputs record `analysis.max_window_records` for a run with a
+  FASTA, and a rerun at another M says so.
 - Saved inputs record `analysis.keep_duplicates` for a run with a gene background as well as
   for one with a FASTA, since the setting now applies to both; `INPUTS_FORMAT` is unchanged.
 
 ### Fixed
 The first two entries change an answer.
 
-- **A `--background-fasta` record that shares a window with a configured transcript is a
-  column of the compatibility system** (issue #14). Through 2.4.1 a FASTA record took windows
-  from the uniqueness layer only, and the system was built from the gene background alone;
-  the same competitor passed with `--background-sequences` was a column. So the route the
-  CLI recommends gave the optimistic answer: on a synthetic two-class case rank 2 and
-  contrast min |log2FC| 0.469, exit 0 at `--min-log2fc 0.5`, against rank 3, 0.546 and
-  exit 3. The two routes now give one answer. A record with the id of a gene-background
-  transcript is that transcript, once; when the FASTA holds other sequence for it, the
-  column is the FASTA's, with a NOTE. A record that shares no window with a configured
-  transcript is not a column; it can still bear on the configured estimands through a
-  background transcript whose windows it shares, which is not followed.
+- **A `--background-fasta` competitor is a column of the compatibility system** (issue #14).
+  Through 2.4.1 a FASTA record took windows from the uniqueness layer only, and the system
+  was built from the gene background alone; the same competitor passed with
+  `--background-sequences` was a column. So the route the CLI recommends gave the
+  optimistic answer: on a synthetic two-class case rank 2 and contrast min |log2FC| 0.469,
+  exit 0 at `--min-log2fc 0.5`, against rank 3, 0.546 and exit 3. Now a record that holds
+  a configured transcript's window found in at most M records of the FASTA
+  (`--max-window-records`, default 20) is a column, so a competitor found once gives one
+  answer by either route; a record longer than 1 Mb never is. Every window of the system
+  that a record left out holds is dropped from every layer -- the unique windows, the read
+  model and the system -- for the columns' windows in a first pass over the FASTA and for
+  the added records' in a second. The system is then the one with every record a column
+  less the rows that touch a left-out record, so its answer is never more optimistic than
+  that one's, at any order: a record that shares windows only with a background
+  transcript is left out, and the windows it holds go too. A property test compares the
+  two on random systems with repeats shared by many records, for M from 0 up. One column
+  per sharing record would not run: on a synthetic FASTA in which 3,000 records carried a
+  repeat of the configured transcripts it took 2.7 GB, against 90 MB now. A record with
+  the id of a gene-background transcript is that transcript, once; when the FASTA holds
+  other sequence for it, the column is the FASTA's, with a NOTE.
 - **An identical copy in the background is no competitor, wherever it comes from**
   (issue #15). Salmon's default index keeps one of identical sequences. 2.4.1 applied that
   to a FASTA record with a configured transcript's sequence and to nothing else: a
