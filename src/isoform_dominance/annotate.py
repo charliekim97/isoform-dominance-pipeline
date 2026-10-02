@@ -14,6 +14,7 @@ genes of that name.  :func:`build_config` looks for the others and chooses by
 :data:`GENE_RULE`, or stops.
 """
 import json
+import urllib.parse
 
 from . import ensembl
 from .ensembl import DEFAULT_RETRIES, DEFAULT_RETRY_WAIT
@@ -30,6 +31,36 @@ GENE_RULE = ("the gene on the reference chromosomes (1-22, X, Y, MT) whose name 
 
 class AmbiguousGene(ValueError):
     """A symbol names more than one gene on the reference chromosomes, and none is chosen."""
+
+
+class NotOnReference(ValueError):
+    """A human symbol whose every gene lies off the reference chromosomes (an alternate
+    locus, a patch or a scaffold), so the recommended index does not contain it."""
+
+
+#: The species :data:`GENE_RULE`'s reference chromosomes and chrX/chrY pairs are about.
+REFERENCE_SPECIES = "homo_sapiens"
+
+
+def _off_reference(g, species):
+    """Is ``g`` known to lie off the reference chromosomes?  Only for
+    :data:`REFERENCE_SPECIES`, and only when the record names its region."""
+    region = g.get("seq_region_name")
+    return species == REFERENCE_SPECIES and region is not None \
+        and region not in REFERENCE_REGIONS
+
+
+def _not_on_reference(gene, records):
+    lines = "; ".join("%s on %s" % (g["id"], g.get("seq_region_name")) for g in records)
+    return NotOnReference(
+        "%s has no gene on the reference chromosomes (1-22, X, Y, MT), only %s. The "
+        "recommended reference-chromosome index does not contain it; to propose groups "
+        "from one of these anyway, pass it with --gene-id" % (gene, lines))
+
+
+def _q(text):
+    """``text`` as one URL path segment: a symbol can hold a space or a slash."""
+    return urllib.parse.quote(str(text), safe="")
 
 
 def _get(path, timeout=ensembl.DEFAULT_TIMEOUT, retries=DEFAULT_RETRIES,
@@ -53,7 +84,7 @@ def fetch_transcripts(gene, species="homo_sapiens", retries=DEFAULT_RETRIES,
     ``server`` is a base URL from :func:`isoform_dominance.ensembl.resolve_server`; None
     means the current release.
     """
-    g = _get("/lookup/symbol/%s/%s?expand=1" % (species, gene),
+    g = _get("/lookup/symbol/%s/%s?expand=1" % (_q(species), _q(gene)),
              retries=retries, retry_wait=retry_wait, server=server)
     return transcripts_of(g, gene, species)
 
@@ -97,40 +128,54 @@ def choose_gene(gene, species, looked_up, **net):
     ``looked_up`` is the expanded record ``lookup/symbol`` gave.  The other genes of the
     name come from ``xrefs/symbol``, which also lists genes that carry the symbol only as
     a synonym (SMN2 for SMN1) and copies on alternate loci; one ``lookup/id`` for those
-    keeps the genes whose display name is the symbol and that lie on a reference
-    chromosome (:data:`isoform_dominance.index_scope.REFERENCE_REGIONS`).  With one such
-    gene nothing is recorded, and when xrefs/symbol lists no gene besides ``looked_up``
-    no ``lookup/id`` is made.  Of a chrX/chrY pair the chrX gene is taken
-    (:data:`GENE_RULE`).  Any other set of two or more raises :class:`AmbiguousGene`
-    listing them.
+    keeps the genes whose display name is the symbol and, for human, that lie on a
+    reference chromosome (:data:`isoform_dominance.index_scope.REFERENCE_REGIONS`).  With
+    one such gene nothing is recorded, and when xrefs/symbol lists no gene besides
+    ``looked_up`` no ``lookup/id`` is made.  Of a human chrX/chrY pair the chrX gene is
+    taken (:data:`GENE_RULE`).  Any other set of two or more raises :class:`AmbiguousGene`
+    listing them.  A human symbol none of whose genes is on a reference chromosome raises
+    :class:`NotOnReference`; ``--gene-id`` takes one of them anyway.
+
+    The region rule and the chrX/chrY rule are about GRCh38's chromosome names, so for any
+    other species every gene of the name is a candidate: zebrafish chromosomes run to 25,
+    and fly and worm ones have other names altogether.
 
     Returns ``(expanded gene record, choice or None)``.
     """
-    xr = _get("/xrefs/symbol/%s/%s?object_type=gene" % (species, gene), **net)
+    human = species == REFERENCE_SPECIES
+    xr = _get("/xrefs/symbol/%s/%s?object_type=gene" % (_q(species), _q(gene)), **net)
     if not isinstance(xr, list):
         raise ValueError("Ensembl xrefs/symbol for %s answered a %s, not a list"
                          % (gene, type(xr).__name__))
     ids = sorted({x["id"] for x in xr if isinstance(x, dict) and x.get("type") == "gene"
                   and str(x.get("id", "")).startswith("ENS")})
     if not ids:
+        if _off_reference(looked_up, species):
+            raise _not_on_reference(gene, [looked_up])
         return looked_up, {"rule": GENE_RULE, "chosen": looked_up.get("id"),
                            "candidates": [],
                            "reason": "xrefs/symbol listed no gene for %s, so other genes of "
                                      "that name were not looked for" % gene}
     others = [i for i in ids if i != looked_up.get("id")]
     if not others:
+        if _off_reference(looked_up, species):
+            raise _not_on_reference(gene, [looked_up])
         return looked_up, None
     got = _post("/lookup/id", {"ids": others, "expand": 1}, **net)
     name = (looked_up.get("display_name")
             if (looked_up.get("display_name") or "").upper() == gene.upper() else gene)
     records = [looked_up] + [got[i] for i in others if isinstance(got, dict) and got.get(i)]
-    genes = sorted((g for g in records if g.get("display_name") == name
-                    and g.get("seq_region_name") in REFERENCE_REGIONS), key=lambda g: g["id"])
+    named = sorted((g for g in records if g.get("display_name") == name),
+                   key=lambda g: g["id"])
+    genes = [g for g in named if g.get("seq_region_name") in REFERENCE_REGIONS] if human \
+        else named
+    if not genes and named and all(_off_reference(g, species) for g in named):
+        raise _not_on_reference(gene, named)
     if len(genes) <= 1:
         return (genes[0] if genes else looked_up), None
     choice = {"rule": GENE_RULE, "candidates": [_where(g) for g in genes]}
     by_region = {g["seq_region_name"]: g for g in genes}
-    if len(genes) == 2 and set(by_region) == {"X", "Y"}:
+    if human and len(genes) == 2 and set(by_region) == {"X", "Y"}:
         x, y = by_region["X"], by_region["Y"]
         choice.update(chosen=x["id"], reason=(
             "%s is a pseudoautosomal gene: %s on chrX and %s on chrY, one sequence. Salmon "
@@ -140,8 +185,8 @@ def choose_gene(gene, species, looked_up, **net):
             % (gene, x["id"], y["id"], y["id"])))
         return x, choice
     raise AmbiguousGene(
-        "%s names %d genes on the reference chromosomes: %s. Pick one with --gene-id"
-        % (gene, len(genes), "; ".join(
+        "%s names %d genes%s: %s. Pick one with --gene-id"
+        % (gene, len(genes), " on the reference chromosomes" if human else "", "; ".join(
             "%s at %s, %d transcript%s" % (c["gene_id"], c["location"], c["n_transcripts"],
                                            "" if c["n_transcripts"] == 1 else "s")
             for c in choice["candidates"])))
@@ -234,13 +279,18 @@ def build_config(gene, species="homo_sapiens", release=None, gene_id=None, **ret
     server = ensembl.resolve_server(release, **retry)
     net = dict(retry, server=server)
     if gene_id:
-        g = _get("/lookup/id/%s?expand=1" % gene_id.split(".")[0], **net)
+        g = _get("/lookup/id/%s?expand=1" % _q(gene_id.split(".")[0]), **net)
         if (g.get("display_name") or "").upper() != gene.upper():
             raise ValueError("%s is %s, not %s" % (gene_id, g.get("display_name"), gene))
         choice = {"rule": GENE_RULE, "chosen": g["id"], "candidates": [_where(g)],
                   "reason": "given by --gene-id"}
+        if _off_reference(g, species):
+            choice["reason"] += (
+                "; %s is on %s, not a reference chromosome: the recommended "
+                "reference-chromosome index does not contain this gene"
+                % (g["id"], g.get("seq_region_name")))
     else:
-        g = _get("/lookup/symbol/%s/%s?expand=1" % (species, gene), **net)
+        g = _get("/lookup/symbol/%s/%s?expand=1" % (_q(species), _q(gene)), **net)
         g, choice = choose_gene(gene, species, g, **net)
     info = transcripts_of(g, gene, species)
     release = ensembl.release_number(_get("/info/data", **net))

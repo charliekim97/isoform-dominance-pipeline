@@ -42,6 +42,7 @@ conditioning factor.  Three layers are reported, cheapest first:
 All three are computed offline from sequence alone; nothing here needs the reads.
 """
 import math
+import urllib.parse
 from urllib.error import HTTPError
 
 import numpy as np
@@ -104,8 +105,10 @@ def fetch_gene(gene, species="homo_sapiens", gene_id=None, **retry):
     transcripts: for identifiability the non-coding, retained-intron and NMD transcripts
     matter, because Salmon indexes them too.
     """
-    path = ("/lookup/id/%s?expand=1" % gene_id.split(".")[0] if gene_id
-            else "/lookup/symbol/%s/%s?expand=1" % (species, gene))
+    seg = [urllib.parse.quote(str(x), safe="")      # a symbol can hold a space or a slash
+           for x in ((gene_id.split(".")[0],) if gene_id else (species, gene))]
+    path = ("/lookup/id/%s?expand=1" % tuple(seg) if gene_id
+            else "/lookup/symbol/%s/%s?expand=1" % tuple(seg))
     info = ensembl.get_json(path, **retry)
     return info.get("id"), [t["id"].split(".")[0] for t in info.get("Transcript", [])]
 

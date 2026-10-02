@@ -105,6 +105,24 @@ versioning.
   (`background.gene_id`), which makes its `--json` report equal the live one apart from
   the `annotation` block, which says where the sequence came from. Saved ids with a version
   (`ENST….3`) are compared without it, as `--sequences` ids are.
+- **`annotate` stops on a human symbol none of whose genes is on a reference chromosome.**
+  It proposed groups from an alternate-locus gene and recorded nothing: HLA-DRB3 at release
+  116 came from a gene on `CHR_HSCHR6_MHC_APD_CTG1`, and Ensembl 116's `cdna.all` holds 23
+  such protein-coding symbols (GSTT1, HLA-DRB4, KIR*, LILRA3, TAS2R45 among them), none of
+  which the recommended reference-chromosome index contains. It now exits 1 listing each
+  gene of the name with its region (`annotate.NotOnReference`, a `ValueError`); `--gene-id`
+  takes one of them anyway, with a NOTE that the recommended index does not contain it.
+- **`annotate` applies the reference-chromosome rule to human only.** The region filter
+  and the chrX/chrY rule were applied to every species, so a zebrafish gene on chr23 (or a
+  fly gene on 2L, a worm gene on chrI) was dropped for a same-name gene on a chromosome
+  with a human name, and nothing was recorded. For another species every gene of the name
+  is a candidate, and two or more are `AmbiguousGene` with the `--gene-id` hint.
+- **Symbols are quoted into request URLs.** A symbol with a space or a slash made a URL
+  `http.client` refuses to send, and that `InvalidURL` was retried as a network failure
+  and reported as one. Symbols, species and ids are now quoted as one path segment, and an
+  `InvalidURL` is not retried: one line saying the request could not be sent.
+- **`annotate --json` keeps its notes**, on stderr: the chrX/chrY choice and the tie that
+  chose the alternative class were printed only without `--json`.
 - **`extract` names a transcript that two groups share.** Its TPM still goes, as in 2.1.1,
   to the group the config lists last; the warning names the transcript and the groups.
 

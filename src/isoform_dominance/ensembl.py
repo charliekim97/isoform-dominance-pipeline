@@ -15,7 +15,7 @@ Retried
     A JSON request whose 200 body is not JSON is retried too.
 Not retried
     Any other HTTP status.  A 400 for an unknown id or gene symbol will not improve by
-    asking again.
+    asking again.  Nor will a URL ``http.client`` refuses to send (``InvalidURL``).
 Wait
     ``retry_wait * 2**i`` seconds before retry ``i`` (counting from 0), unless a 429
     named its own wait.
@@ -117,6 +117,8 @@ def _with_retries(url, data, headers, read, *, timeout, retries, retry_wait):
             if e.code not in RETRY_STATUS or attempt == retries:
                 raise
             wait = _retry_after(e) if e.code == 429 else None
+        except http.client.InvalidURL:          # an HTTPException, but asking again cannot fix it
+            raise
         except TRANSIENT:
             if attempt == retries:
                 raise

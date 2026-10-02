@@ -22,6 +22,7 @@ with ``--min-log2fc``:
 ===== ==============================================================
 """
 import argparse
+import http.client
 import json
 import math
 import os
@@ -83,24 +84,26 @@ def _release_fail(e):
     return 1
 
 
+def _bad_url(e):
+    print("error: the Ensembl request could not be sent (%s); check the gene symbol, "
+          "species and ids for characters a URL cannot carry" % e, file=sys.stderr)
+    return 1
+
+
 def cmd_annotate(a):
     try:
         cfg = annotate.run(a.gene, a.out, species=a.species, release=a.ensembl_release,
                            gene_id=a.gene_id, retries=a.retries, retry_wait=a.retry_wait)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
+    except http.client.InvalidURL as e:
+        return _bad_url(e)
     except ensembl.TRANSIENT as e:
         return _net_fail(e)
     except ValueError as e:
         print("error: %s" % e, file=sys.stderr)
         return 1
-    if a.json:
-        _emit(cfg)
-        return EXIT_OK
-    print("Proposed groups for %s -> %s" % (a.gene, a.out))
-    for g, ids in cfg["groups"].items():
-        print("  %s: %d transcripts" % (g, len(ids)))
-    print("  primary_comparison:", cfg["primary_comparison"])
+    # the notes go to stderr with --json too: they are what the JSON alone does not say
     choice = cfg.get("_gene_choice") or {}
     if choice.get("reason") and choice["reason"] != "given by --gene-id":
         print("  NOTE: %s" % choice["reason"], file=sys.stderr)
@@ -120,6 +123,13 @@ def cmd_annotate(a):
                                                     t["terminal_acceptor"]) for t in ties),
                  proposal.get("alternative_rule") or annotate.ALTERNATIVE_RULE),
               file=sys.stderr)
+    if a.json:
+        _emit(cfg)
+        return EXIT_OK
+    print("Proposed groups for %s -> %s" % (a.gene, a.out))
+    for g, ids in cfg["groups"].items():
+        print("  %s: %d transcripts" % (g, len(ids)))
+    print("  primary_comparison:", cfg["primary_comparison"])
     print("  REVIEW _proposed/_clusters and rename groups before use.")
     return EXIT_OK
 
@@ -272,6 +282,8 @@ def cmd_identifiability(a):
             retries=a.retries, retry_wait=a.retry_wait)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
+    except http.client.InvalidURL as e:
+        return _bad_url(e)
     except ensembl.TRANSIENT as e:
         return _net_fail(e)
     except ValueError as e:
