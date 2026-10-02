@@ -6,7 +6,7 @@ authors:
   - family-names: "Kim"
     given-names: "Sangeon"
     orcid: "https://orcid.org/0009-0005-7227-323X"
-version: "2.4.1"
+version: "2.5.0"
 date-released: "2026-10-02"
 license: MIT
 doi: "10.5281/zenodo.20672051"
