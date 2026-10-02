@@ -21,7 +21,8 @@ cannot return a p-value below ``2^(1-n)``: at n = 5 the floor is 0.0625, so no
 arrangement of five donors is significant at 0.05.  Reporting a non-significant
 p-value without that context invites the reader to conclude the effect is absent when
 the design could never have shown it.  The floor is computed and reported alongside
-every test, and flagged when it exceeds 0.05.
+each per-cohort test and the donor-pooled one, and flagged when it exceeds 0.05; the
+Stouffer and stratified combinations do not carry one yet.
 
 *Effect size.*  A median fold-change with no interval is a point estimate presented
 as if it were a measurement; a donor-level bootstrap interval is reported with it.
@@ -39,7 +40,7 @@ import numpy as np
 import scipy.stats
 from scipy.stats import norm, wilcoxon
 
-from .io import primary_pair
+from .io import InputError, primary_pair
 
 #: Class colours. Identity follows the isoform class, not the panel index -- the
 #: cohort is already encoded by which panel a donor is in, so reusing the colour
@@ -87,7 +88,17 @@ COMBINATION_LABELS = {
 def load_perdonor(path, condition, gA, gB):
     don, A, B = [], [], []
     with open(path) as f:
-        for r in csv.DictReader(f):
+        reader = csv.DictReader(f)
+        need = ["donor", "%s_TPM" % gA, "%s_TPM" % gB]
+        if condition not in (None, "", "all"):
+            need.insert(1, "condition")
+        absent = [c for c in need if c not in (reader.fieldnames or [])]
+        if absent:
+            raise InputError("per-donor table %s has no %s column (its columns: %s); "
+                             "`extract` writes one for each group of the config"
+                             % (path, ", ".join(absent), ", ".join(reader.fieldnames or [])
+                                or "none"))
+        for r in reader:
             if condition not in (None, "", "all") and r["condition"] != condition:
                 continue
             don.append(r["donor"]); A.append(float(r["%s_TPM" % gA])); B.append(float(r["%s_TPM" % gB]))
@@ -138,7 +149,10 @@ def signed_rank_resolution_floor(n, alternative="two-sided"):
 # per-cohort statistics
 # --------------------------------------------------------------------------- #
 def paired_stat(A, B):
-    """Return (n, n_A>B, two-sided exact Wilcoxon P, median fold A/B).
+    """Return (n, n_A>B, two-sided Wilcoxon P, median fold A/B).
+
+    P is SciPy's ``method="auto"`` one: exact only without zeros or ties, see
+    :func:`paired_stat_detail`.
 
     Edge cases are handled explicitly: an empty input returns NaNs; if every pair
     is tied (no nonzero differences) the signed-rank test is undefined and P is
@@ -375,7 +389,7 @@ def run(config, condition, cohorts, out, n_boot=DEFAULT_N_BOOT, seed=DEFAULT_SEE
     for i, name in enumerate(names):
         don, A, B = load_perdonor(cohorts[name], condition, gA, gB)
         if len(A) == 0:
-            raise ValueError(
+            raise InputError(
                 "cohort %s: no donors matched condition %r in %s."
                 % (name, condition, cohorts[name]))
         allA += list(A); allB += list(B)

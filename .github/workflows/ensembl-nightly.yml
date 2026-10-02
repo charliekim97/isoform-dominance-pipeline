@@ -19,7 +19,7 @@ name: Ensembl live check
 #                     are retired.
 #
 # Each distinguishes three outcomes, because the first run of this job (091426) failed on
-# the third and reported it as the second:
+# the third and reported it as the second -- and, since 2.4.1, a fourth:
 #
 #   Ensembl unreachable      -> skip.  A 5xx or a read timeout on rest.ensembl.org, or an
 #                               archive that does not answer, is a statement about their
@@ -32,6 +32,11 @@ name: Ensembl live check
 #                               LepRb absent, or the release field missing or not the one
 #                               asked for.  That is a parsing or API-schema break and it
 #                               should stop the build.
+#   the archive retired      -> warn.  The alias redirects off the REST service, as
+#                               releases 90-104 but 94 did on 2026-09-24: permanent, not an
+#                               outage to skip.  Its message begins "Ensembl release not
+#                               available" like an unreachable one, so it is told apart
+#                               first.
 on:
   schedule:
     - cron: "17 5 * * 1"
@@ -96,6 +101,8 @@ jobs:
           import json, os, subprocess, sys
           NET = ("Ensembl request failed", "Ensembl release not available", "HTTPError",
                  "URLError", "timed out", "TimeoutError")
+          # a retirement is certain and permanent, not an outage: ensembl.ReleaseNotServed
+          RETIRED = "is retired"
           rel = os.environ["RELEASE"]
           pin = ["--ensembl-release", rel] if rel else []
           r = subprocess.run(
@@ -104,6 +111,13 @@ jobs:
               capture_output=True, text=True)
           if r.returncode:
               blob = r.stdout + r.stderr
+              # before NET: "Ensembl release not available" begins this message too
+              if RETIRED in blob:
+                  print("::warning::the REST archive for release %s is retired; this target "
+                        "can no longer run. Move it to a release whose archive is served."
+                        % rel)
+                  print(blob[-800:])
+                  sys.exit(0)
               if any(k in blob for k in NET):
                   print("::notice::annotate could not reach Ensembl; this check skipped.")
                   print(blob[-800:])
@@ -137,6 +151,8 @@ jobs:
               raise SystemExit(0)
           NET = ("Ensembl request failed", "Ensembl release not available", "HTTPError",
                  "URLError", "timed out", "TimeoutError")
+          # a retirement is certain and permanent, not an outage: ensembl.ReleaseNotServed
+          RETIRED = "is retired"
           rel = os.environ["RELEASE"]
           pin = ["--ensembl-release", rel] if rel else []
           r = subprocess.run(
@@ -144,6 +160,10 @@ jobs:
                "--min-log2fc", "1.0", "--json"] + pin,
               capture_output=True, text=True)
           blob = r.stdout + r.stderr
+          if r.returncode and RETIRED in blob:      # before NET, which would match it
+              print("::warning::the REST archive for release %s is retired; this target "
+                    "can no longer run. Move it to a release whose archive is served." % rel)
+              print(blob[-800:]); sys.exit(0)
           if r.returncode and any(k in blob for k in NET):
               print("::notice::identifiability could not reach Ensembl; this check skipped.")
               print(blob[-800:]); sys.exit(0)

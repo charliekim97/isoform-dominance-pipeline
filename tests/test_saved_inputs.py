@@ -5,6 +5,7 @@ release 111's timed out on every lookup on 2026-09-24.  A saved-inputs file hold
 sequence a run used, with the release it came from, and repeats the run with no request.
 """
 import json
+import os
 import time
 import urllib.request
 
@@ -144,7 +145,7 @@ def test_no_release_is_named_none(no_network, tmp_path, capsys):
     out = capsys.readouterr()
     assert "None" not in out.out + out.err
     assert "saved inputs (release not recorded" in out.out
-    assert "record no release: their sequence was supplied offline" in out.err
+    assert "record no one release: some or all of their sequence was supplied" in out.err
 
 
 def _fasta(tmp_path, name, seq):
@@ -299,8 +300,9 @@ def test_the_saved_file_records_the_analysis_parameters(ens, tmp_path, capsys):
                      "--k", "25", "--window", "40", "--strand-aware", "--json"]) == 0
     capsys.readouterr()
     doc = json.loads(open(saved).read())
+    # no --background-fasta, so nothing to say about duplicates of a configured sequence
     assert doc["analysis"] == {"k": 25, "window": 40, "canonical": False,
-                               "keep_duplicates": False}
+                               "gene_background": True}
 
 
 def test_a_rerun_at_another_window_or_k_says_so(ens, tmp_path, capsys, monkeypatch):
@@ -318,8 +320,8 @@ def test_a_rerun_at_another_window_or_k_says_so(ens, tmp_path, capsys, monkeypat
     assert cli.main(["identify", "--config", cfg, "--inputs", saved, "--k", "25"]) == 0
     assert "the inputs were saved" not in capsys.readouterr().err
     assert cli.main(["identify", "--config", cfg, "--inputs", saved, "--k", "31"]) == 0
-    assert ("the inputs were saved at k=25, window=25, canonical k-mers; this run is at "
-            "k=31, window=31, canonical k-mers") in capsys.readouterr().err
+    assert ("the inputs were saved at window=25, canonical k-mers; this run is at "
+            "window=31, canonical k-mers") in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------- #
@@ -355,3 +357,275 @@ def test_a_saved_inputs_file_with_a_bad_value_is_one_line(no_network, tmp_path, 
     err = capsys.readouterr().err
     assert field in err and str(saved) in err
     assert len(err.strip().splitlines()) == 1 and "Traceback" not in err
+
+
+# --------------------------------------------------------------------------- #
+# a run saved without a gene background stays without one when regrouped
+# --------------------------------------------------------------------------- #
+def _without_provenance(res):
+    """A report without the fields that say where its sequence came from."""
+    return {k: v for k, v in res.items() if k != "annotation"}
+
+
+def test_a_regrouped_rerun_of_a_run_without_gene_background_matches_the_live_one(
+        ens, tmp_path, capsys, monkeypatch):
+    saved = str(tmp_path / "run.inputs.json")
+    assert cli.main(["identify", "--config", _cfg(tmp_path, ensembl_release=OLD),
+                     "--ensembl-release", str(OLD), "--no-gene-background",
+                     "--save-inputs", saved, "--json"]) == 0
+    capsys.readouterr()
+    doc = json.loads(open(saved).read())
+    assert doc["analysis"]["gene_background"] is False
+    dropped = GROUP_A[-1]
+    cfg = _cfg(tmp_path, ensembl_release=OLD, groups={"A": GROUP_A[:-1], "B": GROUP_B})
+    live = _run(["identify", "--config", cfg, "--ensembl-release", str(OLD),
+                 "--no-gene-background"], capsys)
+    assert live["background"]["gene_transcripts"] == []
+
+    def refuse(req, *a, **k):
+        raise AssertionError("network request %s" % req.full_url)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    assert cli.main(["identify", "--config", cfg, "--inputs", saved, "--json"]) == 0
+    out = capsys.readouterr()
+    offline = json.loads(out.out)
+    assert dropped not in offline["background"]["gene_transcripts"]
+    assert _without_provenance(offline) == _without_provenance(live)
+    assert "NOTE" in out.err and dropped in out.err and "no gene background" in out.err
+
+
+def test_an_old_file_with_no_background_is_read_as_saved_without_one(no_network, tmp_path,
+                                                                     capsys):
+    # files written before 2.4.1 do not say; an empty background is the only evidence
+    saved = tmp_path / "s.json"
+    io.save_inputs(str(saved), _captured({t: SEQS[OLD][t] for t in GROUP_A + GROUP_B}),
+                   dict(CONFIG), OLD, "test")
+    doc = json.loads(saved.read_text())
+    doc["analysis"].pop("gene_background", None)
+    saved.write_text(json.dumps(doc))
+    cfg = _cfg(tmp_path, ensembl_release=OLD, groups={"A": GROUP_A[:-1], "B": GROUP_B})
+    res = _run(["identify", "--config", cfg, "--inputs", str(saved)], capsys)
+    assert res["background"]["gene_transcripts"] == []
+
+
+def test_resaving_a_rerun_without_gene_background_still_says_so(no_network, tmp_path, capsys):
+    saved, again = tmp_path / "s.json", tmp_path / "again.json"
+    io.save_inputs(str(saved), dict(_captured({t: SEQS[OLD][t] for t in GROUP_A + GROUP_B}),
+                                    gene_background=False), dict(CONFIG), OLD, "test")
+    assert cli.main(["identify", "--config", _cfg(tmp_path, ensembl_release=OLD),
+                     "--inputs", str(saved), "--save-inputs", str(again)]) == 0
+    assert json.loads(again.read_text())["analysis"]["gene_background"] is False
+
+
+# --------------------------------------------------------------------------- #
+# the window is what builds every layer; k only sets its default
+# --------------------------------------------------------------------------- #
+def test_the_header_names_the_window_used_not_an_unused_k(no_network, tmp_path, capsys):
+    seqs = tmp_path / "seqs.json"
+    seqs.write_text(json.dumps({t: SEQS[OLD][t] for t in GROUP_A + GROUP_B}))
+    argv = ["identify", "--config", _cfg(tmp_path), "--sequences", str(seqs),
+            "--no-gene-background", "--k", "15", "--window", "31"]
+    cli.main(argv)
+    out = capsys.readouterr()
+    head = out.out.splitlines()[0]
+    assert "window=31" in head and "k=15" not in head
+    assert "--k 15" in out.err and "--window 31" in out.err      # says k went unused
+    cli.main(argv + ["--json"])
+    assert json.loads(capsys.readouterr().out)["window"] == 31
+
+
+def test_a_rerun_at_another_k_and_the_same_window_is_the_same_system(ens, tmp_path, capsys,
+                                                                      monkeypatch):
+    saved = str(tmp_path / "run.inputs.json")
+    cfg = _cfg(tmp_path, ensembl_release=OLD)
+    assert cli.main(["identify", "--config", cfg, "--ensembl-release", str(OLD),
+                     "--save-inputs", saved, "--k", "25", "--window", "31", "--json"]) == 0
+    capsys.readouterr()
+
+    def refuse(req, *a, **k):
+        raise AssertionError("network request %s" % req.full_url)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    assert cli.main(["identify", "--config", cfg, "--inputs", saved, "--k", "31"]) == 0
+    assert "different compatibility system" not in capsys.readouterr().err
+
+
+def test_the_per_class_line_says_which_figures_are_the_best_transcript_s(no_network,
+                                                                        tmp_path, capsys):
+    seqs = tmp_path / "seqs.json"
+    seqs.write_text(json.dumps({t: SEQS[OLD][t] for t in GROUP_A + GROUP_B}))
+    cli.main(["identify", "--config", _cfg(tmp_path), "--sequences", str(seqs),
+              "--no-gene-background"])
+    line = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("  [")][0]
+    assert "class " in line and "unique k-mers; best transcript " in line
+    assert "block(s)" in line.split("best transcript ")[1]
+
+
+def test_k_and_tpm_help_say_what_they_do(capsys):
+    with pytest.raises(SystemExit):
+        cli.main(["identifiability", "--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    assert "sets the default window when --window is not given" in text
+    assert "TPM given to every transcript of the gene, background included" in text
+
+
+# --------------------------------------------------------------------------- #
+# --save-inputs: a directory that cannot be written to is refused before the run,
+# and a save that fails anyway comes after the report, not instead of it
+# --------------------------------------------------------------------------- #
+def test_an_unwritable_save_directory_is_refused_before_anything_is_fetched(
+        tmp_path, capsys, monkeypatch):
+    def refuse(req, *a, **k):
+        raise AssertionError("fetched before the save path was checked: %s" % req.full_url)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    real = os.access
+    # root may write anywhere, so the permission is simulated as well as set
+    monkeypatch.setattr(os, "access", lambda p, mode, *a, **k: (
+        False if os.path.abspath(p) == str(locked) and mode & os.W_OK
+        else real(p, mode, *a, **k)))
+    os.chmod(locked, 0o555)
+    try:
+        assert cli.main(["identify", "--config", _cfg(tmp_path, ensembl_release=OLD),
+                         "--ensembl-release", str(OLD),
+                         "--save-inputs", str(locked / "run.json")]) == 1
+    finally:
+        os.chmod(locked, 0o755)
+    err = capsys.readouterr().err
+    assert "--save-inputs %s: directory %s is not writable" % (locked / "run.json", locked) \
+        in err and len(err.strip().splitlines()) == 1
+
+
+def test_a_save_that_fails_after_the_run_leaves_the_report_out(ens, tmp_path, capsys,
+                                                               monkeypatch):
+    def fail(path, *a, **k):
+        raise PermissionError(13, "Permission denied", path)
+    monkeypatch.setattr(io, "save_inputs", fail)
+    saved = tmp_path / "run.json"
+    assert cli.main(["identify", "--config", _cfg(tmp_path, ensembl_release=OLD),
+                     "--ensembl-release", str(OLD), "--save-inputs", str(saved),
+                     "--json"]) == 1
+    out = capsys.readouterr()
+    assert json.loads(out.out)["verdict"]                 # the report is out
+    assert "Permission denied" in out.err and str(saved) in out.err
+
+
+# --------------------------------------------------------------------------- #
+# a run on partly supplied sequence does not claim one release for all of it
+# --------------------------------------------------------------------------- #
+def test_saved_inputs_say_where_each_sequence_came_from(ens, tmp_path, capsys):
+    # class A supplied from release 116's sequence; class B and the background fetched
+    # from release 110: the file must not stamp 110 on A
+    supplied = tmp_path / "a.json"
+    supplied.write_text(json.dumps({t: SEQS[CURRENT][t] for t in GROUP_A}))
+    saved = tmp_path / "mixed.json"
+    assert cli.main(["identify", "--config", _cfg(tmp_path, ensembl_release=OLD),
+                     "--sequences", str(supplied), "--ensembl-release", str(OLD),
+                     "--save-inputs", str(saved), "--json"]) == 0
+    err = capsys.readouterr().err
+    doc = json.loads(saved.read_text())
+    assert doc["ensembl_release"] is None
+    src = doc["sequence_sources"]
+    assert {src[t] for t in GROUP_A} == {"supplied"}
+    assert {src[t] for t in GROUP_B} == {"fetched:%d" % OLD}
+    assert {src[t] for t in doc["background_sequences"]} == {"fetched:%d" % OLD}
+    assert "%d supplied" % len(GROUP_A) in err
+
+
+def test_a_run_wholly_fetched_keeps_its_release(ens, tmp_path, capsys):
+    saved = tmp_path / "s.json"
+    assert cli.main(["identify", "--config", _cfg(tmp_path, ensembl_release=OLD),
+                     "--ensembl-release", str(OLD), "--save-inputs", str(saved)]) == 0
+    doc = json.loads(saved.read_text())
+    assert doc["ensembl_release"] == OLD
+    assert set(doc["sequence_sources"].values()) == {"fetched:%d" % OLD}
+
+
+def test_a_resaved_rerun_keeps_the_sources(ens, tmp_path, capsys, monkeypatch):
+    supplied = tmp_path / "a.json"
+    supplied.write_text(json.dumps({t: SEQS[CURRENT][t] for t in GROUP_A}))
+    first, again = tmp_path / "first.json", tmp_path / "again.json"
+    cfg = _cfg(tmp_path, ensembl_release=OLD)
+    assert cli.main(["identify", "--config", cfg, "--sequences", str(supplied),
+                     "--ensembl-release", str(OLD), "--save-inputs", str(first)]) == 0
+
+    def refuse(req, *a, **k):
+        raise AssertionError("network request %s" % req.full_url)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    assert cli.main(["identify", "--config", cfg, "--inputs", str(first),
+                     "--save-inputs", str(again)]) == 0
+    a, b = json.loads(first.read_text()), json.loads(again.read_text())
+    assert b["sequence_sources"] == a["sequence_sources"]
+    assert b["ensembl_release"] is None
+
+
+# --------------------------------------------------------------------------- #
+# B10: the small things a saved file got wrong
+# --------------------------------------------------------------------------- #
+def test_a_run_without_a_fasta_says_nothing_about_duplicates_to_a_rerun_with_one(
+        no_network, tmp_path, capsys):
+    # no FASTA, no record identical to anything: --keep-duplicates did nothing then, so a
+    # rerun with a FASTA must not be told a record "was not counted then"
+    saved = tmp_path / "s.json"
+    seqs = tmp_path / "seqs.json"
+    seqs.write_text(json.dumps({t: SEQS[OLD][t] for t in GROUP_A + GROUP_B}))
+    cfg = _cfg(tmp_path, ensembl_release=OLD)
+    assert cli.main(["identify", "--config", cfg, "--sequences", str(seqs),
+                     "--save-inputs", str(saved)]) == 0
+    assert "keep_duplicates" not in json.loads(saved.read_text())["analysis"]
+    fa = _fasta(tmp_path, "bg.fa", SEQS[OLD][GROUP_A[0]])
+    capsys.readouterr()
+    cli.main(["identify", "--config", cfg, "--inputs", str(saved), "--background-fasta", fa,
+              "--keep-duplicates"])
+    assert "saved without --keep-duplicates" not in capsys.readouterr().err
+
+
+def test_a_rerun_of_inputs_with_a_release_is_not_called_unreproducible(no_network, tmp_path,
+                                                                     capsys):
+    cfg = {k: v for k, v in CONFIG.items() if k != "ensembl_release"}
+    p = tmp_path / "c.json"
+    p.write_text(json.dumps(cfg))
+    cli.main(["identify", "--config", str(p), "--inputs", _save(tmp_path, release=OLD)])
+    assert "not reproducible" not in capsys.readouterr().err
+    cli.main(["identify", "--config", str(p), "--inputs", _save(tmp_path, release=None)])
+    assert "not reproducible" in capsys.readouterr().err
+
+
+def test_a_rerun_reports_the_gene_id_the_live_run_did(rest_cd99, tmp_path, capsys,
+                                                      monkeypatch):
+    cfg, saved = rest_cd99
+    live = _run(["identifiability", "--config", cfg], capsys)
+    assert live["background"]["gene_id"]
+
+    def refuse(req, *a, **k):
+        raise AssertionError("network request %s" % req.full_url)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    offline = _run(["identifiability", "--config", cfg, "--inputs", saved], capsys)
+    assert _without_provenance(offline) == _without_provenance(live)
+
+
+@pytest.fixture
+def rest_cd99(monkeypatch, tmp_path, capsys):
+    from test_gene_choice import CD99_X, Rest, _ids
+    monkeypatch.setattr(urllib.request, "urlopen", Rest())
+    tids = sorted(_ids(CD99_X))
+    cfg = tmp_path / "cd99.json"
+    cfg.write_text(json.dumps({"gene": "CD99", "gene_id": CD99_X["id"],
+                               "groups": {"A": tids[:1], "B": tids[1:2]},
+                               "primary_comparison": ["A", "B"], "ensembl_release": 116}))
+    saved = tmp_path / "cd99.inputs.json"
+    assert cli.main(["identifiability", "--config", str(cfg),
+                     "--save-inputs", str(saved)]) == 0
+    capsys.readouterr()
+    return str(cfg), str(saved)
+
+
+def test_a_saved_file_with_versioned_ids_is_read_as_unversioned(no_network, tmp_path, capsys):
+    saved = tmp_path / "v.json"
+    io.save_inputs(str(saved), _captured({t + ".3": SEQS[OLD][t] for t in GROUP_A + GROUP_B}),
+                   dict(CONFIG), OLD, "test")
+    plain = tmp_path / "p.json"
+    io.save_inputs(str(plain), _captured({t: SEQS[OLD][t] for t in GROUP_A + GROUP_B}),
+                   dict(CONFIG), OLD, "test")
+    cfg = _cfg(tmp_path, ensembl_release=OLD)
+    versioned = _run(["identify", "--config", cfg, "--inputs", str(saved)], capsys)
+    assert versioned == _run(["identify", "--config", cfg, "--inputs", str(plain)], capsys)

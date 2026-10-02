@@ -1,0 +1,16 @@
+{
+ "gene": "FAKE",
+ "groups": {
+  "long": [
+   "ENST00000000001",
+   "ENST00000000002"
+  ],
+  "short": [
+   "ENST00000000003"
+  ]
+ },
+ "primary_comparison": [
+  "short",
+  "long"
+ ]
+}

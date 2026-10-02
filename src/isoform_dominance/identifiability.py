@@ -42,11 +42,12 @@ conditioning factor.  Three layers are reported, cheapest first:
 All three are computed offline from sequence alone; nothing here needs the reads.
 """
 import math
+import urllib.parse
 from urllib.error import HTTPError
 
 import numpy as np
 
-from . import ensembl, index_scope
+from . import ensembl, index_scope, io
 from .ensembl import DEFAULT_RETRIES, DEFAULT_RETRY_WAIT
 
 ENSEMBL = ensembl.SERVER
@@ -104,8 +105,10 @@ def fetch_gene(gene, species="homo_sapiens", gene_id=None, **retry):
     transcripts: for identifiability the non-coding, retained-intron and NMD transcripts
     matter, because Salmon indexes them too.
     """
-    path = ("/lookup/id/%s?expand=1" % gene_id.split(".")[0] if gene_id
-            else "/lookup/symbol/%s/%s?expand=1" % (species, gene))
+    seg = [urllib.parse.quote(str(x), safe="")      # a symbol can hold a space or a slash
+           for x in ((gene_id.split(".")[0],) if gene_id else (species, gene))]
+    path = ("/lookup/id/%s?expand=1" % tuple(seg) if gene_id
+            else "/lookup/symbol/%s/%s?expand=1" % tuple(seg))
     info = ensembl.get_json(path, **retry)
     return info.get("id"), [t["id"].split(".")[0] for t in info.get("Transcript", [])]
 
@@ -170,8 +173,9 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
 
     Streams the file and never materialises the background's own k-mer set, so a
     whole-transcriptome FASTA (GENCODE, or the FASTA a Salmon index was built from)
-    can be used as background in memory proportional to the *query*, not the file.
-    Handles plain or gzipped input; ``exclude_ids`` drops records whose first
+    can be used as background; one record is held at a time, so memory is set by the
+    query and the longest record, not the file (a single 20 Mb record: about 110 MB).
+    Handles plain or gzipped input, told apart by the gzip magic bytes; ``exclude_ids`` drops records whose first
     ``|``- or whitespace-delimited field matches (version suffix ignored), which is
     how the transcripts under test are kept out of their own background.
 
@@ -181,8 +185,6 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
     the same with such a record: unless it is built with ``--keepDuplicates`` it keeps
     only the first of identical sequences, so the record competes with nothing.
     """
-    import gzip
-
     query = set(query_kmers)
     if not query:
         return set()
@@ -190,7 +192,6 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
     identical = identical or {}
     lengths = {len(s) for s in identical}
     seen = set()
-    opener = gzip.open if str(path).endswith((".gz", ".bgz")) else open
 
     def _consume(chunks, tid):
         if not chunks or tid in exclude:
@@ -208,7 +209,7 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
                 seen.add(km)
 
     chunks, tid = [], None
-    with opener(path, "rt") as fh:
+    with io.open_text(path) as fh:
         for line in fh:
             if line.startswith(">"):
                 _consume(chunks, tid)
@@ -766,6 +767,13 @@ def _verdict(entry, tau, min_reads=None, min_log2fc=None):
         elif got > min_log2fc:
             reasons.append("smallest resolvable |log2FC| %.2f exceeds the requested %.2f"
                            % (got, min_log2fc))
+        elif entry.get("beyond_linear"):
+            # the first-order figure is not a value past the limit, so it cannot resolve
+            # anything however small it reads
+            reasons.append("%s is beyond the linearisation limit (relative SE %.2f > %.1f), "
+                           "so not resolvable at this design"
+                           % (entry.get("label", "estimand"), entry["gls_relative_se"],
+                              LINEARISATION_LIMIT))
     elif entry.get("conditioning_factor", 0.0) > tau:
         reasons.append("conditioning factor %.1f exceeds tau=%.1f"
                        % (entry["conditioning_factor"], tau))
@@ -813,7 +821,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         supplied offline (so an offline call never blocks on the network).  ``True``
         forces the fetch, ``False`` restores the pre-v2.2 behaviour of comparing the
         configured groups only.  A gene symbol Ensembl does not know (HTTP 400/404)
-        leaves the gene background empty; any other failure to fetch it is raised,
+        leaves the gene background empty; a ``gene_id`` it does not know is a
+        ``ValueError``, and any other failure to fetch it is raised,
         because a background that is only partly fetched silently gives a different
         answer.
     read_length, frag_mean, frag_sd, paired, depth, mean_efflen, tpm, n_donors
@@ -840,8 +849,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     inputs_out
         A dict to fill with the sequence this run used: ``sequences`` (the configured
         transcripts), ``background_sequences`` (the gene background, after the configured
-        transcripts are removed from it), ``fetched_release``, and the ``k``, ``window``
-        and ``canonical`` the system was built at -- none of which is in the config.
+        transcripts are removed from it), ``gene_background`` (whether this run had one, fetched
+        or supplied), ``fetched_release``, ``sequence_sources`` (each id's ``"supplied"`` or
+        ``"fetched:<release>"``), and the ``k``, ``window`` and ``canonical`` the system was
+        built at -- none of which is in the config.
         Written to a file by :func:`isoform_dominance.io.save_inputs`, it repeats the run
         with no request at all, after the release's REST archive is gone.
     retries, retry_wait
@@ -864,7 +875,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         (estimability of the sum of every column, with the transcripts that have no
         window at all),
         ``effect_resolvable`` (whether both class totals and the contrast resolve
-        ``min_log2fc``; None without it), and -- for callers written against v2.1 --
+        ``min_log2fc``, none of them ``beyond_linear``; None without it), and -- for callers written against v2.1 --
         ``primary_distinguishable``.  Note that ``verdict`` supersedes
         ``primary_distinguishable``: a class with no unique k-mer of its own is still
         estimable when a class it is nested inside has unique sequence, and a class
@@ -885,12 +896,28 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         raise ValueError(
             "primary_comparison names group(s) not in config['groups']: %r" % (missing,))
 
+    shared = io.shared_transcripts(groups)
+    if shared:
+        # in the two compared classes its +1 and -1 cancel and the contrast silently drops
+        # it; in any two, its column enters the system twice
+        t, gs = sorted(shared.items())[0]
+        raise ValueError("transcript %s is in groups %s%s; a transcript belongs to one class"
+                         % (t, " and ".join('"%s"' % g for g in gs),
+                            " (and %d more transcript(s) are in two groups)"
+                            % (len(shared) - 1) if len(shared) > 1 else ""))
+    if window > read_length:
+        # no read holds a whole window, so no fragment is informative and every class
+        # reads as unmeasurable for a reason that is not the gene's
+        raise ValueError("window %d exceeds the read length %d: no read can hold a whole "
+                         "window, so no fragment would count as informative; pass a "
+                         "--window no longer than --read-length" % (window, read_length))
     group_ids = {g: [t.split(".")[0] for t in ids] for g, ids in groups.items()}
     needed = [t for ids in group_ids.values() for t in ids]
     seqs = {tid.split(".")[0]: s for tid, s in (sequences or {}).items()}
 
     # ---- background transcripts of the same gene -------------------------- #
     bg_seqs = {t.split(".")[0]: s for t, s in (background_sequences or {}).items()}
+    supplied = set(seqs) | set(bg_seqs)         # for inputs_out's sequence_sources
     if background_gene_transcripts == "auto":
         # only reach for the network when we are already going there for sequence
         background_gene_transcripts = any(t not in seqs for t in needed)
@@ -905,6 +932,16 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         fetched_release = ensembl.fetch_release(**net)
     else:
         fetched_release = None
+    # the configured transcripts first: when the release lacks them, that is what to say,
+    # not that the gene background around them belongs to another gene
+    missing = [t for t in needed if t not in seqs]
+    if missing:
+        got = ensembl.fetch_cdna_batch(missing, **net)
+        absent = [t for t in missing if t not in got]
+        if absent:
+            raise ValueError("Ensembl release %s has no cDNA for %s, which the config names"
+                             % (fetched_release, ", ".join(absent)))
+        seqs.update(got)
     bg_gene_id = None
     if fetch_gene_background:
         try:
@@ -912,8 +949,14 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
                 config["gene"], species or config.get("species", "homo_sapiens"),
                 gene_id=config.get("gene_id"), **net)
         except HTTPError as e:
-            if e.code not in (400, 404):      # 400 is Ensembl's "no such symbol"
+            if e.code not in (400, 404):      # 400 is Ensembl's "no such symbol" or "id"
                 raise
+            if config.get("gene_id"):
+                # the config names this gene outright; going on without its background
+                # would judge the classes against nothing and call that a verdict
+                raise ValueError("Ensembl release %s has no gene %s, which the config's "
+                                 "gene_id names" % (fetched_release,
+                                                    config["gene_id"].split(".")[0])) from e
             all_ids = []                      # a symbol Ensembl does not know
         if all_ids and not set(all_ids) & set(needed):
             # a symbol that names more than one gene gave another one: its transcripts are
@@ -930,21 +973,21 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         # on with whatever had arrived, which is a different answer, silently
         bg_seqs.update(ensembl.fetch_cdna_batch(
             [t for t in all_ids if t not in needed], **net))
-    missing = [t for t in needed if t not in seqs]
-    if missing:
-        got = ensembl.fetch_cdna_batch(missing, **net)
-        absent = [t for t in missing if t not in got]
-        if absent:
-            raise ValueError("Ensembl release %s has no cDNA for %s, which the config names"
-                             % (fetched_release, ", ".join(absent)))
-        seqs.update(got)
     bg_seqs = {t: s for t, s in bg_seqs.items() if t not in needed}
     if inputs_out is not None:
         inputs_out.update(sequences={t: seqs[t] for t in needed},
                           background_sequences=dict(bg_seqs),
+                          # whether the rest of the gene was this run's background: a rerun
+                          # under another grouping must not move transcripts into a
+                          # background the run never had
+                          gene_background=bool(fetch_gene_background
+                                               or background_sequences is not None),
                           gene_id=bg_gene_id,
                           keep_duplicates=keep_duplicates,
                           fetched_release=fetched_release,
+                          sequence_sources={
+                              t: "supplied" if t in supplied else "fetched:%s" % fetched_release
+                              for t in list(needed) + sorted(bg_seqs)},
                           k=k, window=window, canonical=canonical)
 
     # ---- window tracks ---------------------------------------------------- #
@@ -1092,10 +1135,12 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     # The exit status of the CLI hangs on this, not on ``verdict``: the structural
     # verdict moves with the annotation release, while a resolvable effect size is the
     # question the experimenter actually asked.  None when no effect size was asked for.
+    # An estimand past the linearisation limit is not resolved whatever its figure reads.
     primary = [report[g] for g in pc] + [contrast]
     effect_resolvable = None if min_log2fc is None else all(
         math.isfinite(e["min_resolvable_log2fc"])
-        and e["min_resolvable_log2fc"] <= min_log2fc for e in primary)
+        and e["min_resolvable_log2fc"] <= min_log2fc
+        and not e["beyond_linear"] for e in primary)
 
     verdicts = [report[g]["verdict"] for g in pc] + [contrast["verdict"]]
     all_reasons = sorted({r for g in pc for r in report[g]["reasons"]}

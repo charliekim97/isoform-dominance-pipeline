@@ -11,16 +11,194 @@ versioning.
 > are left in place as a matter of policy: they are never retagged, replaced or deleted.
 > Nothing in this or any later version alters that record's files. The
 > `extract` aggregation behaviour those results depend on — transcript-to-group mapping
-> and per-donor TPM summation — is unchanged through 2.4.0, and the bundled self-test still
+> and per-donor TPM summation — is unchanged through 2.4.1, and the bundled self-test still
 > reproduces the same reference numbers. 2.4.0 adds two refusals to `extract` where 2.3.0
 > wrote a table: a cohort quantified against more than one Salmon index, and a config none
-> of whose transcripts is in any donor's `quant.sf`.
+> of whose transcripts is in any donor's `quant.sf`. 2.4.1 counts an index with Salmon's
+> decoys and one without as two, and writes the rows in 2.1.1's order again (2.4.0 sorted
+> them by donor name).
 
 ## [Unreleased]
 
 ### Added
 - The author's ORCID in `CITATION.cff`, from which Zenodo takes the creators of each
   release's record.
+
+### Changed
+- Files gain fields, and readers of the old ones still work. The `extract` sidecar keeps
+  `index_decoy_seq_hash` and `num_decoy_targets` per donor and lists
+  `index_decoy_seq_hashes` and `unreadable_meta_info`. Saved inputs record
+  `analysis.gene_background` and `sequence_sources`, and `analysis.keep_duplicates` only
+  for a run with `--background-fasta`; `INPUTS_FORMAT` is unchanged.
+- The `identifiability` header names the window and no longer `k`, and each class line
+  reads `class N unique k-mers; best transcript B bp in K block(s), ~R informative reads`.
+
+### Fixed
+The first three entries change an answer: each makes the code do what the documentation
+already said, or refuses an input that gave a wrong answer. Five more change what 2.4.0
+gave for an input it accepted: `extract`'s row order and its decoy rule, an unknown
+`gene_id`, a regrouped `--inputs` rerun, and a symbol of another species. The rest stop a
+traceback or a misleading message, or fix a record, a script or the documentation.
+`extract`'s transcript-to-group mapping and TPM sums are unchanged.
+
+- **`identifiability --min-log2fc`: an estimand past the linearisation limit counts as not
+  resolved** (exit 3), as `paper.md` and the 2.3.0 entry below already said it did. Through
+  2.4.0 `effect_resolvable` compared the figure with `--min-log2fc` and ignored
+  `beyond_linear`, so a contrast at relative SE 0.32, whose first-order figure reads 0.91,
+  "resolved" an effect of 1.5 and exited 0. The `EFFECT SIZE` line names the estimands past
+  the limit, and the verdict gives it as a reason. The figures and the `beyond_linear` flags
+  in `--json` are unchanged.
+- **Two configurations that gave a wrong answer are refused** (exit 1, one line).
+  A `--window` longer than `--read-length`: no read can hold a whole window, so the
+  informative fraction is zero whatever the gene (0.119 at window 100, 0.0 at 101, with
+  100-nt reads). A transcript in two groups: in the compared pair its +1 and -1 cancel in
+  the contrast, and in any two its column entered the system twice with the first copy all
+  zero, so the run reported "the gene total is not estimable", exit 2, naming no
+  transcript.
+- **`annotate` stops on a human symbol none of whose genes is on a reference chromosome.**
+  It proposed groups from an alternate-locus gene and recorded nothing: HLA-DRB3 at release
+  116 came from a gene on `CHR_HSCHR6_MHC_APD_CTG1`, and Ensembl 116's `cdna.all` holds 23
+  such protein-coding symbols (GSTT1, HLA-DRB4, KIR*, LILRA3, TAS2R45 among them), none of
+  which the recommended reference-chromosome index contains. It now exits 1 listing each
+  gene of the name with its region (`annotate.NotOnReference`, a `ValueError`); `--gene-id`
+  takes one of them anyway, with a NOTE that the recommended index does not contain it.
+- **`extract` writes its rows in `quant.sf` path order again**, as 2.3.0 did. 2.4.0 sorted
+  by donor name; the two orders part when one donor name is a prefix of another and the
+  next character sorts before `/` (`D1`, `D1-2`, `D1.5`), and `stats` bootstraps the fold
+  interval by row, so the interval moved (one audited case: [0.365, 1.619] against
+  [0.355, 2.204] at seed 7). The transcript-to-group mapping and the TPM sums are
+  untouched; a test compares the output byte for byte with a CSV the 2.3.0 code wrote.
+- **`extract` counts Salmon's decoys in the mixed-index check.** Two indexes of one
+  transcriptome, with and without decoys, share `index_seq_hash` (checked with Salmon
+  1.10.3: the decoys go into `index_decoy_seq_hash`, the SHA-256 of nothing when there are
+  none). A cohort quantified against both was taken as one index; it is now refused like
+  any other mix, and `--allow-mixed-index` combines it with a warning. A donor whose Salmon
+  recorded no decoy hash is compared on `index_seq_hash` alone. The sidecar keeps
+  `index_decoy_seq_hash` and `num_decoy_targets`, and lists `index_decoy_seq_hashes`.
+- **A `meta_info.json` that cannot be read is a warning, not a refusal or a traceback.**
+  Empty or cut short it was a one-line refusal the documentation does not list; a JSON list,
+  bytes that are not UTF-8 or a hash that is not a string gave a traceback. The donor is now
+  treated as having no `meta_info.json`, with one warning naming the file, and recorded
+  under `unreadable_meta_info` in the sidecar. `extract` refuses only the two things the
+  2.4.0 entry lists.
+- **One line and exit 1, not a traceback:** an empty or absent `--quantdir`
+  (`extract.NoQuantFiles`, still a `FileNotFoundError`), a sample map with no `donor`
+  column, a per-donor table without a class's `_TPM` column, and a `stats --condition` no
+  donor has.
+- **`extract` names a transcript that two groups share.** Its TPM still goes, as in 2.1.1,
+  to the group the config lists last; the warning names the transcript and the groups.
+- **`identifiability --inputs` gives a regrouped rerun no gene background its run lacked.**
+  The saved file did not say whether the run had one, and a rerun under another grouping put
+  every saved transcript the config no longer names into the background. A run saved with
+  `--no-gene-background` was then judged against a background the live run never had (one
+  audited case: a class's unique count 200 on the rerun, 500 live). Saved inputs record
+  `analysis.gene_background`; in a file written before 2.4.1 an empty saved background
+  means none. Such a transcript is left out, with a NOTE. `INPUTS_FORMAT` is unchanged:
+  2.4.0 reads the new key and ignores it.
+- **A `gene_id` Ensembl does not know stops `identifiability`** with one line naming the
+  release and the id (exit 1). The HTTP 400/404 fallback meant for a symbol Ensembl does
+  not know also swallowed `lookup/id`, so the gene background came out empty and the run
+  gave a verdict, exit 0. A symbol Ensembl does not know still leaves it empty.
+- **A configured transcript the release lacks is named before the gene background is
+  judged.** A config of transcripts only release 116 has, run with `--ensembl-release 110`,
+  was refused for a gene background "of another gene"; it now says which cDNA release 110
+  does not have.
+- **No "reads are split" warning for a same-name copy whose sequence is a configured
+  transcript's.** The NOTE beside it says such a `--background-fasta` record is not
+  counted, because Salmon's default index keeps one of identical sequences; the warning
+  contradicted it, and every pseudoautosomal gene got both against `gencode.v50chr`. The
+  warning now leaves out the records the NOTE lists. With `--keep-duplicates` nothing
+  changes. `same_name_copies` in `--json` still lists every copy.
+- **`identifiability` says which window it used.** Every layer is built from the window,
+  and `--k` only sets its default; the header printed `k=15` for `--k 15 --window 31`, and a
+  rerun from saved inputs at another k and the same window was told it was a different
+  compatibility system. The header names the window, a NOTE says when `--k` went unused,
+  and the rerun note compares the window and the k-mer convention only. The per-class line
+  separates the class's unique k-mers from its best transcript's stretch, blocks and
+  informative reads. `--k` and `--tpm` say in `--help` what they set; `--tpm` is given to
+  every transcript of the gene, background included.
+- **`identifiability --save-inputs` checks that it can write before the run, and saves
+  after the report.** A directory without write permission failed after the run, and the
+  failed save came before the report, so the answer was lost with it.
+- **Saved inputs say where each sequence came from.** A run with part of its sequence
+  supplied (`--sequences`, `--background-sequences`) and the rest fetched stamped the
+  fetched release on the whole file. `sequence_sources` gives `"supplied"` or
+  `"fetched:<release>"` per id, and `ensembl_release` is recorded only when every sequence
+  was fetched from it. A rerun that saves again keeps the sources of the file it ran from.
+- **Saved inputs, small things.** A run without `--background-fasta` no longer records
+  `keep_duplicates`, so a rerun with a FASTA is not told a record "was not counted then".
+  A rerun from inputs that record their release is not called unreproducible for a config
+  that records none. A rerun reports the gene id the live run fetched its background as
+  (`background.gene_id`), which makes its `--json` report equal the live one apart from
+  the `annotation` block, which says where the sequence came from. Saved ids with a version
+  (`ENST….3`) are compared without it, as `--sequences` ids are.
+- **`annotate` applies the reference-chromosome rule to human only.** The region filter
+  and the chrX/chrY rule were applied to every species, so a zebrafish gene on chr23 (or a
+  fly gene on 2L, a worm gene on chrI) was dropped for a same-name gene on a chromosome
+  with a human name, and nothing was recorded. For another species every gene of the name
+  is a candidate, and two or more are `AmbiguousGene` with the `--gene-id` hint.
+- **Symbols are quoted into request URLs.** A symbol with a space or a slash made a URL
+  `http.client` refuses to send, and that `InvalidURL` was retried as a network failure
+  and reported as one. Symbols, species and ids are now quoted as one path segment, and an
+  `InvalidURL` is not retried: one line saying the request could not be sent.
+- **`annotate --json` keeps its notes**, on stderr: the chrX/chrY choice and the tie that
+  chose the alternative class were printed only without `--json`.
+- **A JSON file that is not UTF-8 is one line naming it** (config, `--sequences`,
+  `--background-sequences`, `--inputs`), not a `UnicodeDecodeError` traceback or, for
+  `--inputs`, a "config error" that named no file.
+- **A gzipped `--background-fasta` is told by its first two bytes** (`1f 8b`), not by
+  its name: a plain file named `.gz` was a `BadGzipFile` traceback, and a gzipped one named
+  `.GZ`, or with no extension, a "can't decode byte 0x8b" traceback.
+- **`qc` on a config without a complete `contamination_qc` is one line**, naming what is
+  missing (`target_group`, `marker_panels`, its `tissue` or `contaminant` list); README step
+  4 runs `qc` on the config `annotate` writes, which has none, and that was a traceback. A
+  marker or target table without the columns it needs, and a cohort with fewer than three
+  donors in both, are one line too (`io.InputError`, a `ValueError`).
+- **The weekly Ensembl check tells a retired archive from an outage.** "Ensembl release
+  not available", one of the strings it skipped on as a network failure, also begins the
+  message for a retired archive, so the release-110 target would have skipped quietly
+  every week once that archive is retired. It is now a warning saying the target can no
+  longer run. A test runs the workflow's own step scripts against the offline fake.
+- **`scripts/01_salmon_quant.sbatch`: one output directory per sample map, and ENA paths
+  for every run-number length.** `OUTDIR` defaulted to `$PWD/quant` for every cohort and
+  the script skips a donor whose `quant.sf` exists, so the second cohort of the README —
+  both example sample maps name their donors `ctrl1`–`ctrl5` — silently kept the first
+  one's quantifications. The default is now `$PWD/quant/<sample map name>`, the settings
+  can be passed with `sbatch --export`, and the README runs the two cohorts into separate
+  directories and extracts both. The ENA directory was built as `0` and the last two
+  digits, right only for 8-digit run numbers (`ERR2060213` is under `ERR206/003`, not
+  `013`); it now follows ENA's rule for 6 to 9 digits and stops on anything else. The
+  README gives the `salmon index` command for the filtered FASTA.
+- **Documentation that said what the code does not do.** The Wilcoxon test is SciPy's
+  `method="auto"`, exact only without zeros or ties (README, `docs/api.md`, `stats.py`, which
+  called it exact). Only the per-cohort and pooled tests carry a floor (README and `stats.py`
+  said every test). A `--background-fasta` scan holds one record at a time, so its memory is
+  set by the longest record (one 20 Mb record: about 110 MB resident), not by "the gene" or
+  "the query". `docs/api.md`: zero unique k-mers does not mean a class cannot be measured;
+  `kmers` folds to canonical by default; `stats.run` returns six keys, not two; the import
+  line lists `ensembl`. README: DEXSeq tests exon usage from its own exon-bin counts;
+  Kmerator also takes gene names, so that is not a claim; the v2.1.1 record is cited by the
+  manuscript under revision, not by a published paper. CONTRIBUTING lists the CI jobs.
+
+### Corrections to earlier entries
+The entries below are left as written; these sentences in them are wrong.
+- 2.4.0, saved inputs: "the rerun's whole `--json` report now equals the live one" — it
+  differed in `background.gene_id` (fixed above) and differs, by design, in the
+  `annotation` block, which says where the sequence came from.
+- 2.3.0, `DEFAULT_COMBINATION`: Stouffer's "inputs are the exact per-cohort tests, so it is
+  never anti-conservative". A per-cohort p is exact only without zero differences or ties;
+  otherwise it is a permutation p (n ≤ 13) or the normal approximation, as
+  `wilcoxon_method` reports, and the guarantee does not hold.
+- 2.3.0, the README LEPR example: "`weakly_identifiable` (exit 3)". With the default flags
+  2.3.0 exits 0 there: from 2.3.0 the verdict does not set the exit status, and exit 3
+  needs `--min-log2fc`.
+- 2.3.0, "`identifiability` exit code **1** is new … **0** groups distinguishable, **1**
+  invalid config, **2** a primary group has no unique k-mers", and "exit code 2 cannot
+  claim anything about sequencing depth": these describe the exit status before 2.3.0. From
+  2.3.0 it is 0 / 3 (`--min-log2fc` not resolved) / 2 (the gene total not estimable) / 1,
+  as that entry's "Breaking" item says.
+- 2.2.0, statistics: `min_achievable_p` — the key is `p_floor`, and the column
+  `resolution_floor_P`.
 
 ## [2.4.0] - 2026-09-30
 

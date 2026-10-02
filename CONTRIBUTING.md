@@ -36,8 +36,10 @@ pytest -q          # all tests are offline and must pass
 1. Fork the repository and create a branch for your change.
 2. Add or update tests; the suite must stay green and offline (no network in tests).
 3. Keep the public CLI behaviour backward-compatible, or note the break clearly.
-4. Open a pull request describing the change and the motivation. CI
-   (Python 3.10–3.12) must pass.
+4. Open a pull request describing the change and the motivation. CI must pass: tests
+   on Python 3.10–3.13 (Linux) and 3.12 (macOS, Windows), tests at the declared dependency
+   floors, an install from the built wheel, `ruff`, the committed docs example, and a
+   check that no commit credits an AI assistant.
 
 ## Scope
 

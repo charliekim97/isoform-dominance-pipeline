@@ -88,12 +88,12 @@ and for the contrast between them. Ask it for the effect size you need:
 
 ```bash
 isoform-dominance identifiability --config config.json --min-log2fc 0.5
-# Identifiability (window=31, k=31, canonical k-mers)
+# Identifiability (window=31, canonical k-mers)
 #   annotation: Ensembl release 116
 #   background: 9 same-gene transcript(s)
 #   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
-#   [identifiable] iso_1165aa: min |log2FC| 0.064; 5369 unique k-mers, 5399 bp in 1 block(s), ~1072 informative reads, conditioning 3.62
-#   [identifiable] iso_896aa: min |log2FC| 0.216; 356 unique k-mers, 208 bp in 2 block(s), ~63 informative reads, conditioning 115.05
+#   [identifiable] iso_1165aa: min |log2FC| 0.064; class 5369 unique k-mers; best transcript 5399 bp in 1 block(s), ~1072 informative reads; conditioning 3.62
+#   [identifiable] iso_896aa: min |log2FC| 0.216; class 356 unique k-mers; best transcript 208 bp in 2 block(s), ~63 informative reads; conditioning 115.05
 #   contrast iso_896aa vs iso_1165aa: min |log2FC| 0.234; identifiable, conditioning 117.68
 #   effective length: iso_896aa 5103 bp vs iso_1165aa 8072 bp (mean per transcript), log2 ratio -0.66
 #   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_896aa median 0.07 [0.05-0.12], 372 positions over 7 transcript(s); iso_1165aa median 0.67 [0.51-0.84], 10738 positions over 2 transcript(s)
@@ -111,7 +111,8 @@ The release-116 sequences behind the 2026-09-11 block this replaces, run offline
 `--sequences` and `--background-sequences` with the nine same-gene background transcripts;
 transcript and k-mer counts move as the annotation does. The `effective length` and
 `distinguishing windows` lines were added from a live run against the same release on
-2026-09-13, in which every other line reproduced unchanged. Read the `min |log2FC|` figures first:
+2026-09-13, in which every other line reproduced unchanged. The header and the per-class
+lines are shown as 2.4.1 prints them; the figures are those runs'. Read the `min |log2FC|` figures first:
 they are what the verdict and the exit status are built on. `conditioning` is a diagnostic.
 Without `--min-log2fc` the verdict falls back to `--tau` on the conditioning factor, which has
 no calibrated value — the same run then reads `weakly_identifiable` — and the command says on
@@ -152,8 +153,9 @@ annotation release the transcripts came from, so it is reported in the output an
 > blind to pseudogenes, paralogues and homologous loci elsewhere in the index. A
 > quantifier resolves fragments against the *whole* index, so any claim about what it
 > can separate should be judged against the same FASTA the index was built from. The
-> scan is streamed, so a whole-transcriptome background costs memory proportional to
-> the gene, not the file. A record with the sequence of a configured transcript is not
+> scan is streamed one record at a time, so its memory is set by the longest record, not
+> by the file: one 20 Mb record took about 110 MB resident, 10,000 records of 2 kb
+> totalling the same 34 MB, at roughly 2 Mb of sequence a second (measured 2026-10-01). A record with the sequence of a configured transcript is not
 > counted, because Salmon's default index keeps one of identical sequences: in GENCODE
 > v50's reference-chromosome FASTA, all 382 chrY transcripts of the 18 protein-coding
 > genes on both chrX and chrY are such records. For an index built with Salmon's
@@ -225,15 +227,21 @@ linear functional of the observable fragment-class expectations.
 ## Full workflow (real data)
 
 ```bash
-# 0) build a decoy-aware index once (Salmon + GENCODE) — see scripts/01_salmon_quant.sbatch
+# 0) build a Salmon index once -- the commands are under "Index scope" below:
 #    - from the GENCODE release that matches `annotate --ensembl-release`
 #      (https://www.gencodegenes.org/human/releases.html), and
-#    - from reference-chromosome transcripts only: see "Index scope" below
-# 1) quantify on an HPC cluster:
-sbatch scripts/01_salmon_quant.sbatch                    # -> quant/<donor>/quant.sf
+#    - from reference-chromosome transcripts only
+# 1) quantify on an HPC cluster, one output directory per cohort (both example sample maps
+#    name their donors ctrl1-ctrl5, and the script skips a donor whose quant.sf exists):
+sbatch --export=ALL,SAMPLE_MAP=example/sample_map_GSE228458.csv,OUTDIR=quant/GSE228458 \
+    scripts/01_salmon_quant.sbatch                       # -> quant/GSE228458/<donor>/quant.sf
+sbatch --export=ALL,SAMPLE_MAP=example/sample_map_GSE137619.csv,OUTDIR=quant/GSE137619 \
+    scripts/01_salmon_quant.sbatch
 # 2) extract per cohort:
-isoform-dominance extract --config config.json --quantdir quant \
+isoform-dominance extract --config config.json --quantdir quant/GSE228458 \
     --samplemap example/sample_map_GSE228458.csv --cohort GSE228458 --out perdonor_GSE228458.csv
+isoform-dominance extract --config config.json --quantdir quant/GSE137619 \
+    --samplemap example/sample_map_GSE137619.csv --cohort GSE137619 --out perdonor_GSE137619.csv
 # 3) stats + figure:
 isoform-dominance stats --config config.json --condition control \
     --perdonor GSE228458=perdonor_GSE228458.csv --perdonor GSE137619=perdonor_GSE137619.csv \
@@ -276,6 +284,17 @@ gzip -dc Homo_sapiens.GRCh38.cdna.all.fa.gz \
   > Homo_sapiens.GRCh38.cdna.primary.fa
 ```
 
+Then build the index from the filtered FASTA, once, and quantify every donor of a cohort
+against it (the sbatch script's `INDEX`):
+
+```bash
+salmon index -t gencode.v50.transcripts.chr.fa -i salmon_index_v50chr -k 31 -p 12
+```
+
+Without `--gencode`, `quant.sf` names keep the whole GENCODE header, which is what lets
+`extract` check them for same-name copies; with it, names are cut to the transcript id and
+`extract` reads them just the same.
+
 The package checks for such an index where it can. `identifiability
 --background-fasta` warns when the FASTA holds a transcript with the configured gene's
 name under another gene id, and so does `extract` when `quant.sf` names carry the whole
@@ -295,11 +314,16 @@ drops all but the first of identical sequences when it builds an index (the inde
 Differential transcript usage (DTU) is a mature area, and for genome-wide
 discovery you should use the established tools — this one does **not** replace them:
 
-- **DEXSeq, DRIMSeq, satuRn** — genome-wide DTU testing. They assume you already
+- **DEXSeq** — differential *exon* usage, from exon-bin counts, with its own counting
+  scripts.
+- **DRIMSeq, satuRn** — genome-wide transcript-level DTU testing. They assume you already
   have a transcript-by-sample count matrix and defined transcript groups.
-- **IsoformSwitchAnalyzeR** — rich functional annotation of isoform switches
-  (domains, NMD, coding potential) in R/Bioconductor; grouping and import are
-  configured by the analyst.
+- **IsoformSwitchAnalyzeR** — genome-wide isoform-switch testing with rich functional
+  annotation of the switches (domains, NMD, coding potential) in R/Bioconductor; grouping
+  and import are configured by the analyst.
+- **Kmerator** ([doi:10.1093/nargab/lqab058](https://doi.org/10.1093/nargab/lqab058)) —
+  builds gene- and transcript-specific k-mer signatures against a reference, the
+  uniqueness question this package's first layer asks, without a verdict on a contrast.
 - **fishpond / swish** — rigorously propagates quantification uncertainty using
   Salmon inferential replicates.
 
@@ -337,8 +361,8 @@ in one direction only, and is silent on the second.
 
 `isoform-dominance` targets that question: *for one gene, which functional isoform class
 predominates?* The contribution is evaluating the **estimability of the user's own class
-contrast, before quantification** — a check none of the tools above performs, and none takes a
-bare gene symbol as input. Around that sit two conveniences rather than claims: `annotate` goes
+contrast, before quantification** — a check none of the tools above performs. Taking a gene
+name as input is not new (Kmerator does), and is not the claim. Around that sit two conveniences rather than claims: `annotate` goes
 from a gene symbol to a reviewed isoform-group proposal (presented for review, not treated as
 final), and the whole thing is a scriptable Python CLI with a download-free self-test, meant to
 ship alongside a manuscript.
@@ -349,12 +373,18 @@ truncations and the FLT1 soluble-decoy receptor), and an [API reference](docs/ap
 
 ## Statistical notes
 
-- Donor-level two-sided **exact Wilcoxon signed-rank** (`scipy.stats.wilcoxon`), per cohort.
+- Donor-level two-sided **Wilcoxon signed-rank** (`scipy.stats.wilcoxon`, `method="auto"`), per
+  cohort. It is exact only with neither a zero difference nor a tie among the absolute
+  differences (and n ≤ 50); otherwise SciPy runs an exhaustive permutation test at n ≤ 13 and
+  the normal approximation above that. Which one produced each p-value is reported
+  (`wilcoxon_method`) — at n = 14 with one tie the approximation can sit well above the
+  exact figure.
 - **Small-n floor is computed, not just documented.** `signed_rank_resolution_floor(n)`
   returns `2^(1-n)` — under the sign-permutation null exactly one assignment puts every
   difference on the same side. At n = 5 that is 0.0625, so no arrangement of five donors
-  reaches 0.05. Ties among the absolute differences do **not** raise it. Every test is
-  reported with its floor and flagged when the floor exceeds 0.05.
+  reaches 0.05. Ties among the absolute differences do **not** raise it. Each per-cohort test
+  and the donor-pooled one is reported with its floor and flagged when the floor exceeds
+  0.05; the Stouffer and stratified rows of the stats table carry none yet.
 - **Cohorts are combined three ways**, all reported: donor-**pooled** (what v2.1 reported alone),
   a weighted **Stouffer** combination of the per-cohort *exact* tests, and a weighted
   **stratified signed-rank** combination. The latter borrows van Elteren's design-free
@@ -384,12 +414,13 @@ aggregation in a leptin-receptor/LRP1 choroid-plexus manuscript (under revision)
 archived at [10.5281/zenodo.20738150](https://doi.org/10.5281/zenodo.20738150). Releasing a new
 version does **not** alter that record: Zenodo mints a separate version DOI and leaves the old
 one in place, and the `v2.1.1` tag and release are left untouched by policy — not because they
-are technically immutable, but because a published paper cites them. The `extract`
+are technically immutable, but because the manuscript under revision cites them. The `extract`
 aggregation behaviour those results rest on — transcript-to-group mapping and per-donor TPM
-summation — is unchanged through 2.4.0, and the bundled self-test still reproduces the same
+summation — is unchanged through 2.4.1, and the bundled self-test still reproduces the same
 reference numbers. 2.4.0 adds two refusals to `extract` where 2.3.0 wrote a table: a cohort
 quantified against more than one Salmon index, and a config none of whose transcripts is in
-any donor's `quant.sf`.
+any donor's `quant.sf`. 2.4.1 counts an index with Salmon's decoys and one without as two,
+and writes the rows in 2.1.1's order again (2.4.0 sorted them by donor name).
 
 Cite this repository (see `CITATION.cff`, DOI 10.5281/zenodo.20672051) and Salmon:
 Patro, R. et al. *Nat. Methods* **14**, 417–419 (2017). https://doi.org/10.1038/nmeth.4197

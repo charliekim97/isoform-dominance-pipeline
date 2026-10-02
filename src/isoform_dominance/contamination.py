@@ -7,6 +7,8 @@ import csv, os, math
 import numpy as np
 from scipy.stats import spearmanr
 
+from .io import InputError
+
 PALETTE = ["#4C72B0", "#DD8452", "#55A868", "#C44E52"]
 
 
@@ -22,7 +24,7 @@ def load_markers(path, tissue, contaminant):
         have_t = [g for g in tissue if g in cols]
         have_c = [g for g in contaminant if g in cols]
         if not have_t or not have_c:
-            raise ValueError(
+            raise InputError(
                 "%s is missing marker columns: present tissue=%s, contaminant=%s "
                 "(need at least one column from each panel)." % (path, have_t, have_c))
         for r in reader:
@@ -37,21 +39,37 @@ def load_target(path, target_group):
     with open(path) as f:
         reader = csv.DictReader(f)
         if col not in (reader.fieldnames or []):
-            raise ValueError("%s has no column %r (target_group=%s)." % (path, col, target_group))
+            raise InputError("%s has no column %r (target_group=%s)." % (path, col, target_group))
         return {r["donor"]: float(r[col]) for r in reader}
+
+
+_QC_SHAPE = ("add it with a 'target_group' and 'marker_panels' ({'tissue': [...], "
+             "'contaminant': [...]}) to run qc; `annotate` does not write one")
+
+
+def qc_section(config):
+    """``(target_group, tissue markers, contaminant markers)`` from the config's
+    ``contamination_qc``; :class:`InputError` saying what is missing."""
+    qc = config.get("contamination_qc")
+    if not isinstance(qc, dict):
+        raise InputError("config has no 'contamination_qc' section; " + _QC_SHAPE)
+    if not isinstance(qc.get("target_group"), str):
+        raise InputError("config's contamination_qc has no 'target_group'; " + _QC_SHAPE)
+    panels = qc.get("marker_panels")
+    if not isinstance(panels, dict):
+        raise InputError("config's contamination_qc has no 'marker_panels'; " + _QC_SHAPE)
+    for key in ("tissue", "contaminant"):
+        if not (isinstance(panels.get(key), list) and panels[key]):
+            raise InputError("config's contamination_qc.marker_panels has no '%s' list of "
+                             "marker genes; %s" % (key, _QC_SHAPE))
+    return qc["target_group"], panels["tissue"], panels["contaminant"]
 
 
 def run(config, markers, targets, out):
     """markers/targets: {cohort: path}. Writes <out>.{png,pdf,svg}+_scores.csv. Returns rows."""
     import matplotlib as mpl; mpl.use("Agg")
     import matplotlib.pyplot as plt
-    if "contamination_qc" not in config:
-        raise ValueError(
-            "config has no 'contamination_qc' section; add it with a 'target_group' "
-            "and 'marker_panels' ({'tissue': [...], 'contaminant': [...]}) to run qc.")
-    qc = config["contamination_qc"]
-    tg = qc["target_group"]
-    tissue = qc["marker_panels"]["tissue"]; contam = qc["marker_panels"]["contaminant"]
+    tg, tissue, contam = qc_section(config)
     names = list(markers)
     mpl.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["Arial", "DejaVu Sans"],
                          "font.size": 9, "pdf.fonttype": 42, "svg.fonttype": "none"})
@@ -63,7 +81,7 @@ def run(config, markers, targets, out):
         t = load_target(targets[name], tg)
         donors = [d for d in m if d in t]
         if len(donors) < 3:
-            raise ValueError(
+            raise InputError(
                 "cohort %s: only %d donor(s) overlap between markers and target tables; "
                 "need >= 3 for a Spearman correlation." % (name, len(donors)))
         cs = np.array([m[d][1] for d in donors])

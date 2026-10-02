@@ -5,8 +5,8 @@ thin wrapper over a small public Python API. Each module is importable from the
 `isoform_dominance` package and can be used directly in scripts or notebooks.
 
 ```python
-from isoform_dominance import (annotate, identifiability, extract, index_scope, stats,
-                               contamination, io)
+from isoform_dominance import (annotate, contamination, ensembl, extract, identifiability,
+                               index_scope, io, stats)
 ```
 
 The config object passed throughout is a plain dict (loaded from JSON via
@@ -45,6 +45,8 @@ The clusters the alternative class was chosen over on the tie-breaks rather than
 
 **`annotate.choose_gene(gene, species, looked_up, **net) -> (record, choice)`**
 The gene a symbol means. `looked_up` is the expanded record `lookup/symbol` gave; `xrefs/symbol` lists the other genes of the name and one `lookup/id` keeps those whose display name is the symbol and that lie on 1–22, X, Y or MT (`xrefs/symbol/SMN1` also lists SMN2 and alternate-locus copies). One such gene: `(it, None)`, with no `lookup/id` when xrefs lists no other gene. A chrX/chrY pair — a pseudoautosomal gene — gives the chrX gene, the copy a GENCODE-built Salmon index keeps (`annotate.GENE_RULE`). Any other two or more raise `annotate.AmbiguousGene` (a `ValueError`) listing each gene's id, location and transcript count. `choice` is `{rule, chosen, candidates, reason}` when there was a choice to make, or when xrefs listed no gene and the others were not looked for.
+
+`annotate.NotOnReference` (a `ValueError`) is raised for a human symbol none of whose genes lies on a reference chromosome (1-22, X, Y, MT); the message lists each gene with its region, and `gene_id=` takes one of them anyway. The region and chrX/chrY rules apply to `homo_sapiens` only (`annotate.REFERENCE_SPECIES`); for any other species two genes of the name are `AmbiguousGene`.
 
 **`annotate.build_config(gene, species="homo_sapiens", release=None, gene_id=None) -> dict`**
 Convenience wrapper returning a complete, reviewable config dict (including `gene_id`, the Ensembl gene the groups were proposed from, `ensembl_release`, `_proposed` notes, `_clusters`, and `_proposal`: `alternative_rule` and `tied_with`, the clusters from `alternative_ties`, and `_gene_choice` from `choose_gene` when there was a choice). `gene_id` names the gene outright, by `lookup/id`, and must be a gene of the symbol; it is `--gene-id`. `release` is the Ensembl release to propose the groups from; None is the one `rest.ensembl.org` currently serves, and an earlier one is read from Ensembl's REST archive (see `ensembl.resolve_server`). `ensembl_release` records the release the server reported.
@@ -119,8 +121,10 @@ waits for its `Retry-After` instead) and `timeout=` (default `ensembl.DEFAULT_TI
 same `retries`/`retry_wait`; on the CLI they are `--retries` and `--retry-wait`. `server=`
 selects the host, as returned by `ensembl.resolve_server`.
 
-**`identifiability.kmers(seq, k) -> set`**
-Return the set of length-`k` substrings (k-mers) of `seq` (upper-cased).
+**`identifiability.kmers(seq, k, canonical=True) -> set`**
+Return the set of length-`k` substrings (k-mers) of `seq` (upper-cased), each folded to the
+smaller of itself and its reverse complement unless `canonical=False` (the strand-aware
+behaviour up to v2.1.1).
 
 **`identifiability.analyze(config, k=31, sequences=None, *, canonical=True, window=None, background_sequences=None, background_fasta=None, background_gene_transcripts="auto", species=None, read_length=100, frag_mean=200.0, frag_sd=60.0, paired=True, depth=30_000_000, mean_efflen=1500.0, tpm=10.0, n_donors=1, conditioning_tau=10.0, min_informative_reads=50.0, min_log2fc=None, ensembl_release=None, inputs_out=None, keep_duplicates=False, retries=5, retry_wait=1.0) -> dict`**
 The three layers the `identifiability` command reports -- sequence uniqueness, the read
@@ -161,9 +165,10 @@ None>, "fetched_release": <the release sequence was fetched from in this run, or
 `analyze(..., ensembl_release=N)` fetches from release `N` instead of the current one; it
 resolves nothing and makes no request when every sequence was supplied.
 
-A group with zero unique k-mers is not separable by short reads and is flagged
-(`distinguishable: False`). Neither this flag nor `verdict` sets the CLI's exit status:
-see the exit codes in the README.
+A group with zero unique k-mers is flagged `distinguishable: False`, which does **not**
+mean it cannot be measured: a class with no k-mer of its own is still estimable when a class
+it is nested in has unique sequence, so read `verdict` and the estimability fields. Neither
+the flag nor `verdict` sets the CLI's exit status: see the exit codes in the README.
 
 ---
 
@@ -214,18 +219,25 @@ None, as a possible copy.
 **`index_scope.copy_warning(copies, source) -> str | None`** — the warning the CLI prints;
 for copies without a region it says they may be same-name genes on a reference chromosome.
 
+**`index_scope.without_identical(copies, identical) -> list`** — `copies` less the records `identical` (record id -> configured transcript, the report's `identical_to_configured`) names; the CLI warns only about what is left, since Salmon's default index keeps one of identical sequences.
+
 ---
 
 ## `stats`
 
 **`stats.paired_stat(A, B) -> (n, n_A>B, P, median_fold)`**
-Donor-level two-sided exact Wilcoxon signed-rank test (`scipy.stats.wilcoxon`) plus
+Donor-level two-sided Wilcoxon signed-rank test (`scipy.stats.wilcoxon`, `method="auto"`:
+exact only without zero differences or ties, otherwise a permutation test at n ≤ 13 and the
+normal approximation above; `paired_stat_detail` names which in `wilcoxon_method`) plus
 median fold-change. Handles edge cases: empty input → NaNs; all-tied pairs → P is
 NaN (test undefined); non-finite ratios are dropped from the fold-change.
 
 **`stats.run(config, condition, cohorts, out) -> dict`**
 `cohorts` is `{name: perdonor.csv}`. Writes `<out>.{png,pdf,svg}` and
-`<out>_stats.csv`, and returns `{"per_cohort": [...], "combined": (n, n_gt, P, fold)}`.
+`<out>_stats.csv`, and returns `{"per_cohort": [...], "combined": (n, n_gt, P, fold),
+"detail": [per-cohort paired_stat_detail], "pooled": paired_stat_detail of all donors,
+"combination": {"stouffer", "stratified_signed_rank", "pooled"}, "headline_combination":
+"stouffer"}`.
 
 ---
 
@@ -243,9 +255,11 @@ TPM, per cohort (a control for whether a dominance signal is a cell-type artefac
 
 **`io.load_config(path, need_groups=True) -> dict`** — load a config JSON; `io.InputError` (a `ValueError`) if it is not JSON, not an object, or, unless `need_groups` is false, has no `groups` object.
 **`io.load_json(path, what) -> object`** — parse a JSON file; `io.InputError` naming `what` and the file if it is not JSON.
-**`io.save_inputs(path, captured, config, release, version, background_fasta=None) -> dict`** — write the sequence an `identifiability` run used (`captured`, from `analyze(..., inputs_out=...)`) with the release it came from, as `"format": "isoform-dominance/inputs/1"` (`io.INPUTS_FORMAT`). `analysis` records the `k`, `window`, `canonical` and `keep_duplicates` of the run, none of which the config holds. A `background_fasta` is recorded by path, size and SHA-256, not copied. `gene_id` is the gene the background was fetched as, or the config's `gene_id`. Backs `--save-inputs`.
+**`io.save_inputs(path, captured, config, release, version, background_fasta=None) -> dict`** — write the sequence an `identifiability` run used (`captured`, from `analyze(..., inputs_out=...)`) with the release it came from, as `"format": "isoform-dominance/inputs/1"` (`io.INPUTS_FORMAT`). `analysis` records the `k`, `window`, `canonical` and `gene_background` of the run, and `keep_duplicates` when it had a background FASTA, none of which the config holds; `sequence_sources` gives each id's `"supplied"` or `"fetched:<release>"`, and `release` is recorded only when every sequence was fetched from it. A `background_fasta` is recorded by path, size and SHA-256, not copied. `gene_id` is the gene the background was fetched as, or the config's `gene_id`. Backs `--save-inputs`.
 **`io.load_inputs(path) -> dict`** — read a file `save_inputs` wrote; `io.InputError` if it is not one, and for every field the caller goes on to read: `sequences` and `background_sequences` as objects of id to sequence, an `ensembl_release` that is a number or null, an `analysis` with integer `k` and `window` and boolean `canonical` (and `keep_duplicates`, when present), a `gene_id` that is a string or null, and a `background_fasta` that is null or has a path and a sha256. Which transcripts are a class and which are background is decided by the config the rerun is given, not by the saved grouping. Backs `--inputs`.
 **`io.file_sha256(path) -> str`** — hex SHA-256 of a file's bytes.
+**`io.open_text(path)`** — open a text file for reading, gunzipping it when its first two bytes are the gzip magic (`1f 8b`), whatever its name.
+**`io.shared_transcripts(groups) -> dict`** — `{transcript: [group, ...]}` for each transcript more than one group names; `identifiability` refuses such a config and `extract` warns.
 **`io.transcript_to_group(groups) -> dict`** — invert `{group: [ENST...]}` to `{ENST(no version): group}`.
 **`io.load_sample_map(path) -> dict`** — read a `donor,condition[,SRR]` CSV to `{donor: condition}`.
 **`io.primary_pair(config) -> (gA, gB)`** — the two groups named in `primary_comparison`.

@@ -157,7 +157,7 @@ is a question the experimenter can answer and a conditioning number is not. The 
 are conventions, stated so they can be checked rather than tuned:
 `min_informative_reads` is the count below which a Poisson weight is not trusted, and
 `LINEARISATION_LIMIT` is the relative standard error past which the delta-method figure is
-reported as not resolvable at any effect size rather than as a value.
+flagged and counts as not resolved at any effect size.
 The figure reported with each verdict is the smallest |log2 fold change| a 95% interval excludes
 zero for, from the delta-method standard error of the log class ratio under the
 Poisson-weighted GLS covariance of the whole system; the user states the effect size they

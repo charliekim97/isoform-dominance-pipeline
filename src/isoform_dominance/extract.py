@@ -1,16 +1,23 @@
 """Extract per-donor isoform-group TPM from Salmon quant.sf (stdlib only)."""
 import csv, os, glob, json
 from . import index_scope
-from .io import transcript_to_group, load_sample_map
+from .io import InputError, load_sample_map, shared_transcripts, transcript_to_group
+
+
+class NoQuantFiles(InputError, FileNotFoundError):
+    """No ``<quantdir>/<donor>/quant.sf``: an :class:`InputError` for the CLI's one line, and
+    a ``FileNotFoundError`` for callers that caught that before 2.4.1."""
 
 
 def quant_paths(quantdir):
-    """``{donor: quantdir/<donor>/quant.sf}``; FileNotFoundError if there is none."""
+    """``{donor: quantdir/<donor>/quant.sf}``; :class:`NoQuantFiles` if there is none."""
     quants = sorted(glob.glob(os.path.join(quantdir, "*", "quant.sf")))
     if not quants:
-        raise FileNotFoundError(
-            "No Salmon output found at %s. Expected one quant.sf per donor at "
-            "%s/<donor>/quant.sf." % (os.path.join(quantdir, "*", "quant.sf"), quantdir))
+        raise NoQuantFiles(
+            "No Salmon output found at %s%s. Expected one quant.sf per donor at "
+            "%s/<donor>/quant.sf." % (os.path.join(quantdir, "*", "quant.sf"),
+                                      "" if os.path.isdir(quantdir)
+                                      else " (%s is not a directory)" % quantdir, quantdir))
     return {os.path.basename(os.path.dirname(q)): q for q in quants}
 
 
@@ -24,7 +31,10 @@ def extract(config, quantdir, samplemap, cohort, found_out=None):
     tx2grp = transcript_to_group(groups)
     cond = load_sample_map(samplemap)
     rows = []
-    for donor, q in sorted(quant_paths(quantdir).items()):
+    # in path order, as 2.3.0 globbed them, not donor order: the two part where one donor
+    # name is a prefix of another (D1-2/quant.sf < D1/quant.sf, D1 < D1-2), and `stats`
+    # bootstraps by row, so the order is part of the answer
+    for donor, q in sorted(quant_paths(quantdir).items(), key=lambda kv: kv[1]):
         gt = dict.fromkeys(groups, 0.0)
         seen = set()
         with open(q) as fh:
@@ -148,7 +158,8 @@ def run(config, quantdir, samplemap, cohort, out, allow_mixed_index=False, notes
     """Write the per-donor CSV ``out`` and, beside it, ``<out>.index.json``: which Salmon
     index quantified each donor, from its ``aux_info/meta_info.json``.
 
-    Donors quantified against different indexes (different ``index_seq_hash``) are
+    Donors quantified against different indexes (different ``index_seq_hash``, or different
+    ``index_decoy_seq_hash`` where both record one) are
     refused with :class:`index_scope.MixedIndexError` before anything is written, unless
     ``allow_mixed_index``, and a cohort in which no donor's quant.sf has any transcript the
     config names with :class:`index_scope.NoConfiguredTranscripts`.  Warnings -- a combined
@@ -158,6 +169,11 @@ def run(config, quantdir, samplemap, cohort, out, allow_mixed_index=False, notes
     """
     notes = [] if notes is None else notes
     quants = quant_paths(quantdir)
+    for tid, gs in sorted(shared_transcripts(config["groups"]).items()):
+        # summed as 2.1.1 summed it, into the group listed last; only the warning is new
+        notes.append("WARNING: transcript %s is in groups %s; its TPM is added to \"%s\" "
+                     "only, the group the config lists last; `identifiability` refuses such "
+                     "a config" % (tid, ", ".join('"%s"' % g for g in gs), gs[-1]))
     prov = index_scope.index_provenance(quants)
     if prov["mixed"]:
         which = index_scope.mixed_index_message(prov)
@@ -169,6 +185,11 @@ def run(config, quantdir, samplemap, cohort, out, allow_mixed_index=False, notes
         notes.append("WARNING: the donors of cohort %s were quantified against different "
                      "Salmon indexes (%s); combined because of --allow-mixed-index"
                      % (cohort, which))
+    for donor, why in prov["unreadable_meta_info"].items():
+        notes.append("WARNING: could not read Salmon's meta_info.json for donor %s (%s), so "
+                     "it is treated as missing: which index quantified this donor is not "
+                     "recorded, and a mix of indexes involving it cannot be detected"
+                     % (donor, why))
     if prov["missing_meta_info"]:
         notes.append("WARNING: no aux_info/meta_info.json for donor(s) %s, so which index "
                      "quantified them is not recorded, and a mix of indexes cannot be "

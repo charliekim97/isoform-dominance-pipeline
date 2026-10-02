@@ -13,7 +13,8 @@ with ``--min-log2fc``:
   0   no ``--min-log2fc`` given, or both class totals and the
       contrast resolve it at the stated design
   3   ``--min-log2fc`` given and not resolved -- including when an
-      estimand has no finite figure at all
+      estimand has no finite figure at all, or one past the
+      linearisation limit (``beyond_linear``)
   2   precondition failure: the gene total itself is not estimable,
       because a transcript shorter than ``--window`` has no windows
       and an all-zero column. Not a verdict; checked first
@@ -21,6 +22,7 @@ with ``--min-log2fc``:
 ===== ==============================================================
 """
 import argparse
+import http.client
 import json
 import math
 import os
@@ -82,24 +84,26 @@ def _release_fail(e):
     return 1
 
 
+def _bad_url(e):
+    print("error: the Ensembl request could not be sent (%s); check the gene symbol, "
+          "species and ids for characters a URL cannot carry" % e, file=sys.stderr)
+    return 1
+
+
 def cmd_annotate(a):
     try:
         cfg = annotate.run(a.gene, a.out, species=a.species, release=a.ensembl_release,
                            gene_id=a.gene_id, retries=a.retries, retry_wait=a.retry_wait)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
+    except http.client.InvalidURL as e:
+        return _bad_url(e)
     except ensembl.TRANSIENT as e:
         return _net_fail(e)
     except ValueError as e:
         print("error: %s" % e, file=sys.stderr)
         return 1
-    if a.json:
-        _emit(cfg)
-        return EXIT_OK
-    print("Proposed groups for %s -> %s" % (a.gene, a.out))
-    for g, ids in cfg["groups"].items():
-        print("  %s: %d transcripts" % (g, len(ids)))
-    print("  primary_comparison:", cfg["primary_comparison"])
+    # the notes go to stderr with --json too: they are what the JSON alone does not say
     choice = cfg.get("_gene_choice") or {}
     if choice.get("reason") and choice["reason"] != "given by --gene-id":
         print("  NOTE: %s" % choice["reason"], file=sys.stderr)
@@ -119,6 +123,13 @@ def cmd_annotate(a):
                                                     t["terminal_acceptor"]) for t in ties),
                  proposal.get("alternative_rule") or annotate.ALTERNATIVE_RULE),
               file=sys.stderr)
+    if a.json:
+        _emit(cfg)
+        return EXIT_OK
+    print("Proposed groups for %s -> %s" % (a.gene, a.out))
+    for g, ids in cfg["groups"].items():
+        print("  %s: %d transcripts" % (g, len(ids)))
+    print("  primary_comparison:", cfg["primary_comparison"])
     print("  REVIEW _proposed/_clusters and rename groups before use.")
     return EXIT_OK
 
@@ -153,19 +164,21 @@ def _fasta_note(saved, given):
 
 
 def _analysis_note(saved, k, window, canonical, keep_duplicates=None):
-    """What to say when a rerun from saved inputs is at another k, window or convention,
+    """What to say when a rerun from saved inputs is at another window or convention,
     or -- ``keep_duplicates`` is None when this run has no background FASTA -- counts
     records identical to a configured transcript differently.
 
     None of these is recorded in the config, so nothing else can tell a rerun that it is
-    not repeating the run that was saved.
+    not repeating the run that was saved.  ``k`` only sets the window when ``window`` is
+    None: every layer is built from the window, so a k that differs with the same window
+    is the same system.
     """
-    mine = {"k": k, "window": window if window is not None else k, "canonical": canonical}
+    mine = {"window": window if window is not None else k, "canonical": canonical}
     notes = []
     if {key: saved[key] for key in mine} != mine:
         def _say(d):
-            return ("k=%d, window=%d, %s k-mers"
-                    % (d["k"], d["window"], "canonical" if d["canonical"] else "strand-aware"))
+            return ("window=%d, %s k-mers"
+                    % (d["window"], "canonical" if d["canonical"] else "strand-aware"))
         notes.append("the inputs were saved at %s; this run is at %s, which is a different "
                      "compatibility system on the same sequence, so the verdict can differ."
                      % (_say(saved), _say(mine)))
@@ -202,7 +215,9 @@ def _load_saved_inputs(a, cfg):
     if saved_id and cfg_id and saved_id.split(".")[0] != cfg_id.split(".")[0]:
         raise ValueError("the saved inputs are for gene %s and the config for gene %s"
                          % (saved_id, cfg_id))
-    pool = dict(inputs["background_sequences"], **inputs["sequences"])
+    # ids compared without their version, as --sequences ids are
+    pool = {t.split(".")[0]: s for t, s in inputs["background_sequences"].items()}
+    pool.update((t.split(".")[0], s) for t, s in inputs["sequences"].items())
     needed = {t.split(".")[0] for ids in cfg["groups"].values() for t in ids}
     absent = sorted(needed - set(pool))
     if absent:
@@ -210,9 +225,13 @@ def _load_saved_inputs(a, cfg):
         # depend on it, and a silent fetch would mix releases
         raise ValueError("the saved inputs have no sequence for %s, which the config names; "
                          "they were saved for another grouping" % ", ".join(absent))
+    rest = {t: s for t, s in pool.items() if t not in needed}
+    # a file written before 2.4.1 does not say; a background it saved is the evidence
+    had = inputs["analysis"].get("gene_background", bool(inputs["background_sequences"]))
     return dict(inputs,
                 sequences={t: pool[t] for t in sorted(needed)},
-                background_sequences={t: s for t, s in pool.items() if t not in needed})
+                background_sequences=rest, gene_background=had,
+                left_out=[] if had else sorted(rest))
 
 
 def cmd_identifiability(a):
@@ -226,6 +245,9 @@ def cmd_identifiability(a):
         if not os.path.isdir(where):
             raise io.InputError("--save-inputs %s: directory %s does not exist"
                                 % (a.save_inputs, where))
+        if not os.access(where, os.W_OK):
+            raise io.InputError("--save-inputs %s: directory %s is not writable"
+                                % (a.save_inputs, where))
     inputs = None
     try:
         if a.inputs:
@@ -235,7 +257,9 @@ def cmd_identifiability(a):
         return 1
     if inputs is not None:
         seqs = inputs["sequences"]
-        background = None if a.no_gene_background else inputs["background_sequences"]
+        # no gene background for a rerun of a run that had none, as for a live one
+        background = (None if a.no_gene_background or not inputs["gene_background"]
+                      else inputs["background_sequences"])
     else:
         seqs = _load_sequences(a.sequences, "--sequences") if a.sequences else None
         background = (_load_sequences(a.background_sequences, "--background-sequences")
@@ -258,6 +282,8 @@ def cmd_identifiability(a):
             retries=a.retries, retry_wait=a.retry_wait)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
+    except http.client.InvalidURL as e:
+        return _bad_url(e)
     except ensembl.TRANSIENT as e:
         return _net_fail(e)
     except ValueError as e:
@@ -265,29 +291,61 @@ def cmd_identifiability(a):
         return 1
     if inputs is not None:
         res["annotation"]["inputs_release"] = inputs["ensembl_release"]
+        if background is not None and res["background"]["gene_id"] is None:
+            # the gene the live run fetched its background as, which the file recorded
+            res["background"]["gene_id"] = inputs.get("gene_id")
+        if inputs["left_out"]:
+            print("  NOTE: the saved run had no gene background, so %s, saved but not named "
+                  "by this config, %s left out rather than used as background, as a live "
+                  "run with --no-gene-background leaves %s out."
+                  % (", ".join(inputs["left_out"]),
+                     "is" if len(inputs["left_out"]) == 1 else "are",
+                     "it" if len(inputs["left_out"]) == 1 else "them"), file=sys.stderr)
         for note in (_analysis_note(inputs["analysis"], a.k, a.window, not a.strand_aware,
                                     a.keep_duplicates if a.background_fasta else None),
                      _fasta_note(inputs.get("background_fasta"), a.background_fasta)):
             if note:
                 print("  NOTE: " + note, file=sys.stderr)
+    code = _report(a, res)
+    # after the report, so a save that fails cannot take the answer with it
     if captured is not None:
-        release = res["annotation"]["fetched_release"]
-        if release is None and inputs is not None:
-            release = inputs["ensembl_release"]
+        sources = captured["sequence_sources"]
+        if inputs is not None:
+            # a rerun supplies its saved sequence: where it came from is the file's record
+            was = inputs.get("sequence_sources") or {}
+            default = ("fetched:%s" % inputs["ensembl_release"]
+                       if inputs["ensembl_release"] is not None else "supplied")
+            sources = captured["sequence_sources"] = {t: was.get(t, default) for t in sources}
+        kinds = sorted(set(sources.values()))
+        # one release only when every sequence came from it
+        release = (int(kinds[0].split(":", 1)[1])
+                   if len(kinds) == 1 and kinds[0].startswith("fetched:") else None)
         if captured.get("gene_id") is None and inputs is not None:
             captured["gene_id"] = inputs.get("gene_id")
         io.save_inputs(a.save_inputs, captured, cfg, release, __version__,
                        background_fasta=a.background_fasta)
+        n_sup = sum(v == "supplied" for v in sources.values())
         print("  saved this run's sequence (%s) to %s; repeat it with no network: "
               "--inputs %s" % ("Ensembl release %s" % release if release is not None
-                               else "release unknown: supplied offline",
+                               else "release unknown: supplied offline" if n_sup == len(sources)
+                               else "%d supplied, %d fetched from %s; no one release recorded"
+                               % (n_sup, len(sources) - n_sup, ", ".join(
+                                   "release " + k.split(":", 1)[1] for k in kinds
+                                   if k != "supplied")),
                                a.save_inputs, a.save_inputs), file=sys.stderr)
+    return code
 
-    warning = index_scope.copy_warning(res["background"]["same_name_copies"],
-                                       "--background-fasta %s" % a.background_fasta)
+
+def _report(a, res):
+    """Print the report of one run -- JSON on stdout with ``--json`` -- and return the exit
+    status."""
+    same = res["background"].get("identical_to_configured") or {}
+    # a copy with a configured transcript's sequence is the NOTE below, not this warning
+    warning = index_scope.copy_warning(
+        index_scope.without_identical(res["background"]["same_name_copies"], same),
+        "--background-fasta %s" % a.background_fasta)
     if warning:
         print("  " + warning, file=sys.stderr)
-    same = res["background"].get("identical_to_configured") or {}
     if same:
         shown = ", ".join("%s (= %s)" % (r, same[r]) for r in sorted(same)[:5])
         if len(same) > 5:
@@ -302,8 +360,12 @@ def cmd_identifiability(a):
         return _identifiability_exit(res)
 
     bg = res["background"]
-    print("Identifiability (window=%d, k=%d, %s k-mers)"
-          % (res["window"], res["k"], "canonical" if res["canonical"] else "strand-aware"))
+    # every layer is built from the window; k only sets it when --window is not given
+    print("Identifiability (window=%d, %s k-mers)"
+          % (res["window"], "canonical" if res["canonical"] else "strand-aware"))
+    if a.window is not None and a.k != a.window:
+        print("  NOTE: --k %d is not used: --window %d sets the length of every window, "
+              "k-mer and unique stretch here." % (a.k, a.window), file=sys.stderr)
     rel = res["annotation"]["ensembl_release"]
     got = res["annotation"]["fetched_release"]
     saved = res["annotation"].get("inputs_release")
@@ -318,9 +380,11 @@ def cmd_identifiability(a):
     if a.inputs and rel is not None and saved != rel:
         print("  NOTE: the config was annotated against Ensembl release %s, and the saved "
               "inputs %s." % (rel, "are from release %s" % saved if saved is not None
-                              else "record no release: their sequence was supplied offline"),
+                              else "record no one release: some or all of their sequence "
+                              "was supplied, not fetched"),
               file=sys.stderr)
-    if rel is None:
+    if rel is None and not (a.inputs and saved is not None):
+        # a rerun from inputs that record their release repeats that release's answer
         print("  NOTE: the config records no Ensembl release, and the verdict is a function "
               "of the release its transcripts came from, so this verdict is not "
               "reproducible. Re-run `annotate` to record one, or set \"ensembl_release\" in "
@@ -363,8 +427,9 @@ def cmd_identifiability(a):
 
     incoherent = []
     for g, r in res["groups"].items():
-        print("  [%s] %s: %s; %d unique k-mers, %d bp in %d block(s), "
-              "~%.0f informative reads, conditioning %.2f"
+        # unique k-mers are the class's; the stretch and the reads its best transcript's
+        print("  [%s] %s: %s; class %d unique k-mers; best transcript %d bp in %d block(s), "
+              "~%.0f informative reads; conditioning %.2f"
               % (r["verdict"], g, _fc(r), r["n_unique_kmers"], r["unique_length"],
                  r["n_blocks"], r["expected_informative_reads"],
                  r["conditioning_factor"]))
@@ -437,10 +502,15 @@ def cmd_identifiability(a):
                  "it has" if len(gt["transcripts_without_windows"]) == 1 else "they have"),
               file=sys.stderr)
     if d["min_log2fc"] is not None:
-        print("  EFFECT SIZE: |log2FC| %.3f %s at this design"
+        past = [g for g in res["primary_comparison"][:2] if res["groups"][g]["beyond_linear"]]
+        past += ["the contrast"] if c["beyond_linear"] else []
+        print("  EFFECT SIZE: |log2FC| %.3f %s at this design%s"
               % (d["min_log2fc"],
                  "resolved by both class totals and the contrast"
-                 if res["effect_resolvable"] else "NOT resolved"))
+                 if res["effect_resolvable"] else "NOT resolved",
+                 "" if res["effect_resolvable"] or not past else
+                 " (%s beyond the linearisation limit, relative SE > %.1f)"
+                 % (", ".join(past), identifiability.LINEARISATION_LIMIT)))
     print("  VERDICT:", res["verdict"])
     for reason in res["reasons"]:
         print("    - %s" % reason, file=sys.stderr)
@@ -567,7 +637,9 @@ def build_parser():
         "identifiability", aliases=["identify"],
         help="are the classes measurable by short reads, and how precisely?")))
     s.add_argument("--config", required=True)
-    s.add_argument("--k", type=int, default=identifiability.DEFAULT_K)
+    s.add_argument("--k", type=int, default=identifiability.DEFAULT_K,
+                   help="k-mer length; sets the default window when --window is not given, "
+                        "and nothing else (default: %(default)s)")
     s.add_argument("--window", type=int, default=None,
                    help="window length for the compatibility system (default: k). A "
                         "different window gives a different system, not a uniformly "
@@ -602,7 +674,8 @@ def build_parser():
     s.add_argument("--depth", type=float, default=identifiability.DEFAULT_DEPTH,
                    help="mapped fragments per library")
     s.add_argument("--tpm", type=float, default=identifiability.DEFAULT_TPM,
-                   help="class abundance to condition the read model on")
+                   help="TPM given to every transcript of the gene, background included, "
+                        "for the read model and the Poisson weights (default: %(default)s)")
     s.add_argument("--donors", type=int, default=1)
     s.add_argument("--min-log2fc", type=float, default=None,
                    help="smallest |log2 fold change| you need both class totals and the "
