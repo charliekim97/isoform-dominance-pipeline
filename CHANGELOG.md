@@ -22,6 +22,40 @@ versioning.
 - The author's ORCID in `CITATION.cff`, from which Zenodo takes the creators of each
   release's record.
 
+### Fixed
+- **`identifiability --min-log2fc`: an estimand past the linearisation limit counts as not
+  resolved** (exit 3), as `paper.md` and the 2.3.0 entry below already said it did. Through
+  2.4.0 `effect_resolvable` compared the figure with `--min-log2fc` and ignored
+  `beyond_linear`, so a contrast at relative SE 0.32, whose first-order figure reads 0.91,
+  "resolved" an effect of 1.5 and exited 0. The `EFFECT SIZE` line names the estimands past
+  the limit, and the verdict gives it as a reason. The figures and the `beyond_linear` flags
+  in `--json` are unchanged.
+- **`extract` writes its rows in `quant.sf` path order again**, as 2.3.0 did. 2.4.0 sorted
+  by donor name; the two orders part when one donor name is a prefix of another and the
+  next character sorts before `/` (`D1`, `D1-2`, `D1.5`), and `stats` bootstraps the fold
+  interval by row, so the interval moved (one audited case: [0.365, 1.619] against
+  [0.355, 2.204] at seed 7). The transcript-to-group mapping and the TPM sums are
+  untouched; a test compares the output byte for byte with a CSV the 2.3.0 code wrote.
+- **`extract` counts Salmon's decoys in the mixed-index check.** Two indexes of one
+  transcriptome, with and without decoys, share `index_seq_hash` (checked with Salmon
+  1.10.3: the decoys go into `index_decoy_seq_hash`, the SHA-256 of nothing when there are
+  none). A cohort quantified against both was taken as one index; it is now refused like
+  any other mix, and `--allow-mixed-index` combines it with a warning. A donor whose Salmon
+  recorded no decoy hash is compared on `index_seq_hash` alone. The sidecar keeps
+  `index_decoy_seq_hash` and `num_decoy_targets`, and lists `index_decoy_seq_hashes`.
+- **A `meta_info.json` that cannot be read is a warning, not a refusal or a traceback.**
+  Empty or cut short it was a one-line refusal the documentation does not list; a JSON list,
+  bytes that are not UTF-8 or a hash that is not a string gave a traceback. The donor is now
+  treated as having no `meta_info.json`, with one warning naming the file, and recorded
+  under `unreadable_meta_info` in the sidecar. `extract` refuses only the two things the
+  2.4.0 entry lists.
+- **One line and exit 1, not a traceback:** an empty or absent `--quantdir`
+  (`extract.NoQuantFiles`, still a `FileNotFoundError`), a sample map with no `donor`
+  column, a per-donor table without a class's `_TPM` column, and a `stats --condition` no
+  donor has.
+- **`extract` names a transcript that two groups share.** Its TPM still goes, as in 2.1.1,
+  to the group the config lists last; the warning names the transcript and the groups.
+
 ## [2.4.0] - 2026-09-30
 
 ### Added

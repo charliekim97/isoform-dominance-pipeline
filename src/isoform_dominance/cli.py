@@ -13,7 +13,8 @@ with ``--min-log2fc``:
   0   no ``--min-log2fc`` given, or both class totals and the
       contrast resolve it at the stated design
   3   ``--min-log2fc`` given and not resolved -- including when an
-      estimand has no finite figure at all
+      estimand has no finite figure at all, or one past the
+      linearisation limit (``beyond_linear``)
   2   precondition failure: the gene total itself is not estimable,
       because a transcript shorter than ``--window`` has no windows
       and an all-zero column. Not a verdict; checked first
@@ -437,10 +438,15 @@ def cmd_identifiability(a):
                  "it has" if len(gt["transcripts_without_windows"]) == 1 else "they have"),
               file=sys.stderr)
     if d["min_log2fc"] is not None:
-        print("  EFFECT SIZE: |log2FC| %.3f %s at this design"
+        past = [g for g in res["primary_comparison"][:2] if res["groups"][g]["beyond_linear"]]
+        past += ["the contrast"] if c["beyond_linear"] else []
+        print("  EFFECT SIZE: |log2FC| %.3f %s at this design%s"
               % (d["min_log2fc"],
                  "resolved by both class totals and the contrast"
-                 if res["effect_resolvable"] else "NOT resolved"))
+                 if res["effect_resolvable"] else "NOT resolved",
+                 "" if res["effect_resolvable"] or not past else
+                 " (%s beyond the linearisation limit, relative SE > %.1f)"
+                 % (", ".join(past), identifiability.LINEARISATION_LIMIT)))
     print("  VERDICT:", res["verdict"])
     for reason in res["reasons"]:
         print("    - %s" % reason, file=sys.stderr)

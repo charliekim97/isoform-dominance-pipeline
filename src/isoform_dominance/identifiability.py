@@ -766,6 +766,13 @@ def _verdict(entry, tau, min_reads=None, min_log2fc=None):
         elif got > min_log2fc:
             reasons.append("smallest resolvable |log2FC| %.2f exceeds the requested %.2f"
                            % (got, min_log2fc))
+        elif entry.get("beyond_linear"):
+            # the first-order figure is not a value past the limit, so it cannot resolve
+            # anything however small it reads
+            reasons.append("%s is beyond the linearisation limit (relative SE %.2f > %.1f), "
+                           "so not resolvable at this design"
+                           % (entry.get("label", "estimand"), entry["gls_relative_se"],
+                              LINEARISATION_LIMIT))
     elif entry.get("conditioning_factor", 0.0) > tau:
         reasons.append("conditioning factor %.1f exceeds tau=%.1f"
                        % (entry["conditioning_factor"], tau))
@@ -864,7 +871,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         (estimability of the sum of every column, with the transcripts that have no
         window at all),
         ``effect_resolvable`` (whether both class totals and the contrast resolve
-        ``min_log2fc``; None without it), and -- for callers written against v2.1 --
+        ``min_log2fc``, none of them ``beyond_linear``; None without it), and -- for callers written against v2.1 --
         ``primary_distinguishable``.  Note that ``verdict`` supersedes
         ``primary_distinguishable``: a class with no unique k-mer of its own is still
         estimable when a class it is nested inside has unique sequence, and a class
@@ -1092,10 +1099,12 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     # The exit status of the CLI hangs on this, not on ``verdict``: the structural
     # verdict moves with the annotation release, while a resolvable effect size is the
     # question the experimenter actually asked.  None when no effect size was asked for.
+    # An estimand past the linearisation limit is not resolved whatever its figure reads.
     primary = [report[g] for g in pc] + [contrast]
     effect_resolvable = None if min_log2fc is None else all(
         math.isfinite(e["min_resolvable_log2fc"])
-        and e["min_resolvable_log2fc"] <= min_log2fc for e in primary)
+        and e["min_resolvable_log2fc"] <= min_log2fc
+        and not e["beyond_linear"] for e in primary)
 
     verdicts = [report[g]["verdict"] for g in pc] + [contrast["verdict"]]
     all_reasons = sorted({r for g in pc for r in report[g]["reasons"]}
