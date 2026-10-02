@@ -249,3 +249,23 @@ def test_the_competitors_are_the_records_that_share_a_window_and_the_ones_asked_
     # a second A with other sequence that shares a window is kept under its own name
     path.write_text(">A\n%s\n>A\n%s\n" % (near, conf[100:200]))
     assert list(I.scan_fasta_competitors(path, query, 31)) == ["A", "A#2"]
+
+
+def test_an_empty_query_reads_nothing_as_2_4_1_did(tmp_path):
+    path = tmp_path / "bg.fa"
+    path.write_text(">A\nACGTACGTAC\n")
+    want_out, got_out = {}, {}
+    assert I.scan_background_fasta(path, set(), 5, identical={"ACGTACGTAC": "T"},
+                                   identical_out=got_out) == set() \
+        == _scan_241(path, set(), 5, identical={"ACGTACGTAC": "T"}, identical_out=want_out)
+    assert got_out == want_out == {}
+    assert I.scan_fasta_competitors(path, set(), 5, keep_ids=["A"]) == {}
+
+
+def test_a_third_record_with_one_id_and_other_sequence_is_numbered_on(tmp_path):
+    r = random.Random(4)
+    conf = _rand(r, 300)
+    query = I.kmers(conf, 31)
+    path = tmp_path / "bg.fa"
+    path.write_text(">A\n%s\n>A\n%s\n>A\n%s\n" % (conf[:100], conf[100:200], conf[200:]))
+    assert list(I.scan_fasta_competitors(path, query, 31)) == ["A", "A#2", "A#3"]

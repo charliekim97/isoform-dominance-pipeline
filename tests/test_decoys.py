@@ -177,3 +177,18 @@ def test_saved_inputs_record_the_decoys_and_a_rerun_without_them_says_so(
     cli.main(argv + ["--decoys", other])
     assert "--decoys %s is not the file the inputs were saved with" % other \
         in capsys.readouterr().err
+
+
+def test_a_decoys_file_that_names_nothing_is_refused(tmp_path, capsys):
+    rc = cli.main(["identifiability", "--config", str(_write_cfg(tmp_path)),
+                   "--sequences", str(tmp_path / "seqs.json"), "--background-fasta",
+                   str(tmp_path / "bg.fa"), "--decoys", _decoys(tmp_path)])
+    assert rc == 1 and "names no record" in capsys.readouterr().err
+
+
+def _write_cfg(tmp_path):
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps(CFG))
+    (tmp_path / "seqs.json").write_text(json.dumps(SEQS))
+    (tmp_path / "bg.fa").write_text(TRANSCRIPTS)
+    return cfg
