@@ -42,6 +42,20 @@ versioning.
   `identifiability.estimability(..., svd=)`; `io.read_decoys`.
 
 ### Changed
+- **The default background stays the gene's own transcripts, and the NOTE gives the figure
+  that decided it** (issue #3). The rule was posted on #3 before the code: had the
+  whole-index background changed the exit status at `--min-log2fc 0.5` for 10 or more of the
+  100 two-class configs `annotate` proposes at Ensembl 116 (the 109-gene release-series
+  panel), `--background-fasta` would have become required. Against GENCODE 50's
+  reference-chromosome transcripts (644,292 records) it changed none: every config exits as
+  it does without the FASTA. It changed one verdict (SDHA, `weakly_identifiable` to
+  `not_identifiable`) and moved the primary contrast's min |log2FC| by a median 0.003
+  (q75 0.015; ACO2 the most, 3.8 to 8.6). At the default `--max-window-records 20` a run
+  added a median 56.5 records as columns (at most 928) and dropped a median 0.4% of the
+  configured transcripts' windows (at most 21%, SDHA; 69 configs lost any), and took a median
+  46 s (at most 72 s, four runs at once on four cores) and at most 1.3 GB. Two runs of the
+  whole-index arm gave the same answer for every config. In 2.4.1, where the FASTA's records
+  were no columns, the same comparison changed no exit status and no verdict.
 - **The `--background-fasta` scan is 28 to 45 times faster, with the same answer.**
   Each query window is looked up in both orientations, so a record's windows are no longer
   folded, and a window is read only where a 16-nt seed of it, at a stride of `k - 15`,
@@ -124,6 +138,19 @@ The first two entries change an answer.
 - **A compatibility system too large for memory is one line and exit 1**, naming the
   allocation and the likely cause (a genome record, or a repeat many records share), not a
   `MemoryError` traceback.
+
+### Corrections to earlier entries
+The entries below are left as written; these sentences in them are wrong.
+- 2.4.0, the release series: "8 of 36 verdicts move between GENCODE 44 and release 116 …
+  two, CASP9 and NR1H3, gain it. Four of the eight change whether the contrast is estimable
+  at all (NR1H3, NTRK3, SMN2, TSC1)". NR1H3's `not_identifiable` at releases 110 to 115 came
+  from a gene-background transcript with a configured transcript's sequence, which 2.5.0 no
+  longer counts (issue #15); NR1H3 is `weakly_identifiable` at every release. So 7 of 36
+  move, six losing resolution and one, CASP9, gaining it, and three of the seven change
+  estimability. Of the 62 comparisons fixed at release 116 and posable at all six releases,
+  11 change verdict between 110 and 116, not 12.
+- 2.4.1, README: "at `--min-log2fc 1.0` it changes across the six for 10 of the 62". After
+  2.4.1's own fix of `beyond_linear` it was 12; with 2.5.0 it is 13 (NR1H3 too).
 
 ## [2.4.1] - 2026-10-02
 

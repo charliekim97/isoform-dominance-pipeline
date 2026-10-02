@@ -153,7 +153,15 @@ annotation release the transcripts came from, so it is reported in the output an
 > blind to pseudogenes, paralogues and homologous loci elsewhere in the index. A
 > quantifier resolves fragments against the *whole* index, so any claim about what it
 > can separate should be judged against the transcript FASTA the index was built from
-> (without the genome decoys). A record that holds a configured transcript's window found
+> (without the genome decoys). Whether the default should require it was settled by a rule
+> posted before the code ([#3](https://github.com/charliekim97/isoform-dominance-pipeline/issues/3)):
+> on the 100 two-class configs `annotate` proposes at Ensembl 116 for a 109-gene panel, the
+> whole-index background, GENCODE 50's 644,292 reference-chromosome transcripts, changed the
+> exit status at `--min-log2fc 0.5` of none (10 would have made the flag required), the
+> verdict of one (SDHA, to `not_identifiable`), and the contrast's min |log2FC| by a median
+> 0.003 (ACO2 the most, 3.8 to 8.6). A close paralogue can still decide the answer: SMN1's
+> classes are `weakly_identifiable` against the gene's own transcripts and
+> `not_identifiable` once SMN2's are columns. A record that holds a configured transcript's window found
 > in at most M records of the FASTA (`--max-window-records M`, default 20) becomes a column
 > of the compatibility system, as a transcript of the gene background is, so a competitor
 > found once gives one answer whether it comes from the FASTA or from
@@ -172,8 +180,10 @@ annotation release the transcripts came from, so it is reported in the output an
 > diverged copy of a repeat in the configured transcripts, 35 and 25 records joined, 840
 > and 2,501 were left out, 270 and 272 of 7,262 configured windows were dropped, and each
 > run took under 2 s and 90 MB, where one column per record that shares a window had taken
-> 6.7 s and 0.5 GB, and 56 s and 2.7 GB. A NOTE says how many configured windows were
-> dropped. Salmon's default index keeps one of identical sequences, so a background
+> 6.7 s and 0.5 GB, and 56 s and 2.7 GB. On the panel above a run added a median 56.5 records
+> (at most 928), dropped a median 0.4% of the configured transcripts' windows (at most 21%,
+> SDHA), and took a median 46 s and at most 1.3 GB, four runs at once on four cores. A NOTE
+> says how many configured windows were dropped. Salmon's default index keeps one of identical sequences, so a background
 > sequence — the gene's, `--background-sequences` or a FASTA record — with a configured
 > transcript's sequence is not counted, and one with the
 > sequence of another background sequence is counted once: in GENCODE v50's
@@ -196,9 +206,9 @@ annotation release the transcripts came from, so it is reported in the output an
 > pipeline: protein-coding ones at 115, protein-coding and nonsense-mediated-decay ones at
 > 116. Of the 100 comparisons `annotate` proposes at release 116, 38 could not be posed
 > at 110 at all, because one of the two classes had no protein-coding transcript there; of the
-> 62 that could, 12 change verdict between the two. NTRK3's is `identifiable` at every one of
+> 62 that could, 11 change verdict between the two. NTRK3's is `identifiable` at every one of
 > those releases before 116 and `not_identifiable` at 116. The exit status moves too: at
-> `--min-log2fc 1.0` it changes across the six for 10 of the 62. `annotate` records
+> `--min-log2fc 1.0` it changes across the six for 13 of the 62. `annotate` records
 > the release it fetched from as `ensembl_release`, and `identifiability` prints it in its
 > header and carries it in the `--json` report, beside `fetched_release`, the release any
 > sequence was fetched from in that run. Both commands take `--ensembl-release N`: without
