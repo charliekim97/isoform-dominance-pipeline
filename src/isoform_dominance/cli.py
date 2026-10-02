@@ -109,9 +109,11 @@ def _bad_url(e):
 
 
 def cmd_annotate(a):
+    notes = []
     try:
         cfg = annotate.run(a.gene, a.out, species=a.species, release=a.ensembl_release,
-                           gene_id=a.gene_id, retries=a.retries, retry_wait=a.retry_wait)
+                           gene_id=a.gene_id, gtf=a.gtf, notes=notes, retries=a.retries,
+                           retry_wait=a.retry_wait)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
     except http.client.InvalidURL as e:
@@ -122,6 +124,8 @@ def cmd_annotate(a):
         print("error: %s" % e, file=sys.stderr)
         return 1
     # the notes go to stderr with --json too: they are what the JSON alone does not say
+    for note in notes:
+        print("  NOTE: %s" % note, file=sys.stderr)
     choice = cfg.get("_gene_choice") or {}
     if choice.get("reason") and choice["reason"] != "given by --gene-id":
         print("  NOTE: %s" % choice["reason"], file=sys.stderr)
@@ -767,6 +771,11 @@ def build_parser():
     s.add_argument("--gene-id", metavar="ENSG",
                    help="the Ensembl gene to propose groups from, when the symbol names more "
                         "than one on the reference chromosomes")
+    s.add_argument("--gtf", metavar="FILE",
+                   help="propose the groups from this GTF, with no network: GENCODE's "
+                        "comprehensive gencode.vN.annotation.gtf.gz (not basic) of the release "
+                        "the index was built from. The release recorded is the one its header "
+                        "names; --ensembl-release, when given, must be the same")
     s.add_argument("--out", required=True); s.set_defaults(func=cmd_annotate)
 
     s = _net(_json(sub.add_parser(

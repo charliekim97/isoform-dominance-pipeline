@@ -1,4 +1,4 @@
-"""Gene symbol -> proposed isoform groups via the Ensembl REST API.
+"""Gene symbol -> proposed isoform groups via the Ensembl REST API, or a local GTF.
 
 The hard part of isoform analysis is deciding which transcripts form a functional
 group. This module clusters a gene's protein-coding transcripts by their 3' terminal-exon
@@ -16,7 +16,7 @@ genes of that name.  :func:`build_config` looks for the others and chooses by
 import json
 import urllib.parse
 
-from . import ensembl
+from . import annotation_files, ensembl
 from .ensembl import DEFAULT_RETRIES, DEFAULT_RETRY_WAIT
 from .index_scope import REFERENCE_REGIONS
 
@@ -140,9 +140,9 @@ def choose_gene(gene, species, looked_up, **net):
     other species every gene of the name is a candidate: zebrafish chromosomes run to 25,
     and fly and worm ones have other names altogether.
 
-    Returns ``(expanded gene record, choice or None)``.
+    Returns ``(expanded gene record, choice or None)``; the choice is
+    :func:`choose_among`'s.
     """
-    human = species == REFERENCE_SPECIES
     xr = _get("/xrefs/symbol/%s/%s?object_type=gene" % (_q(species), _q(gene)), **net)
     if not isinstance(xr, list):
         raise ValueError("Ensembl xrefs/symbol for %s answered a %s, not a list"
@@ -165,14 +165,31 @@ def choose_gene(gene, species, looked_up, **net):
     name = (looked_up.get("display_name")
             if (looked_up.get("display_name") or "").upper() == gene.upper() else gene)
     records = [looked_up] + [got[i] for i in others if isinstance(got, dict) and got.get(i)]
-    named = sorted((g for g in records if g.get("display_name") == name),
-                   key=lambda g: g["id"])
+    g, choice = choose_among(gene, [g for g in records if g.get("display_name") == name],
+                             species)
+    return (g or looked_up), choice
+
+
+def choose_among(gene, named, species=REFERENCE_SPECIES):
+    """The gene ``gene`` means among ``named``, the expanded records of every gene whose
+    display name is the symbol, and the record of the choice when there was one to make.
+
+    The rule both sources follow, REST (:func:`choose_gene`) and a GTF
+    (:func:`build_config_from_gtf`).  For human, only a gene on a reference chromosome is a
+    candidate, and when every one of ``named`` is known to lie off them
+    :class:`NotOnReference` is raised.  With one candidate nothing is recorded; of a human
+    chrX/chrY pair the chrX gene is taken (:data:`GENE_RULE`); any other set of two or more
+    raises :class:`AmbiguousGene` listing them.  Returns ``(record or None, choice or
+    None)``, None when no candidate is left.
+    """
+    human = species == REFERENCE_SPECIES
+    named = sorted(named, key=lambda g: g["id"])
     genes = [g for g in named if g.get("seq_region_name") in REFERENCE_REGIONS] if human \
         else named
     if not genes and named and all(_off_reference(g, species) for g in named):
         raise _not_on_reference(gene, named)
     if len(genes) <= 1:
-        return (genes[0] if genes else looked_up), None
+        return (genes[0] if genes else None), None
     choice = {"rule": GENE_RULE, "candidates": [_where(g) for g in genes]}
     by_region = {g["seq_region_name"]: g for g in genes}
     if human and len(genes) == 2 and set(by_region) == {"X", "Y"}:
@@ -193,7 +210,14 @@ def choose_gene(gene, species, looked_up, **net):
 
 
 def cluster_by_terminal_exon(info):
-    """Group transcripts by 3' terminal-exon acceptor coordinate."""
+    """Group transcripts by 3' terminal-exon acceptor coordinate.
+
+    Clusters are listed by content -- most transcripts first, then the longer
+    representative protein, then the lower acceptor coordinate -- and so are a config's
+    ``_clusters`` and ``_proposal.tied_with``.  Through 2.5 clusters with as many
+    transcripts kept the order in which the source listed the transcripts, and REST at
+    release 116 and the GENCODE 50 GTF list them in different orders for 104 of 109 survey
+    genes."""
     clusters = {}
     for t in info["transcripts"]:
         clusters.setdefault(t["terminal_acceptor"], []).append(t)
@@ -203,7 +227,7 @@ def cluster_by_terminal_exon(info):
         out.append({"acceptor": acc, "rep_aa": lens[len(lens) // 2], "n": len(txs),
                     "canonical": any(x["is_canonical"] for x in txs),
                     "ids": sorted(x["id"] for x in txs)})
-    return sorted(out, key=lambda c: -c["n"])
+    return sorted(out, key=lambda c: (-c["n"], -c["rep_aa"], c["acceptor"]))
 
 
 #: How :func:`propose_groups` picks the alternative class; recorded in every config.
@@ -261,6 +285,21 @@ def propose_groups(info):
     return groups, primary, clusters
 
 
+def _given(g, gene, gene_id, species):
+    """The ``_gene_choice`` of a gene named by ``--gene-id``, which must be a gene of the
+    name ``gene``."""
+    if (g.get("display_name") or "").upper() != gene.upper():
+        raise ValueError("%s is %s, not %s" % (gene_id, g.get("display_name"), gene))
+    choice = {"rule": GENE_RULE, "chosen": g["id"], "candidates": [_where(g)],
+              "reason": "given by --gene-id"}
+    if _off_reference(g, species):
+        choice["reason"] += (
+            "; %s is on %s, not a reference chromosome: the recommended "
+            "reference-chromosome index does not contain this gene"
+            % (g["id"], g.get("seq_region_name")))
+    return choice
+
+
 def build_config(gene, species="homo_sapiens", release=None, gene_id=None, **retry):
     """Build a reviewable config.json dict for `gene` from Ensembl annotation.
 
@@ -280,20 +319,17 @@ def build_config(gene, species="homo_sapiens", release=None, gene_id=None, **ret
     net = dict(retry, server=server)
     if gene_id:
         g = _get("/lookup/id/%s?expand=1" % _q(gene_id.split(".")[0]), **net)
-        if (g.get("display_name") or "").upper() != gene.upper():
-            raise ValueError("%s is %s, not %s" % (gene_id, g.get("display_name"), gene))
-        choice = {"rule": GENE_RULE, "chosen": g["id"], "candidates": [_where(g)],
-                  "reason": "given by --gene-id"}
-        if _off_reference(g, species):
-            choice["reason"] += (
-                "; %s is on %s, not a reference chromosome: the recommended "
-                "reference-chromosome index does not contain this gene"
-                % (g["id"], g.get("seq_region_name")))
+        choice = _given(g, gene, gene_id, species)
     else:
         g = _get("/lookup/symbol/%s/%s?expand=1" % (_q(species), _q(gene)), **net)
         g, choice = choose_gene(gene, species, g, **net)
     info = transcripts_of(g, gene, species)
     release = ensembl.release_number(_get("/info/data", **net))
+    return _config(gene, species, release, info, choice)
+
+
+def _config(gene, species, release, info, choice):
+    """The config both sources write, from :func:`transcripts_of`'s ``info``."""
     groups, primary, clusters = propose_groups(info)
     ties = alternative_ties(clusters, groups, primary)
     cfg = {
@@ -318,8 +354,75 @@ def build_config(gene, species="homo_sapiens", release=None, gene_id=None, **ret
     return cfg
 
 
-def run(gene, out, species="homo_sapiens", release=None, gene_id=None, **retry):
-    cfg = build_config(gene, species, release=release, gene_id=gene_id, **retry)
+def build_config_from_gtf(gene, gtf, species="homo_sapiens", gene_id=None, release=None,
+                          notes=None, block=annotation_files.BLOCK):
+    """:func:`build_config` from a local GTF, with no network.
+
+    ``gtf`` is GENCODE's comprehensive ``gencode.vN.annotation.gtf.gz`` (or an Ensembl
+    GTF); :mod:`isoform_dominance.annotation_files` reads it as records shaped like REST's,
+    and the gene is chosen by the rule REST follows (:func:`choose_among`), so the config
+    is the one :func:`build_config` writes from the release the file is of, but for
+    ``annotation_source``: ``{kind: "gtf", file, bytes, sha256, provider,
+    gencode_release, ensembl_release, date, description, n_transcripts}``, the file the
+    groups were proposed from, what its header says, and how many transcripts of every
+    biotype the GTF gives the gene -- the gene background ``identifiability --gtf`` uses.
+
+    ``ensembl_release`` is the one the header names (``##description: ... version 50
+    (Ensembl 116)``); ``release``, when given, must be the same.  A header that names none
+    -- an Ensembl GTF, or a GENCODE release whose header has not been seen -- is accepted,
+    and ``release`` is recorded as the file's.  What a REST run cannot see is appended to
+    ``notes``: a header with no release, and a symbol found only ignoring case.
+    """
+    af = annotation_files
+    notes = [] if notes is None else notes
+    hdr = af.header(gtf)
+    if hdr["ensembl_release"] is None:
+        notes.append("%s names no Ensembl release in its header; %s" % (
+            gtf, "the release is recorded as %d, from --ensembl-release" % release
+            if release is not None else "no release is recorded. Pass --ensembl-release N "
+            "to record the one the file is of"))
+    elif release is not None and int(release) != hdr["ensembl_release"]:
+        raise ValueError("%s is Ensembl release %d (\"%s\"); --ensembl-release %d contradicts "
+                         "it" % (gtf, hdr["ensembl_release"], hdr["description"], release))
+    if gene_id:
+        records = [g for g in af.scan(gtf, gene_id=gene_id, block=block) if not g["_par_y"]]
+        if not records:
+            raise ValueError("%s has no gene %s" % (gtf, gene_id.split(".")[0]))
+        g = records[0]
+        choice = _given(g, gene, gene_id, species)
+    else:
+        found = {}
+        records = [g for g in af.scan(gtf, symbol=gene, info=found, block=block)
+                   if not g["_par_y"]]
+        named = [g for g in records if g["display_name"] == gene] \
+            or [g for g in records if (g["display_name"] or "").upper() == gene.upper()]
+        if not named:
+            raise ValueError("%s has no gene named %s (gene_name, compared ignoring case too); "
+                             "use the approved symbol, or --gene-id" % (gtf, gene))
+        if found.get("case_insensitive"):
+            notes.append("%s has no gene named exactly %s; %s was found ignoring case, as "
+                         "Ensembl's REST lookup finds it" % (
+                             gtf, gene, ", ".join(sorted({g["display_name"] for g in named}))))
+        # every GTF record names its region, so a gene is chosen or NotOnReference raised
+        g, choice = choose_among(gene, named, species)
+    info = transcripts_of(g, gene, species)
+    cfg = _config(gene, species, hdr["ensembl_release"] if hdr["ensembl_release"] is not None
+                  else release, info, choice)
+    cfg["annotation_source"] = dict(
+        kind="gtf", **af.provenance(gtf),
+        **{k: hdr[k] for k in ("provider", "gencode_release", "ensembl_release", "date",
+                               "description")},
+        n_transcripts=len(g["Transcript"]))
+    return cfg
+
+
+def run(gene, out, species="homo_sapiens", release=None, gene_id=None, gtf=None, notes=None,
+        **retry):
+    if gtf:
+        cfg = build_config_from_gtf(gene, gtf, species, gene_id=gene_id, release=release,
+                                    notes=notes)
+    else:
+        cfg = build_config(gene, species, release=release, gene_id=gene_id, **retry)
     with open(out, "w") as f:
         json.dump(cfg, f, indent=2)
     return cfg

@@ -20,6 +20,45 @@ versioning.
 
 ## [Unreleased]
 
+### Added
+- **`annotate --gtf FILE`** (`annotate.build_config_from_gtf`): the groups proposed from a
+  local GENCODE GTF -- the comprehensive `gencode.vN.annotation.gtf.gz`, or an Ensembl GTF --
+  with no network (issue #13). Ensembl 116 is the last release of the legacy platform, and
+  its REST API is kept for 116 only, so an index built from GENCODE 51 or later can be
+  matched only by its own files. The config is the one `annotate` writes from REST at the
+  release the file is of, `annotation_source` aside: on the 109-gene survey panel, configs
+  read from GENCODE 44, 48 and 50 matched REST's at releases 110, 114 and 116 for every gene
+  once the reader followed three rules (`scripts/parity/` repeats the comparison; the
+  tests hold it on a GENCODE 50 extract of seven genes). A protein's length is
+  `(sum of CDS nt + (3 - frame of the 5'-most CDS) % 3) // 3`, which pads a CDS that starts
+  mid-codon as Ensembl does (`sum // 3` is wrong for 7,412 transcripts of GENCODE 50); the
+  canonical transcript is the one tagged exactly `Ensembl_canonical` (not GENCODE 50's
+  `Ensembl_canonical_extended`, and not MANE); and clusters are listed by content (see
+  Changed). Ids lose their version, `chr` is dropped and `chrM` is `MT`, and the `_PAR_Y`
+  copies of GENCODE 25-43 are left out, as REST before 110 has no chrY gene for them. The
+  gene is chosen by the rule REST follows, now `annotate.choose_among`. The release recorded
+  is the one the header names (`##description: ... version 50 (Ensembl 116)`);
+  `--ensembl-release`, when given, must be the same, and a header that names none is
+  accepted with a NOTE. The config gains `annotation_source`: `kind`, `file`, `bytes`,
+  `sha256`, `provider`, `gencode_release`, `ensembl_release`, `date`, `description` and
+  `n_transcripts` (the gene's transcripts of every biotype). A GENCODE basic GTF -- every
+  line below a gene tagged `basic`, in a file of at least 100 transcripts -- is refused: it
+  leaves out transcripts the index holds, and at release 110 it changed 51 of 109
+  proposals. A symbol no gene has exactly is looked for again ignoring case, as REST does,
+  with a NOTE. The file is read in 16 MiB blocks and only a block that holds the gene is
+  split into lines.
+- `annotation_files`, which reads a GTF and a transcript FASTA with the standard library
+  alone; `io.is_gzip` and `io.open_bytes`.
+
+### Changed
+- **`_clusters` and `_proposal.tied_with` are listed by content in both modes**: most
+  transcripts first, then the longer representative protein, then the lower terminal-acceptor
+  coordinate. Through 2.5.0 clusters with as many transcripts kept the order in which REST
+  listed the transcripts, and REST at 116 and the GENCODE 50 GTF list them in different
+  orders for 104 of 109 survey genes. A REST config's `_clusters` can be listed in another
+  order than 2.5.0 wrote; its groups and `primary_comparison` are unchanged, as the
+  proposal already broke every tie by content.
+
 ## [2.5.0] - 2026-10-02
 
 ### Added
