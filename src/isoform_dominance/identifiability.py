@@ -281,24 +281,27 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
 
 def scan_fasta_competitors(path, query_kmers, k, canonical=True, exclude_ids=(),
                            identical=None, identical_out=None, *, keep_ids=(),
-                           seed=FASTA_SEED):
+                           keep_sequences=(), seed=FASTA_SEED):
     """The records of a background FASTA that share a window with ``query_kmers``.
 
     ``{record id: (sequence, windows)}`` in file order, where ``windows`` is the set of
     query windows the record holds; :func:`scan_background_fasta`'s answer is the union
     of them.  A record that shares no window is left out unless its id (without its
-    version) is in ``keep_ids``.  Only the records kept are held in memory.  A second
+    version) is in ``keep_ids`` or its sequence, upper-cased and stripped, is in
+    ``keep_sequences``.  Only the records kept are held in memory.  A second
     record with an id already seen is left out when its sequence is the first's, and kept
     as ``<id>#2`` (``#3``, ...) when it is not; a record whose header gives no id is
     ``record<N>``, the N-th record scanned.  The other arguments are
     :func:`scan_background_fasta`'s.
     """
     keep = {str(i).split(".")[0] for i in keep_ids}
+    keep_seqs = set(keep_sequences)
+    keep_lengths = {len(x) for x in keep_seqs}
     out, n = {}, 0
     for tid, seq, hits in _scan_records(path, query_kmers, k, canonical, exclude_ids,
                                         identical, identical_out, seed):
         n += 1
-        if not hits and tid not in keep:
+        if not (hits or tid in keep or (len(seq) in keep_lengths and seq in keep_seqs)):
             continue
         rid = tid if tid is not None else "record%d" % n
         if rid in out:
@@ -933,9 +936,12 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         transcript was estimable, and was not once a record held every window of the
         background transcript outside it.  A record with the id (without version) of a
         gene-background transcript is that transcript, once, with the FASTA's sequence
-        when the two differ.  A FASTA record with the sequence of a configured
-        transcript is not counted, because Salmon's index keeps one of identical sequences;
-        ``keep_duplicates=True`` counts it, for an index built with ``--keepDuplicates``.
+        when the two differ.  Salmon's default index keeps one of identical sequences, so
+        a background sequence -- of the gene, from ``background_sequences`` or a FASTA
+        record -- that is a configured transcript's is not counted, and one that is
+        another background sequence's is counted once, as the first of them (the gene
+        background in id order, then the FASTA in file order).  ``keep_duplicates=True``
+        counts every copy, for an index built with ``--keepDuplicates``.
         ``background_gene_transcripts`` defaults to ``"auto"``:
         the gene's remaining transcripts are fetched and used when the caller is
         already relying on Ensembl for sequence, and skipped when sequences were
@@ -995,7 +1001,11 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         ``fasta_competitors``, the FASTA records that are columns, each with the number of
         distinct windows it shares with the configured transcripts, and
         ``n_fasta_competitors``; ``sequence_from_fasta``, the gene-background transcripts
-        whose column is the FASTA's sequence), ``annotation`` (the config's
+        whose column is the FASTA's sequence; ``identical_to_configured`` and
+        ``identical_to_background``, the background sequences left out as copies, each
+        mapped to the transcript it equals, and ``identical_source``, where each came
+        from: ``"gene"``, ``"sequences"`` or ``"fasta"`` -- all three None with
+        ``keep_duplicates``), ``annotation`` (the config's
         ``ensembl_release``, and ``fetched_release``, the release any sequence was
         fetched from in this run -- None for both when absent), ``gene_total``
         (estimability of the sum of every column, with the transcripts that have no
@@ -1126,33 +1136,75 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     # as the gene's other transcripts are.  Through 2.4.1 it took windows from the
     # uniqueness layer only, so the same competitor gave a smaller rank and a smaller
     # min |log2FC| passed as a FASTA than passed with background_sequences.
-    background = dict(sorted(bg_seqs.items()))      # id -> the sequence of its column
-    fasta_competitors, sequence_from_fasta = {}, []
-    identical_to_configured = None
+    source = "gene" if fetch_gene_background else "sequences"
+    norm = {t: bg_seqs[t].strip().upper() for t in bg_seqs}
+    # id -> (sequence, where it came from), the gene background first, sorted
+    candidates = {t: (norm[t], source) for t in sorted(bg_seqs)}
+    configured = {}
+    for t in sorted(set(needed)):
+        configured.setdefault(seqs[t].strip().upper(), t)
+    fasta_competitors, sequence_from_fasta, only_identical = {}, [], {}
+    fasta_identical = {}
     if background_fasta:
         query = set().union(*group_windows.values()) if group_windows else set()
-        identical = None
-        if not keep_duplicates:
-            identical, identical_to_configured = {}, {}
-            for t in sorted(set(needed)):
-                identical.setdefault(seqs[t].strip().upper(), t)
         records = scan_fasta_competitors(
             background_fasta, query, window, canonical=canonical, exclude_ids=needed,
-            identical=identical, identical_out=identical_to_configured, keep_ids=bg_seqs)
+            identical=None if keep_duplicates else configured,
+            identical_out=fasta_identical, keep_ids=bg_seqs,
+            keep_sequences=() if keep_duplicates else set(norm.values()))
+        # a record the scan left out for a configured transcript's sequence
+        records.update((rid, (seqs[conf].strip().upper(), None))
+                       for rid, conf in fasta_identical.items() if rid in bg_seqs)
         for rid, (seq, hits) in records.items():
             if rid in bg_seqs:
                 # one transcript in both is one column; when the FASTA holds other sequence
                 # for it (another release), the column is the FASTA's, which the index has
-                if seq != bg_seqs[rid].strip().upper():
-                    background[rid] = seq
+                if seq != norm[rid]:
+                    candidates[rid] = (seq, "fasta")
                     sequence_from_fasta.append(rid)
             elif hits:
-                background[rid] = seq
+                candidates[rid] = (seq, "fasta")
                 fasta_competitors[rid] = len(hits)
+            else:
+                only_identical[rid] = seq      # kept to be told apart, not to compete
         copies = index_scope.fasta_copies(background_fasta, needed,
                                           [config.get("gene")] if config.get("gene") else ())
     else:
         copies = []
+
+    # Salmon's default index keeps one of identical sequences, so a background sequence
+    # that is a configured transcript's, or one already counted, competes with nothing:
+    # through 2.4.1 that held for a FASTA record identical to a configured transcript
+    # and for nothing else (issue #15).  --keep-duplicates counts every copy.
+    background = {}                             # id -> the sequence of its column
+    identical_to_configured = identical_to_background = identical_source = None
+    if keep_duplicates:
+        background = {t: seq for t, (seq, _) in candidates.items()}
+    else:
+        identical_to_configured, identical_to_background, identical_source = {}, {}, {}
+        for rid, conf in fasta_identical.items():
+            if rid not in bg_seqs:
+                identical_to_configured[rid], identical_source[rid] = conf, "fasta"
+        first = {}
+        for t, (seq, src) in candidates.items():
+            if seq in configured:
+                identical_to_configured[t], identical_source[t] = configured[seq], src
+            elif seq in first:
+                identical_to_background[t], identical_source[t] = first[seq], src
+            else:
+                first[seq] = t
+                background[t] = seq
+        for rid, seq in only_identical.items():
+            if seq in first:
+                identical_to_background[rid], identical_source[rid] = first[seq], "fasta"
+        identical_to_configured = dict(sorted(identical_to_configured.items()))
+        identical_to_background = dict(sorted(identical_to_background.items()))
+        identical_source = dict(sorted(identical_source.items()))
+    for t in list(background):
+        if candidates[t][1] != "fasta":
+            background[t] = bg_seqs[t]          # its sequence as given, as through 2.4.1
+    fasta_competitors = {t: n for t, n in fasta_competitors.items() if t in background}
+    gene_columns = sorted(t for t in background if t in bg_seqs)
     bg_tracks = {t: kmer_track(s, window, canonical) for t, s in background.items()}
     bg_windows = set().union(*(set(v) for v in bg_tracks.values())) if bg_tracks else set()
 
@@ -1299,14 +1351,16 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
                        "fetched_release": fetched_release},
         "background": {
             "gene_id": bg_gene_id,
-            "gene_transcripts": sorted(bg_seqs),
+            "gene_transcripts": gene_columns,
             "fasta": str(background_fasta) if background_fasta else None,
-            "n_background_transcripts": len(bg_seqs),
+            "n_background_transcripts": len(gene_columns),
             "fasta_competitors": dict(sorted(fasta_competitors.items())),
             "n_fasta_competitors": len(fasta_competitors),
             "sequence_from_fasta": sorted(sequence_from_fasta),
             "keep_duplicates": keep_duplicates,
             "identical_to_configured": identical_to_configured,
+            "identical_to_background": identical_to_background,
+            "identical_source": identical_source,
             "same_name_copies": copies,
         },
         "design": {"read_length": read_length, "paired": paired,

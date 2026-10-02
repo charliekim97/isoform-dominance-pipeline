@@ -165,8 +165,9 @@ def _fasta_note(saved, given):
 
 def _analysis_note(saved, k, window, canonical, keep_duplicates=None):
     """What to say when a rerun from saved inputs is at another window or convention,
-    or -- ``keep_duplicates`` is None when this run has no background FASTA -- counts
-    records identical to a configured transcript differently.
+    or -- ``keep_duplicates`` is None when this run has no background, gene or FASTA --
+    counts background sequences identical to a configured transcript or to one another
+    differently.
 
     None of these is recorded in the config, so nothing else can tell a rerun that it is
     not repeating the run that was saved.  ``k`` only sets the window when ``window`` is
@@ -185,8 +186,8 @@ def _analysis_note(saved, k, window, canonical, keep_duplicates=None):
     if (keep_duplicates is not None and "keep_duplicates" in saved
             and saved["keep_duplicates"] != keep_duplicates):
         notes.append("the inputs were saved %s --keep-duplicates and this run is %s it: a "
-                     "--background-fasta record with a configured transcript's sequence was "
-                     "%s then and is %s now, so the verdict can differ."
+                     "background sequence identical to a configured transcript or to another "
+                     "was %s then and is %s now, so the verdict can differ."
                      % (("with", "without", "counted", "not counted") if saved["keep_duplicates"]
                         else ("without", "with", "not counted", "counted")))
     return " ".join(notes) or None
@@ -291,6 +292,11 @@ def cmd_identifiability(a):
         return 1
     if inputs is not None:
         res["annotation"]["inputs_release"] = inputs["ensembl_release"]
+        # a saved sequence reaches the run as supplied; the file says which were fetched
+        was = inputs.get("sequence_sources") or {}
+        for t, src in (res["background"].get("identical_source") or {}).items():
+            if src == "sequences" and was.get(t, "").startswith("fetched:"):
+                res["background"]["identical_source"][t] = "gene"
         if background is not None and res["background"]["gene_id"] is None:
             # the gene the live run fetched its background as, which the file recorded
             res["background"]["gene_id"] = inputs.get("gene_id")
@@ -302,7 +308,8 @@ def cmd_identifiability(a):
                      "is" if len(inputs["left_out"]) == 1 else "are",
                      "it" if len(inputs["left_out"]) == 1 else "them"), file=sys.stderr)
         for note in (_analysis_note(inputs["analysis"], a.k, a.window, not a.strand_aware,
-                                    a.keep_duplicates if a.background_fasta else None),
+                                    a.keep_duplicates if a.background_fasta
+                                    or background is not None else None),
                      _fasta_note(inputs.get("background_fasta"), a.background_fasta)):
             if note:
                 print("  NOTE: " + note, file=sys.stderr)
@@ -345,21 +352,48 @@ def _listed(ids, n=5):
 def _report(a, res):
     """Print the report of one run -- JSON on stdout with ``--json`` -- and return the exit
     status."""
-    same = res["background"].get("identical_to_configured") or {}
-    # a copy with a configured transcript's sequence is the NOTE below, not this warning
+    bg = res["background"]
+    same = bg.get("identical_to_configured") or {}
+    twins = bg.get("identical_to_background") or {}
+    where = bg.get("identical_source") or {}
+    # a copy with the sequence of a configured transcript, or of a background one, takes no
+    # read the configured transcripts would get: the NOTEs below, not this warning
     warning = index_scope.copy_warning(
-        index_scope.without_identical(res["background"]["same_name_copies"], same),
+        index_scope.without_identical(bg["same_name_copies"], dict(same, **twins)),
         "--background-fasta %s" % a.background_fasta)
     if warning:
         print("  " + warning, file=sys.stderr)
-    if same:
-        shown = ", ".join("%s (= %s)" % (r, same[r]) for r in sorted(same)[:5])
-        if len(same) > 5:
-            shown += " and %d more" % (len(same) - 5)
+
+    def _pairs(d):
+        ids = sorted(d)
+        return ", ".join("%s (= %s)" % (r, d[r]) for r in ids[:5]) + (
+            " and %d more" % (len(ids) - 5) if len(ids) > 5 else "")
+    from_fasta = {r: t for r, t in same.items() if where.get(r, "fasta") == "fasta"}
+    from_gene = {r: t for r, t in same.items() if r not in from_fasta}
+    if from_fasta:
         print("  NOTE: --background-fasta: %d record(s) with the sequence of a configured "
               "transcript were not counted as competing sequence, because Salmon's default "
               "index keeps one of identical sequences: %s. For an index built with Salmon's "
-              "--keepDuplicates, pass --keep-duplicates." % (len(same), shown), file=sys.stderr)
+              "--keepDuplicates, pass --keep-duplicates."
+              % (len(from_fasta), _pairs(from_fasta)), file=sys.stderr)
+    if from_gene:
+        print("  NOTE: the gene background: %d transcript(s) with the sequence of a "
+              "configured transcript were not counted as competing sequence, because "
+              "Salmon's default index keeps one of identical sequences: %s. For an index "
+              "built with Salmon's --keepDuplicates, pass --keep-duplicates."
+              % (len(from_gene), _pairs(from_gene)), file=sys.stderr)
+    if same:
+        print("  NOTE: of identical sequences, Salmon's default index keeps the one that comes "
+              "first in the FASTA it is built from. Where that is the copy above rather than "
+              "the configured transcript, quant.sf names only the copy and `extract`, which "
+              "sums the configured ids, does not count those reads. Put the copy in the same "
+              "group as the transcript it equals, or build the index with Salmon's "
+              "--keepDuplicates and pass --keep-duplicates here.", file=sys.stderr)
+    if twins:
+        print("  NOTE: %d background sequence(s) identical to another were counted once, as "
+              "the first of them, because Salmon's default index keeps one of identical "
+              "sequences: %s. For an index built with Salmon's --keepDuplicates, pass "
+              "--keep-duplicates." % (len(twins), _pairs(twins)), file=sys.stderr)
     replaced = res["background"].get("sequence_from_fasta") or []
     if replaced:
         print("  NOTE: --background-fasta holds other sequence for %d transcript(s) of the "
@@ -371,7 +405,6 @@ def _report(a, res):
         _emit(res)
         return _identifiability_exit(res)
 
-    bg = res["background"]
     # every layer is built from the window; k only sets it when --window is not given
     print("Identifiability (window=%d, %s k-mers)"
           % (res["window"], "canonical" if res["canonical"] else "strand-aware"))

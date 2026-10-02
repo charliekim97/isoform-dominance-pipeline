@@ -123,8 +123,9 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
     ``analysis`` records the k, window and k-mer convention the run used.  None of the
     three is in the config, so without them nothing can tell a rerun from this file that
     it is building a different compatibility system on the same sequence.  It records
-    ``keep_duplicates`` too, when the run had a background FASTA: whether a record with a
-    configured transcript's sequence was counted; and ``gene_background``: whether the run judged
+    ``keep_duplicates`` too, when the run had a background, gene or FASTA: whether a
+    background sequence identical to a configured transcript or to another was counted;
+    and ``gene_background``: whether the run judged
     uniqueness against the gene's other transcripts.  A rerun under another grouping moves a
     transcript the config no longer names into that background only if there was one.
 
@@ -154,9 +155,9 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
            "sequence_sources": captured.get("sequence_sources"),
            "sequences": captured["sequences"],
            "background_sequences": captured["background_sequences"]}
-    if background_fasta:
-        # without a FASTA there was no record to count or not, and a rerun with one must
-        # not be told that the setting changed
+    if background_fasta or doc["analysis"]["gene_background"]:
+        # without a background there was no copy to count or not, and a rerun with one
+        # must not be told that the setting changed
         doc["analysis"]["keep_duplicates"] = bool(captured.get("keep_duplicates"))
     with open(path, "w") as f:
         json.dump(doc, f)
