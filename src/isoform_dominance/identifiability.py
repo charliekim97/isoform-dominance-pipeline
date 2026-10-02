@@ -847,8 +847,9 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     inputs_out
         A dict to fill with the sequence this run used: ``sequences`` (the configured
         transcripts), ``background_sequences`` (the gene background, after the configured
-        transcripts are removed from it), ``fetched_release``, and the ``k``, ``window``
-        and ``canonical`` the system was built at -- none of which is in the config.
+        transcripts are removed from it), ``gene_background`` (whether this run had one, fetched
+        or supplied), ``fetched_release``, and the ``k``, ``window`` and ``canonical`` the
+        system was built at -- none of which is in the config.
         Written to a file by :func:`isoform_dominance.io.save_inputs`, it repeats the run
         with no request at all, after the release's REST archive is gone.
     retries, retry_wait
@@ -949,6 +950,11 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     if inputs_out is not None:
         inputs_out.update(sequences={t: seqs[t] for t in needed},
                           background_sequences=dict(bg_seqs),
+                          # whether the rest of the gene was this run's background: a rerun
+                          # under another grouping must not move transcripts into a
+                          # background the run never had
+                          gene_background=bool(fetch_gene_background
+                                               or background_sequences is not None),
                           gene_id=bg_gene_id,
                           keep_duplicates=keep_duplicates,
                           fetched_release=fetched_release,

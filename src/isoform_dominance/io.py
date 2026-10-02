@@ -110,7 +110,9 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
     three is in the config, so without them nothing can tell a rerun from this file that
     it is building a different compatibility system on the same sequence.  It records
     ``keep_duplicates`` too: whether a background FASTA record with a configured
-    transcript's sequence was counted.
+    transcript's sequence was counted, and ``gene_background``: whether the run judged
+    uniqueness against the gene's other transcripts.  A rerun under another grouping moves a
+    transcript the config no longer names into that background only if there was one.
 
     ``gene_id`` is the Ensembl gene the gene background was fetched as -- or, when none was
     fetched, the config's ``gene_id`` -- so that a rerun can be refused a config of another
@@ -127,7 +129,9 @@ def save_inputs(path, captured, config, release, version, background_fasta=None)
            "ensembl_release": release,
            "config_ensembl_release": config.get("ensembl_release"),
            "analysis": dict({key: captured[key] for key in ("k", "window", "canonical")},
-                            keep_duplicates=bool(captured.get("keep_duplicates"))),
+                            keep_duplicates=bool(captured.get("keep_duplicates")),
+                            gene_background=bool(captured.get("gene_background",
+                                                              captured["background_sequences"]))),
            "background_fasta": fasta,
            "sequences": captured["sequences"],
            "background_sequences": captured["background_sequences"]}
@@ -170,10 +174,11 @@ def load_inputs(path):
             and all(isinstance(analysis.get(key), int) and not isinstance(analysis.get(key), bool)
                     for key in ("k", "window"))
             and isinstance(analysis.get("canonical"), bool)
-            and isinstance(analysis.get("keep_duplicates", False), bool)):
+            and isinstance(analysis.get("keep_duplicates", False), bool)
+            and isinstance(analysis.get("gene_background", False), bool)):
         raise InputError("saved inputs %s: analysis is %r, expected k and window as "
-                         "integers, and canonical and keep_duplicates as booleans"
-                         % (path, analysis))
+                         "integers, and canonical, keep_duplicates and gene_background as "
+                         "booleans" % (path, analysis))
     if not isinstance(doc.get("gene_id"), (str, type(None))):
         raise InputError("saved inputs %s: gene_id is %r, expected an Ensembl gene id or null"
                          % (path, doc["gene_id"]))

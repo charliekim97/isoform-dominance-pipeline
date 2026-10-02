@@ -300,7 +300,7 @@ def test_the_saved_file_records_the_analysis_parameters(ens, tmp_path, capsys):
     capsys.readouterr()
     doc = json.loads(open(saved).read())
     assert doc["analysis"] == {"k": 25, "window": 40, "canonical": False,
-                               "keep_duplicates": False}
+                               "keep_duplicates": False, "gene_background": True}
 
 
 def test_a_rerun_at_another_window_or_k_says_so(ens, tmp_path, capsys, monkeypatch):
@@ -355,3 +355,60 @@ def test_a_saved_inputs_file_with_a_bad_value_is_one_line(no_network, tmp_path, 
     err = capsys.readouterr().err
     assert field in err and str(saved) in err
     assert len(err.strip().splitlines()) == 1 and "Traceback" not in err
+
+
+# --------------------------------------------------------------------------- #
+# a run saved without a gene background stays without one when regrouped
+# --------------------------------------------------------------------------- #
+def _without_provenance(res):
+    """A report without the fields that say where its sequence came from."""
+    return {k: v for k, v in res.items() if k != "annotation"}
+
+
+def test_a_regrouped_rerun_of_a_run_without_gene_background_matches_the_live_one(
+        ens, tmp_path, capsys, monkeypatch):
+    saved = str(tmp_path / "run.inputs.json")
+    assert cli.main(["identify", "--config", _cfg(tmp_path, ensembl_release=OLD),
+                     "--ensembl-release", str(OLD), "--no-gene-background",
+                     "--save-inputs", saved, "--json"]) == 0
+    capsys.readouterr()
+    doc = json.loads(open(saved).read())
+    assert doc["analysis"]["gene_background"] is False
+    dropped = GROUP_A[-1]
+    cfg = _cfg(tmp_path, ensembl_release=OLD, groups={"A": GROUP_A[:-1], "B": GROUP_B})
+    live = _run(["identify", "--config", cfg, "--ensembl-release", str(OLD),
+                 "--no-gene-background"], capsys)
+    assert live["background"]["gene_transcripts"] == []
+
+    def refuse(req, *a, **k):
+        raise AssertionError("network request %s" % req.full_url)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    assert cli.main(["identify", "--config", cfg, "--inputs", saved, "--json"]) == 0
+    out = capsys.readouterr()
+    offline = json.loads(out.out)
+    assert dropped not in offline["background"]["gene_transcripts"]
+    assert _without_provenance(offline) == _without_provenance(live)
+    assert "NOTE" in out.err and dropped in out.err and "no gene background" in out.err
+
+
+def test_an_old_file_with_no_background_is_read_as_saved_without_one(no_network, tmp_path,
+                                                                     capsys):
+    # files written before 2.4.1 do not say; an empty background is the only evidence
+    saved = tmp_path / "s.json"
+    io.save_inputs(str(saved), _captured({t: SEQS[OLD][t] for t in GROUP_A + GROUP_B}),
+                   dict(CONFIG), OLD, "test")
+    doc = json.loads(saved.read_text())
+    doc["analysis"].pop("gene_background", None)
+    saved.write_text(json.dumps(doc))
+    cfg = _cfg(tmp_path, ensembl_release=OLD, groups={"A": GROUP_A[:-1], "B": GROUP_B})
+    res = _run(["identify", "--config", cfg, "--inputs", str(saved)], capsys)
+    assert res["background"]["gene_transcripts"] == []
+
+
+def test_resaving_a_rerun_without_gene_background_still_says_so(no_network, tmp_path, capsys):
+    saved, again = tmp_path / "s.json", tmp_path / "again.json"
+    io.save_inputs(str(saved), dict(_captured({t: SEQS[OLD][t] for t in GROUP_A + GROUP_B}),
+                                    gene_background=False), dict(CONFIG), OLD, "test")
+    assert cli.main(["identify", "--config", _cfg(tmp_path, ensembl_release=OLD),
+                     "--inputs", str(saved), "--save-inputs", str(again)]) == 0
+    assert json.loads(again.read_text())["analysis"]["gene_background"] is False

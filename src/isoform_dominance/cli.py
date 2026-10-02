@@ -211,9 +211,13 @@ def _load_saved_inputs(a, cfg):
         # depend on it, and a silent fetch would mix releases
         raise ValueError("the saved inputs have no sequence for %s, which the config names; "
                          "they were saved for another grouping" % ", ".join(absent))
+    rest = {t: s for t, s in pool.items() if t not in needed}
+    # a file written before 2.4.1 does not say; a background it saved is the evidence
+    had = inputs["analysis"].get("gene_background", bool(inputs["background_sequences"]))
     return dict(inputs,
                 sequences={t: pool[t] for t in sorted(needed)},
-                background_sequences={t: s for t, s in pool.items() if t not in needed})
+                background_sequences=rest, gene_background=had,
+                left_out=[] if had else sorted(rest))
 
 
 def cmd_identifiability(a):
@@ -236,7 +240,9 @@ def cmd_identifiability(a):
         return 1
     if inputs is not None:
         seqs = inputs["sequences"]
-        background = None if a.no_gene_background else inputs["background_sequences"]
+        # no gene background for a rerun of a run that had none, as for a live one
+        background = (None if a.no_gene_background or not inputs["gene_background"]
+                      else inputs["background_sequences"])
     else:
         seqs = _load_sequences(a.sequences, "--sequences") if a.sequences else None
         background = (_load_sequences(a.background_sequences, "--background-sequences")
@@ -266,6 +272,13 @@ def cmd_identifiability(a):
         return 1
     if inputs is not None:
         res["annotation"]["inputs_release"] = inputs["ensembl_release"]
+        if inputs["left_out"]:
+            print("  NOTE: the saved run had no gene background, so %s, saved but not named "
+                  "by this config, %s left out rather than used as background, as a live "
+                  "run with --no-gene-background leaves %s out."
+                  % (", ".join(inputs["left_out"]),
+                     "is" if len(inputs["left_out"]) == 1 else "are",
+                     "it" if len(inputs["left_out"]) == 1 else "them"), file=sys.stderr)
         for note in (_analysis_note(inputs["analysis"], a.k, a.window, not a.strand_aware,
                                     a.keep_duplicates if a.background_fasta else None),
                      _fasta_note(inputs.get("background_fasta"), a.background_fasta)):
