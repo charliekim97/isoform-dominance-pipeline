@@ -542,12 +542,13 @@ def _report(a, res):
     if not bg["fasta"]:
         scope = ("this gene's other transcripts"
                  if bg["n_background_transcripts"] else "the configured groups only")
-        print("  NOTE: uniqueness judged against %s. A quantifier resolves fragments "
-              "against the whole index, so pseudogenes, paralogues and homologous "
-              "loci outside this gene are not accounted for here. Pass "
+        print("  NOTE: uniqueness judged against %s, not the whole index: pseudogenes, "
+              "paralogues and homologous loci outside this gene are not accounted for. On "
+              "100 two-class configs at Ensembl 116 the whole-index background changed no "
+              "exit status at --min-log2fc 0.5 and one verdict, but a close paralogue can "
+              "decide the answer (README, \"Pass --background-fasta\"). Pass "
               "--background-fasta <the transcript FASTA the Salmon index was built from, "
-              "without the genome decoys> for the answer that matches what the quantifier "
-              "actually sees; that is the recommended way to run this command."
+              "without the genome decoys> for the whole-index answer."
               % scope, file=sys.stderr)
     d = res["design"]
     print("  design: %s %dbp reads, fragments %.0f+-%.0f, depth %.0fM, TPM %.3g, n=%d"
