@@ -820,7 +820,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         supplied offline (so an offline call never blocks on the network).  ``True``
         forces the fetch, ``False`` restores the pre-v2.2 behaviour of comparing the
         configured groups only.  A gene symbol Ensembl does not know (HTTP 400/404)
-        leaves the gene background empty; any other failure to fetch it is raised,
+        leaves the gene background empty; a ``gene_id`` it does not know is a
+        ``ValueError``, and any other failure to fetch it is raised,
         because a background that is only partly fetched silently gives a different
         answer.
     read_length, frag_mean, frag_sd, paired, depth, mean_efflen, tpm, n_donors
@@ -913,6 +914,16 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         fetched_release = ensembl.fetch_release(**net)
     else:
         fetched_release = None
+    # the configured transcripts first: when the release lacks them, that is what to say,
+    # not that the gene background around them belongs to another gene
+    missing = [t for t in needed if t not in seqs]
+    if missing:
+        got = ensembl.fetch_cdna_batch(missing, **net)
+        absent = [t for t in missing if t not in got]
+        if absent:
+            raise ValueError("Ensembl release %s has no cDNA for %s, which the config names"
+                             % (fetched_release, ", ".join(absent)))
+        seqs.update(got)
     bg_gene_id = None
     if fetch_gene_background:
         try:
@@ -920,8 +931,14 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
                 config["gene"], species or config.get("species", "homo_sapiens"),
                 gene_id=config.get("gene_id"), **net)
         except HTTPError as e:
-            if e.code not in (400, 404):      # 400 is Ensembl's "no such symbol"
+            if e.code not in (400, 404):      # 400 is Ensembl's "no such symbol" or "id"
                 raise
+            if config.get("gene_id"):
+                # the config names this gene outright; going on without its background
+                # would judge the classes against nothing and call that a verdict
+                raise ValueError("Ensembl release %s has no gene %s, which the config's "
+                                 "gene_id names" % (fetched_release,
+                                                    config["gene_id"].split(".")[0])) from e
             all_ids = []                      # a symbol Ensembl does not know
         if all_ids and not set(all_ids) & set(needed):
             # a symbol that names more than one gene gave another one: its transcripts are
@@ -938,14 +955,6 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         # on with whatever had arrived, which is a different answer, silently
         bg_seqs.update(ensembl.fetch_cdna_batch(
             [t for t in all_ids if t not in needed], **net))
-    missing = [t for t in needed if t not in seqs]
-    if missing:
-        got = ensembl.fetch_cdna_batch(missing, **net)
-        absent = [t for t in missing if t not in got]
-        if absent:
-            raise ValueError("Ensembl release %s has no cDNA for %s, which the config names"
-                             % (fetched_release, ", ".join(absent)))
-        seqs.update(got)
     bg_seqs = {t: s for t, s in bg_seqs.items() if t not in needed}
     if inputs_out is not None:
         inputs_out.update(sequences={t: seqs[t] for t in needed},
