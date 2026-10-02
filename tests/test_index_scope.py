@@ -118,8 +118,11 @@ def test_a_gencode_fasta_with_a_same_name_gene_warns_that_it_may_be_a_copy(
 def test_a_gencode_par_pair_warns_with_the_caveat(tmp_path, capsys):
     """A GENCODE header does not say where a transcript lies, so the chrY copy of a
     pseudoautosomal gene cannot be told from a copy on an alternate locus. It is reported,
-    as a possible copy, and the warning says what else it may be."""
-    cli.main(_case(tmp_path, _REF + _PAR_Y) + ["--json"])
+    as a possible copy, and the warning says what else it may be.
+
+    With --keep-duplicates: by default a copy with a configured transcript's sequence is
+    not counted at all (see the tests below), and there is nothing to warn about."""
+    cli.main(_case(tmp_path, _REF + _PAR_Y) + ["--keep-duplicates", "--json"])
     out, err = capsys.readouterr()
     assert json.loads(out)["background"]["same_name_copies"] == [
         {"gene_id": "ENSG00000000060", "gene_name": "GENEX", "region": None,
@@ -128,6 +131,34 @@ def test_a_gencode_par_pair_warns_with_the_caveat(tmp_path, capsys):
     assert "may be copies" in err
     assert "pseudoautosomal" in err
     assert "not an index-scope problem" in err
+
+
+# ---- a copy with a configured transcript's sequence is not one that splits reads ---- #
+# Salmon's default index keeps one of identical sequences, so such a record takes no read;
+# the NOTE says so, and the warning that "reads are split" with it contradicted the NOTE.
+# CD99's chrX config against gencode.v50chr gave both, as will every pseudoautosomal gene.
+_PAR_Y2 = _gencode("ENST00000000007", "ENSG00000000060", "GENEX", SEQS["ENST00000000002"])
+
+
+def test_a_par_copy_identical_to_the_configured_transcripts_is_not_warned_about(
+        tmp_path, capsys):
+    cli.main(_case(tmp_path, _REF + _PAR_Y + _PAR_Y2))
+    err = capsys.readouterr().err
+    assert "reads are split" not in err and "WARNING" not in err
+    assert "NOTE: --background-fasta: 2 record(s) with the sequence of a configured" in err
+
+
+def test_a_copy_one_base_different_is_still_warned_about(tmp_path, capsys):
+    s = SEQS["ENST00000000002"]
+    off = _gencode("ENST00000000007", "ENSG00000000060", "GENEX",
+                   s[:500] + ("A" if s[500] != "A" else "C") + s[501:])
+    cli.main(_case(tmp_path, _REF + _PAR_Y + off))
+    err = capsys.readouterr().err
+    warning = [ln for ln in err.splitlines() if "WARNING" in ln]
+    assert len(warning) == 1 and "reads are split" in warning[0]
+    # only the record that differs is counted in it
+    assert "ENSG00000000060, 1 transcript(s)" in warning[0]
+    assert "1 record(s) with the sequence of a configured" in err
 
 
 def _ensembl_fasta(other_region, kind="chromosome"):

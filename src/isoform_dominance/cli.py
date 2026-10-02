@@ -297,11 +297,13 @@ def cmd_identifiability(a):
                                else "release unknown: supplied offline",
                                a.save_inputs, a.save_inputs), file=sys.stderr)
 
-    warning = index_scope.copy_warning(res["background"]["same_name_copies"],
-                                       "--background-fasta %s" % a.background_fasta)
+    same = res["background"].get("identical_to_configured") or {}
+    # a copy with a configured transcript's sequence is the NOTE below, not this warning
+    warning = index_scope.copy_warning(
+        index_scope.without_identical(res["background"]["same_name_copies"], same),
+        "--background-fasta %s" % a.background_fasta)
     if warning:
         print("  " + warning, file=sys.stderr)
-    same = res["background"].get("identical_to_configured") or {}
     if same:
         shown = ", ".join("%s (= %s)" % (r, same[r]) for r in sorted(same)[:5])
         if len(same) > 5:

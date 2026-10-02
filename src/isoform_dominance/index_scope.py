@@ -169,6 +169,23 @@ def fasta_copies(path, target_ids, gene_names=()):
     return copies_in(heads, target_ids, gene_names)
 
 
+def without_identical(copies, identical):
+    """:func:`same_name_copies`' result less the records ``identical`` names.
+
+    ``identical`` maps a FASTA record id to the configured transcript whose sequence it
+    is.  Salmon's default index keeps one of identical sequences, so such a record takes no
+    read from the configured transcript and is no reason to warn that reads are split; a
+    copy left with no other record is dropped.
+    """
+    identical = {_unversioned(r) for r in (identical or ())}
+    out = []
+    for c in copies:
+        rest = [t for t in c["transcripts"] if t not in identical]
+        if rest:
+            out.append(dict(c, transcripts=rest))
+    return out
+
+
 def copy_warning(copies, source):
     """The one-paragraph warning for :func:`same_name_copies`' result, or None.
 
