@@ -53,6 +53,36 @@ versioning.
   (`extract.NoQuantFiles`, still a `FileNotFoundError`), a sample map with no `donor`
   column, a per-donor table without a class's `_TPM` column, and a `stats --condition` no
   donor has.
+- **`identifiability --inputs` gives a regrouped rerun no gene background its run lacked.**
+  The saved file did not say whether the run had one, and a rerun under another grouping put
+  every saved transcript the config no longer names into the background. A run saved with
+  `--no-gene-background` was then judged against a background the live run never had (one
+  audited case: a class's unique count 200 on the rerun, 500 live). Saved inputs record
+  `analysis.gene_background`; in a file written before 2.4.1 an empty saved background
+  means none. Such a transcript is left out, with a NOTE. `INPUTS_FORMAT` is unchanged:
+  2.4.0 reads the new key and ignores it.
+- **A `gene_id` Ensembl does not know stops `identifiability`** with one line naming the
+  release and the id (exit 1). The HTTP 400/404 fallback meant for a symbol Ensembl does
+  not know also swallowed `lookup/id`, so the gene background came out empty and the run
+  gave a verdict, exit 0. A symbol Ensembl does not know still leaves it empty.
+- **A configured transcript the release lacks is named before the gene background is
+  judged.** A config of transcripts only release 116 has, run with `--ensembl-release 110`,
+  was refused for a gene background "of another gene"; it now says which cDNA release 110
+  does not have.
+- **No "reads are split" warning for a same-name copy whose sequence is a configured
+  transcript's.** The NOTE beside it says such a `--background-fasta` record is not
+  counted, because Salmon's default index keeps one of identical sequences; the warning
+  contradicted it, and every pseudoautosomal gene got both against `gencode.v50chr`. The
+  warning now leaves out the records the NOTE lists. With `--keep-duplicates` nothing
+  changes. `same_name_copies` in `--json` still lists every copy.
+- **`identifiability` says which window it used.** Every layer is built from the window,
+  and `--k` only sets its default; the header printed `k=15` for `--k 15 --window 31`, and a
+  rerun from saved inputs at another k and the same window was told it was a different
+  compatibility system. The header names the window, a NOTE says when `--k` went unused,
+  and the rerun note compares the window and the k-mer convention only. The per-class line
+  separates the class's unique k-mers from its best transcript's stretch, blocks and
+  informative reads. `--k` and `--tpm` say in `--help` what they set; `--tpm` is given to
+  every transcript of the gene, background included.
 - **`extract` names a transcript that two groups share.** Its TPM still goes, as in 2.1.1,
   to the group the config lists last; the warning names the transcript and the groups.
 

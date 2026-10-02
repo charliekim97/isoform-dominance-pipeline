@@ -88,12 +88,12 @@ and for the contrast between them. Ask it for the effect size you need:
 
 ```bash
 isoform-dominance identifiability --config config.json --min-log2fc 0.5
-# Identifiability (window=31, k=31, canonical k-mers)
+# Identifiability (window=31, canonical k-mers)
 #   annotation: Ensembl release 116
 #   background: 9 same-gene transcript(s)
 #   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
-#   [identifiable] iso_1165aa: min |log2FC| 0.064; 5369 unique k-mers, 5399 bp in 1 block(s), ~1072 informative reads, conditioning 3.62
-#   [identifiable] iso_896aa: min |log2FC| 0.216; 356 unique k-mers, 208 bp in 2 block(s), ~63 informative reads, conditioning 115.05
+#   [identifiable] iso_1165aa: min |log2FC| 0.064; class 5369 unique k-mers; best transcript 5399 bp in 1 block(s), ~1072 informative reads; conditioning 3.62
+#   [identifiable] iso_896aa: min |log2FC| 0.216; class 356 unique k-mers; best transcript 208 bp in 2 block(s), ~63 informative reads; conditioning 115.05
 #   contrast iso_896aa vs iso_1165aa: min |log2FC| 0.234; identifiable, conditioning 117.68
 #   effective length: iso_896aa 5103 bp vs iso_1165aa 8072 bp (mean per transcript), log2 ratio -0.66
 #   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_896aa median 0.07 [0.05-0.12], 372 positions over 7 transcript(s); iso_1165aa median 0.67 [0.51-0.84], 10738 positions over 2 transcript(s)
@@ -111,7 +111,8 @@ The release-116 sequences behind the 2026-09-11 block this replaces, run offline
 `--sequences` and `--background-sequences` with the nine same-gene background transcripts;
 transcript and k-mer counts move as the annotation does. The `effective length` and
 `distinguishing windows` lines were added from a live run against the same release on
-2026-09-13, in which every other line reproduced unchanged. Read the `min |log2FC|` figures first:
+2026-09-13, in which every other line reproduced unchanged. The header and the per-class
+lines are shown as 2.4.1 prints them; the figures are those runs'. Read the `min |log2FC|` figures first:
 they are what the verdict and the exit status are built on. `conditioning` is a diagnostic.
 Without `--min-log2fc` the verdict falls back to `--tau` on the conditioning factor, which has
 no calibrated value — the same run then reads `weakly_identifiable` — and the command says on

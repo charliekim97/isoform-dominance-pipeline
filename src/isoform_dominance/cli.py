@@ -154,19 +154,21 @@ def _fasta_note(saved, given):
 
 
 def _analysis_note(saved, k, window, canonical, keep_duplicates=None):
-    """What to say when a rerun from saved inputs is at another k, window or convention,
+    """What to say when a rerun from saved inputs is at another window or convention,
     or -- ``keep_duplicates`` is None when this run has no background FASTA -- counts
     records identical to a configured transcript differently.
 
     None of these is recorded in the config, so nothing else can tell a rerun that it is
-    not repeating the run that was saved.
+    not repeating the run that was saved.  ``k`` only sets the window when ``window`` is
+    None: every layer is built from the window, so a k that differs with the same window
+    is the same system.
     """
-    mine = {"k": k, "window": window if window is not None else k, "canonical": canonical}
+    mine = {"window": window if window is not None else k, "canonical": canonical}
     notes = []
     if {key: saved[key] for key in mine} != mine:
         def _say(d):
-            return ("k=%d, window=%d, %s k-mers"
-                    % (d["k"], d["window"], "canonical" if d["canonical"] else "strand-aware"))
+            return ("window=%d, %s k-mers"
+                    % (d["window"], "canonical" if d["canonical"] else "strand-aware"))
         notes.append("the inputs were saved at %s; this run is at %s, which is a different "
                      "compatibility system on the same sequence, so the verdict can differ."
                      % (_say(saved), _say(mine)))
@@ -318,8 +320,12 @@ def cmd_identifiability(a):
         return _identifiability_exit(res)
 
     bg = res["background"]
-    print("Identifiability (window=%d, k=%d, %s k-mers)"
-          % (res["window"], res["k"], "canonical" if res["canonical"] else "strand-aware"))
+    # every layer is built from the window; k only sets it when --window is not given
+    print("Identifiability (window=%d, %s k-mers)"
+          % (res["window"], "canonical" if res["canonical"] else "strand-aware"))
+    if a.window is not None and a.k != a.window:
+        print("  NOTE: --k %d is not used: --window %d sets the length of every window, "
+              "k-mer and unique stretch here." % (a.k, a.window), file=sys.stderr)
     rel = res["annotation"]["ensembl_release"]
     got = res["annotation"]["fetched_release"]
     saved = res["annotation"].get("inputs_release")
@@ -379,8 +385,9 @@ def cmd_identifiability(a):
 
     incoherent = []
     for g, r in res["groups"].items():
-        print("  [%s] %s: %s; %d unique k-mers, %d bp in %d block(s), "
-              "~%.0f informative reads, conditioning %.2f"
+        # unique k-mers are the class's; the stretch and the reads its best transcript's
+        print("  [%s] %s: %s; class %d unique k-mers; best transcript %d bp in %d block(s), "
+              "~%.0f informative reads; conditioning %.2f"
               % (r["verdict"], g, _fc(r), r["n_unique_kmers"], r["unique_length"],
                  r["n_blocks"], r["expected_informative_reads"],
                  r["conditioning_factor"]))
@@ -588,7 +595,9 @@ def build_parser():
         "identifiability", aliases=["identify"],
         help="are the classes measurable by short reads, and how precisely?")))
     s.add_argument("--config", required=True)
-    s.add_argument("--k", type=int, default=identifiability.DEFAULT_K)
+    s.add_argument("--k", type=int, default=identifiability.DEFAULT_K,
+                   help="k-mer length; sets the default window when --window is not given, "
+                        "and nothing else (default: %(default)s)")
     s.add_argument("--window", type=int, default=None,
                    help="window length for the compatibility system (default: k). A "
                         "different window gives a different system, not a uniformly "
@@ -623,7 +632,8 @@ def build_parser():
     s.add_argument("--depth", type=float, default=identifiability.DEFAULT_DEPTH,
                    help="mapped fragments per library")
     s.add_argument("--tpm", type=float, default=identifiability.DEFAULT_TPM,
-                   help="class abundance to condition the read model on")
+                   help="TPM given to every transcript of the gene, background included, "
+                        "for the read model and the Poisson weights (default: %(default)s)")
     s.add_argument("--donors", type=int, default=1)
     s.add_argument("--min-log2fc", type=float, default=None,
                    help="smallest |log2 fold change| you need both class totals and the "

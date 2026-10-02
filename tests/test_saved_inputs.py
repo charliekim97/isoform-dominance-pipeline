@@ -318,8 +318,8 @@ def test_a_rerun_at_another_window_or_k_says_so(ens, tmp_path, capsys, monkeypat
     assert cli.main(["identify", "--config", cfg, "--inputs", saved, "--k", "25"]) == 0
     assert "the inputs were saved" not in capsys.readouterr().err
     assert cli.main(["identify", "--config", cfg, "--inputs", saved, "--k", "31"]) == 0
-    assert ("the inputs were saved at k=25, window=25, canonical k-mers; this run is at "
-            "k=31, window=31, canonical k-mers") in capsys.readouterr().err
+    assert ("the inputs were saved at window=25, canonical k-mers; this run is at "
+            "window=31, canonical k-mers") in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------- #
@@ -412,3 +412,54 @@ def test_resaving_a_rerun_without_gene_background_still_says_so(no_network, tmp_
     assert cli.main(["identify", "--config", _cfg(tmp_path, ensembl_release=OLD),
                      "--inputs", str(saved), "--save-inputs", str(again)]) == 0
     assert json.loads(again.read_text())["analysis"]["gene_background"] is False
+
+
+# --------------------------------------------------------------------------- #
+# the window is what builds every layer; k only sets its default
+# --------------------------------------------------------------------------- #
+def test_the_header_names_the_window_used_not_an_unused_k(no_network, tmp_path, capsys):
+    seqs = tmp_path / "seqs.json"
+    seqs.write_text(json.dumps({t: SEQS[OLD][t] for t in GROUP_A + GROUP_B}))
+    argv = ["identify", "--config", _cfg(tmp_path), "--sequences", str(seqs),
+            "--no-gene-background", "--k", "15", "--window", "31"]
+    cli.main(argv)
+    out = capsys.readouterr()
+    head = out.out.splitlines()[0]
+    assert "window=31" in head and "k=15" not in head
+    assert "--k 15" in out.err and "--window 31" in out.err      # says k went unused
+    cli.main(argv + ["--json"])
+    assert json.loads(capsys.readouterr().out)["window"] == 31
+
+
+def test_a_rerun_at_another_k_and_the_same_window_is_the_same_system(ens, tmp_path, capsys,
+                                                                      monkeypatch):
+    saved = str(tmp_path / "run.inputs.json")
+    cfg = _cfg(tmp_path, ensembl_release=OLD)
+    assert cli.main(["identify", "--config", cfg, "--ensembl-release", str(OLD),
+                     "--save-inputs", saved, "--k", "25", "--window", "31", "--json"]) == 0
+    capsys.readouterr()
+
+    def refuse(req, *a, **k):
+        raise AssertionError("network request %s" % req.full_url)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    assert cli.main(["identify", "--config", cfg, "--inputs", saved, "--k", "31"]) == 0
+    assert "different compatibility system" not in capsys.readouterr().err
+
+
+def test_the_per_class_line_says_which_figures_are_the_best_transcript_s(no_network,
+                                                                        tmp_path, capsys):
+    seqs = tmp_path / "seqs.json"
+    seqs.write_text(json.dumps({t: SEQS[OLD][t] for t in GROUP_A + GROUP_B}))
+    cli.main(["identify", "--config", _cfg(tmp_path), "--sequences", str(seqs),
+              "--no-gene-background"])
+    line = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("  [")][0]
+    assert "class " in line and "unique k-mers; best transcript " in line
+    assert "block(s)" in line.split("best transcript ")[1]
+
+
+def test_k_and_tpm_help_say_what_they_do(capsys):
+    with pytest.raises(SystemExit):
+        cli.main(["identifiability", "--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    assert "sets the default window when --window is not given" in text
+    assert "TPM given to every transcript of the gene, background included" in text
