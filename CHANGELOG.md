@@ -134,6 +134,21 @@ versioning.
   4 runs `qc` on the config `annotate` writes, which has none, and that was a traceback. A
   marker or target table without the columns it needs, and a cohort with fewer than three
   donors in both, are one line too (`io.InputError`, a `ValueError`).
+- **The weekly Ensembl check tells a retired archive from an outage.** "Ensembl release
+  not available", one of the strings it skipped on as a network failure, also begins the
+  message for a retired archive, so the release-110 target would have skipped quietly
+  every week once that archive is retired. It is now a warning saying the target can no
+  longer run. A test runs the workflow's own step scripts against the offline fake.
+- **`scripts/01_salmon_quant.sbatch`: one output directory per sample map, and ENA paths
+  for every run-number length.** `OUTDIR` defaulted to `$PWD/quant` for every cohort and
+  the script skips a donor whose `quant.sf` exists, so the second cohort of the README —
+  both example sample maps name their donors `ctrl1`–`ctrl5` — silently kept the first
+  one's quantifications. The default is now `$PWD/quant/<sample map name>`, the settings
+  can be passed with `sbatch --export`, and the README runs the two cohorts into separate
+  directories and extracts both. The ENA directory was built as `0` and the last two
+  digits, right only for 8-digit run numbers (`ERR2060213` is under `ERR206/003`, not
+  `013`); it now follows ENA's rule for 6 to 9 digits and stops on anything else. The
+  README gives the `salmon index` command for the filtered FASTA.
 - **`extract` names a transcript that two groups share.** Its TPM still goes, as in 2.1.1,
   to the group the config lists last; the warning names the transcript and the groups.
 

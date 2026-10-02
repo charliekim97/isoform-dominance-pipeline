@@ -16,14 +16,30 @@
 #    against the same index: `extract` compares aux_info/meta_info.json across donors
 #    and stops if they differ.
 set -euo pipefail
-# ===== EDIT =====
-SALMON=salmon
-INDEX=/path/to/decoy_index
-SAMPLE_MAP=sample_map.csv          # donor,condition,SRR
-OUTDIR=$PWD/quant
+# ===== EDIT (or pass with sbatch --export=ALL,SAMPLE_MAP=...,OUTDIR=...) =====
+SALMON=${SALMON:-salmon}
+INDEX=${INDEX:-/path/to/decoy_index}
+SAMPLE_MAP=${SAMPLE_MAP:-sample_map.csv}          # donor,condition,SRR
+# one directory per sample map: two cohorts may reuse donor names (both examples have
+# ctrl1-ctrl5), and a donor whose quant.sf exists is skipped below
+OUTDIR=${OUTDIR:-$PWD/quant/$(basename "$SAMPLE_MAP" .csv)}
 # ================
 THREADS=${SLURM_CPUS_PER_TASK:-12}; mkdir -p "$OUTDIR" fastq
-ena(){ local s=$1; echo "https://ftp.sra.ebi.ac.uk/vol1/fastq/${s:0:6}/0${s: -2}/${s}"; }
+# ENA's directory for a run: vol1/fastq/<first 6>/<by run-number length>/<run>. The second
+# level is absent for a 6-digit number, 00+last digit for 7, 0+last two for 8, the last
+# three for 9 (ERR2060213 -> ERR206/003). bash 3.2 syntax: tests/test_sbatch.py runs it.
+ena() {
+  local s=$1 n=${#1} d
+  n=$((n - 3))
+  case $n in
+    6) d="" ;;
+    7) d="00${s: -1}/" ;;
+    8) d="0${s: -2}/" ;;
+    9) d="${s: -3}/" ;;
+    *) echo "ena: cannot place run $s (expected 3 letters and 6-9 digits)" >&2; return 1 ;;
+  esac
+  echo "https://ftp.sra.ebi.ac.uk/vol1/fastq/${s:0:6}/${d}${s}"
+}
 mapfile -t LINES < <(tail -n +2 "$SAMPLE_MAP")
 : > urls.txt
 for ln in "${LINES[@]}"; do IFS=, read -r d c srr <<< "$ln"; b=$(ena "$srr"); echo "$b/${srr}_1.fastq.gz"; echo "$b/${srr}_2.fastq.gz"; done > urls.txt

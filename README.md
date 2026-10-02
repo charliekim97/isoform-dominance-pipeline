@@ -226,15 +226,21 @@ linear functional of the observable fragment-class expectations.
 ## Full workflow (real data)
 
 ```bash
-# 0) build a decoy-aware index once (Salmon + GENCODE) — see scripts/01_salmon_quant.sbatch
+# 0) build a Salmon index once -- the commands are under "Index scope" below:
 #    - from the GENCODE release that matches `annotate --ensembl-release`
 #      (https://www.gencodegenes.org/human/releases.html), and
-#    - from reference-chromosome transcripts only: see "Index scope" below
-# 1) quantify on an HPC cluster:
-sbatch scripts/01_salmon_quant.sbatch                    # -> quant/<donor>/quant.sf
+#    - from reference-chromosome transcripts only
+# 1) quantify on an HPC cluster, one output directory per cohort (both example sample maps
+#    name their donors ctrl1-ctrl5, and the script skips a donor whose quant.sf exists):
+sbatch --export=ALL,SAMPLE_MAP=example/sample_map_GSE228458.csv,OUTDIR=quant/GSE228458 \
+    scripts/01_salmon_quant.sbatch                       # -> quant/GSE228458/<donor>/quant.sf
+sbatch --export=ALL,SAMPLE_MAP=example/sample_map_GSE137619.csv,OUTDIR=quant/GSE137619 \
+    scripts/01_salmon_quant.sbatch
 # 2) extract per cohort:
-isoform-dominance extract --config config.json --quantdir quant \
+isoform-dominance extract --config config.json --quantdir quant/GSE228458 \
     --samplemap example/sample_map_GSE228458.csv --cohort GSE228458 --out perdonor_GSE228458.csv
+isoform-dominance extract --config config.json --quantdir quant/GSE137619 \
+    --samplemap example/sample_map_GSE137619.csv --cohort GSE137619 --out perdonor_GSE137619.csv
 # 3) stats + figure:
 isoform-dominance stats --config config.json --condition control \
     --perdonor GSE228458=perdonor_GSE228458.csv --perdonor GSE137619=perdonor_GSE137619.csv \
@@ -276,6 +282,17 @@ gzip -dc Homo_sapiens.GRCh38.cdna.all.fa.gz \
   | awk '/^>/ {split($3, r, ":"); p = (r[3] ~ /^([1-9]|1[0-9]|2[0-2]|X|Y|MT)$/)} p' \
   > Homo_sapiens.GRCh38.cdna.primary.fa
 ```
+
+Then build the index from the filtered FASTA, once, and quantify every donor of a cohort
+against it (the sbatch script's `INDEX`):
+
+```bash
+salmon index -t gencode.v50.transcripts.chr.fa -i salmon_index_v50chr -k 31 -p 12
+```
+
+Without `--gencode`, `quant.sf` names keep the whole GENCODE header, which is what lets
+`extract` check them for same-name copies; with it, names are cut to the transcript id and
+`extract` reads them just the same.
 
 The package checks for such an index where it can. `identifiability
 --background-fasta` warns when the FASTA holds a transcript with the configured gene's
