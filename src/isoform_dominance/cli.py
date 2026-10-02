@@ -272,7 +272,7 @@ def cmd_identifiability(a):
             canonical=not a.strand_aware,
             window=a.window,
             background_sequences=background,
-            background_fasta=a.background_fasta,
+            background_fasta=a.background_fasta, decoys=a.decoys,
             background_gene_transcripts=(False if a.no_gene_background or inputs is not None
                                          else "auto"),
             read_length=a.read_length, frag_mean=a.frag_mean, frag_sd=a.frag_sd,
@@ -394,6 +394,25 @@ def _report(a, res):
               "the first of them, because Salmon's default index keeps one of identical "
               "sequences: %s. For an index built with Salmon's --keepDuplicates, pass "
               "--keep-duplicates." % (len(twins), _pairs(twins)), file=sys.stderr)
+    long = bg.get("fasta_long_records") or {}
+    if long and not a.decoys:
+        print("  NOTE: --background-fasta has %d record(s) longer than 1 Mb (%s), which looks "
+              "like genome sequence: the gentrome of a decoy-aware index. Salmon sets aside "
+              "only the reads that map better to a decoy than to any transcript, so a genome "
+              "record competes with no read the transcripts explain as well, and judged "
+              "against it every window inside an exon loses its uniqueness. Pass --decoys "
+              "decoys.txt, or the transcript FASTA the index was built from (without the "
+              "genome decoys)." % (len(long), _listed(long)), file=sys.stderr)
+    elif long:
+        print("  NOTE: --background-fasta has %d record(s) longer than 1 Mb that --decoys %s "
+              "does not name (%s); they were read as competing sequence. If they are genome "
+              "sequence, add them to it." % (len(long), a.decoys, _listed(long)),
+              file=sys.stderr)
+    if bg.get("decoys_absent"):
+        print("  NOTE: --decoys %s names %d record(s) that --background-fasta does not hold "
+              "(%s); %d decoy record(s) were left out." % (
+                  a.decoys, len(bg["decoys_absent"]), _listed(bg["decoys_absent"]),
+                  bg["decoys_skipped"]), file=sys.stderr)
     replaced = res["background"].get("sequence_from_fasta") or []
     if replaced:
         print("  NOTE: --background-fasta holds other sequence for %d transcript(s) of the "
@@ -457,9 +476,10 @@ def _report(a, res):
         print("  NOTE: uniqueness judged against %s. A quantifier resolves fragments "
               "against the whole index, so pseudogenes, paralogues and homologous "
               "loci outside this gene are not accounted for here. Pass "
-              "--background-fasta <the FASTA the Salmon index was built from> for the "
-              "answer that matches what the quantifier actually sees; that is the "
-              "recommended way to run this command." % scope, file=sys.stderr)
+              "--background-fasta <the transcript FASTA the Salmon index was built from, "
+              "without the genome decoys> for the answer that matches what the quantifier "
+              "actually sees; that is the recommended way to run this command."
+              % scope, file=sys.stderr)
     d = res["design"]
     print("  design: %s %dbp reads, fragments %.0f+-%.0f, depth %.0fM, TPM %.3g, n=%d"
           % ("paired" if d["paired"] else "single", d["read_length"],
@@ -702,8 +722,16 @@ def build_parser():
     s.add_argument("--sequences", help="optional JSON {transcript_id: cdna} (offline)")
     s.add_argument("--background-sequences", help="optional JSON {transcript_id: cdna} of background transcripts")
     s.add_argument("--background-fasta",
-                   help="FASTA (optionally gzipped) to judge uniqueness against -- "
-                        "ideally the one the Salmon index was built from")
+                   help="FASTA (optionally gzipped) to judge uniqueness against: the "
+                        "transcript FASTA the Salmon index was built from, without the "
+                        "genome decoys (or pass --decoys). Each record that shares a window "
+                        "with a configured transcript is a column of the compatibility "
+                        "system")
+    s.add_argument("--decoys", metavar="FILE",
+                   help="Salmon's decoys.txt, one record name per line, when "
+                        "--background-fasta is a decoy-aware index's gentrome: those records "
+                        "are skipped, as Salmon sets aside only reads that map better to a "
+                        "decoy than to any transcript")
     s.add_argument("--keep-duplicates", action="store_true",
                    help="the Salmon index was built with --keepDuplicates: count a "
                         "--background-fasta record with a configured transcript's sequence as "

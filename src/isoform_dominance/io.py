@@ -58,6 +58,21 @@ def file_sha256(path, chunk=1 << 20):
     return h.hexdigest()
 
 
+def read_decoys(path):
+    """The record names in Salmon's ``decoys.txt``: one per line, its first word, any
+    leading ``>`` dropped; blank lines skipped.  A file with none is an :class:`InputError`.
+    """
+    names = []
+    with open_text(path) as f:
+        for line in f:
+            word = line.strip().lstrip(">").split()
+            if word:
+                names.append(word[0])
+    if not names:
+        raise InputError("--decoys %s names no record" % path)
+    return names
+
+
 def transcript_to_group(groups):
     """{group: [ENST,...]} -> {ENST(no version): group}."""
     m = {}

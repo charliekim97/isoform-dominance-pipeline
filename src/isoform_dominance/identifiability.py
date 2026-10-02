@@ -170,9 +170,13 @@ def kmer_track(seq, k, canonical=True):
 #: Length of the seeds the background-FASTA scan looks up before it reads a window.
 FASTA_SEED = 16
 
+#: A background-FASTA record longer than this, in nt, looks like a genome sequence rather
+#: than a transcript: the longest human transcripts are around 0.1 Mb.
+LONG_RECORD = 1_000_000
+
 
 def _scan_records(path, query_kmers, k, canonical=True, exclude_ids=(), identical=None,
-                  identical_out=None, seed=FASTA_SEED):
+                  identical_out=None, seed=FASTA_SEED, decoys=(), stats=None):
     """Yield ``(record id, sequence, windows)`` for each record of a background FASTA.
 
     The sequence is the record's lines, stripped, joined and upper-cased; ``windows`` is
@@ -181,7 +185,16 @@ def _scan_records(path, query_kmers, k, canonical=True, exclude_ids=(), identica
     configured transcript, or with no sequence line -- are not yielded, and nothing is
     yielded for an empty query.  See :func:`scan_background_fasta` for the arguments and
     for how a window is found.
+
+    ``decoys`` are record names, as Salmon's ``decoys.txt`` gives them: the header's
+    first whitespace-delimited word, or that word's first ``|``-delimited field.  Such a
+    record is skipped unread.  ``stats``, a dict, receives ``decoys_skipped`` (records),
+    ``decoys_found`` (the set of names met) and ``long_records``, ``[(id, length)]`` of
+    the records read that are longer than :data:`LONG_RECORD`.
     """
+    decoys = frozenset(decoys)
+    if stats is not None:
+        stats.update(decoys_skipped=0, decoys_found=set(), long_records=[])
     query = set(query_kmers)
     if not query:
         return
@@ -225,21 +238,30 @@ def _scan_records(path, query_kmers, k, canonical=True, exclude_ids=(), identica
             if identical_out is not None:
                 identical_out[tid] = identical[seq]
             return None
+        if stats is not None and len(seq) > LONG_RECORD:
+            stats["long_records"].append((tid, len(seq)))
         return tid, seq, _hits(seq)
 
-    chunks, tid = [], None
+    chunks, tid, skip = [], None, False
     with io.open_text(path) as fh:
         for line in fh:
             if line.startswith(">"):
-                rec = _consume(chunks, tid)
+                rec = None if skip else _consume(chunks, tid)
                 if rec is not None:
                     yield rec
                 head = line[1:].strip()
                 tid = head.split("|")[0].split()[0].split(".")[0] if head else None
                 chunks = []
-            else:
+                if decoys:
+                    word = head.split()[0] if head else ""
+                    name = next((x for x in (word, word.split("|")[0]) if x in decoys), None)
+                    skip = name is not None
+                    if skip and stats is not None:
+                        stats["decoys_skipped"] += 1
+                        stats["decoys_found"].add(name)
+            elif not skip:
                 chunks.append(line.strip())
-        rec = _consume(chunks, tid)
+        rec = None if skip else _consume(chunks, tid)
         if rec is not None:
             yield rec
 
@@ -281,7 +303,7 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
 
 def scan_fasta_competitors(path, query_kmers, k, canonical=True, exclude_ids=(),
                            identical=None, identical_out=None, *, keep_ids=(),
-                           keep_sequences=(), seed=FASTA_SEED):
+                           keep_sequences=(), seed=FASTA_SEED, decoys=(), stats=None):
     """The records of a background FASTA that share a window with ``query_kmers``.
 
     ``{record id: (sequence, windows)}`` in file order, where ``windows`` is the set of
@@ -291,15 +313,15 @@ def scan_fasta_competitors(path, query_kmers, k, canonical=True, exclude_ids=(),
     ``keep_sequences``.  Only the records kept are held in memory.  A second
     record with an id already seen is left out when its sequence is the first's, and kept
     as ``<id>#2`` (``#3``, ...) when it is not; a record whose header gives no id is
-    ``record<N>``, the N-th record scanned.  The other arguments are
-    :func:`scan_background_fasta`'s.
+    ``record<N>``, the N-th record scanned.  ``decoys`` and ``stats`` are described at
+    :func:`_scan_records`; the other arguments are :func:`scan_background_fasta`'s.
     """
     keep = {str(i).split(".")[0] for i in keep_ids}
     keep_seqs = set(keep_sequences)
     keep_lengths = {len(x) for x in keep_seqs}
     out, n = {}, 0
     for tid, seq, hits in _scan_records(path, query_kmers, k, canonical, exclude_ids,
-                                        identical, identical_out, seed):
+                                        identical, identical_out, seed, decoys, stats):
         n += 1
         if not (hits or tid in keep or (len(seq) in keep_lengths and seq in keep_seqs)):
             continue
@@ -898,7 +920,7 @@ def _verdict(entry, tau, min_reads=None, min_log2fc=None):
 
 def analyze(config, k=DEFAULT_K, sequences=None, *,
             canonical=True, window=None,
-            background_sequences=None, background_fasta=None,
+            background_sequences=None, background_fasta=None, decoys=None,
             background_gene_transcripts="auto", species=None,
             read_length=DEFAULT_READ_LENGTH, frag_mean=DEFAULT_FRAG_MEAN,
             frag_sd=DEFAULT_FRAG_SD, paired=True, depth=DEFAULT_DEPTH,
@@ -952,6 +974,16 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         ``ValueError``, and any other failure to fetch it is raised,
         because a background that is only partly fetched silently gives a different
         answer.
+    decoys
+        Salmon's ``decoys.txt`` -- one record name per line -- when ``background_fasta``
+        is the gentrome of a decoy-aware index, transcripts and genome.  Those records are
+        skipped unread, and their number reported.  Salmon sets aside only the reads that
+        map better to a decoy than to any transcript, so a decoy competes with no read the
+        transcripts explain as well: an exon's reads match the genome as well as the
+        transcript, and judged against the genome every window inside an exon would lose
+        its uniqueness.  Without ``decoys``, the records longer than :data:`LONG_RECORD`
+        are reported as ``fasta_long_records``; pass the transcript FASTA the index was
+        built from, or its ``decoys.txt``.
     read_length, frag_mean, frag_sd, paired, depth, mean_efflen, tpm, n_donors
         The sequencing design the report should be conditioned on.
     conditioning_tau, min_informative_reads
@@ -1022,6 +1054,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     if not groups:
         raise ValueError("config['groups'] is empty; nothing to test.")
     window = int(window or k)
+    if decoys and not background_fasta:
+        raise ValueError("--decoys names records of a --background-fasta, and none was given")
 
     pc = config.get("primary_comparison", list(groups)[:2])
     if len(pc) < 2:
@@ -1145,13 +1179,16 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         configured.setdefault(seqs[t].strip().upper(), t)
     fasta_competitors, sequence_from_fasta, only_identical = {}, [], {}
     fasta_identical = {}
+    decoy_names = io.read_decoys(decoys) if decoys else None
+    scan = {"decoys_skipped": 0, "decoys_found": set(), "long_records": []}
     if background_fasta:
         query = set().union(*group_windows.values()) if group_windows else set()
         records = scan_fasta_competitors(
             background_fasta, query, window, canonical=canonical, exclude_ids=needed,
             identical=None if keep_duplicates else configured,
             identical_out=fasta_identical, keep_ids=bg_seqs,
-            keep_sequences=() if keep_duplicates else set(norm.values()))
+            keep_sequences=() if keep_duplicates else set(norm.values()),
+            decoys=decoy_names or (), stats=scan)
         # a record the scan left out for a configured transcript's sequence
         records.update((rid, (seqs[conf].strip().upper(), None))
                        for rid, conf in fasta_identical.items() if rid in bg_seqs)
@@ -1353,6 +1390,12 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             "gene_id": bg_gene_id,
             "gene_transcripts": gene_columns,
             "fasta": str(background_fasta) if background_fasta else None,
+            "decoys": str(decoys) if decoys else None,
+            "decoys_listed": len(decoy_names) if decoys else None,
+            "decoys_skipped": scan["decoys_skipped"] if decoys else None,
+            "decoys_absent": (sorted(set(decoy_names) - scan["decoys_found"])
+                              if decoys else None),
+            "fasta_long_records": {str(t): n for t, n in scan["long_records"]},
             "n_background_transcripts": len(gene_columns),
             "fasta_competitors": dict(sorted(fasta_competitors.items())),
             "n_fasta_competitors": len(fasta_competitors),
