@@ -336,6 +336,12 @@ def cmd_identifiability(a):
     return code
 
 
+def _listed(ids, n=5):
+    """The first ``n`` of ``ids``, and how many more."""
+    ids = sorted(ids)
+    return ", ".join(ids[:n]) + (" and %d more" % (len(ids) - n) if len(ids) > n else "")
+
+
 def _report(a, res):
     """Print the report of one run -- JSON on stdout with ``--json`` -- and return the exit
     status."""
@@ -354,6 +360,12 @@ def _report(a, res):
               "transcript were not counted as competing sequence, because Salmon's default "
               "index keeps one of identical sequences: %s. For an index built with Salmon's "
               "--keepDuplicates, pass --keep-duplicates." % (len(same), shown), file=sys.stderr)
+    replaced = res["background"].get("sequence_from_fasta") or []
+    if replaced:
+        print("  NOTE: --background-fasta holds other sequence for %d transcript(s) of the "
+              "gene background, as another release would: %s. Each is counted once, with its "
+              "sequence taken from --background-fasta, which is what an index built from that "
+              "FASTA holds." % (len(replaced), _listed(replaced)), file=sys.stderr)
 
     if a.json:
         _emit(res)
@@ -404,7 +416,8 @@ def _report(a, res):
                   file=sys.stderr)
     print("  background: %d same-gene transcript(s)%s"
           % (bg["n_background_transcripts"],
-             ", FASTA %s" % bg["fasta"] if bg["fasta"] else ""))
+             ", FASTA %s: %d competing record(s)" % (bg["fasta"], bg["n_fasta_competitors"])
+             if bg["fasta"] else ""))
     if not bg["fasta"]:
         scope = ("this gene's other transcripts"
                  if bg["n_background_transcripts"] else "the configured groups only")

@@ -180,3 +180,72 @@ def test_a_window_in_either_orientation_at_every_offset_is_found(tmp_path, seed)
     want = _scan_241(path, query, k)
     assert len(want) == 40
     assert I.scan_background_fasta(path, query, k, seed=seed) == want
+
+
+def _records_ref(path, query_kmers, k, canonical=True, exclude_ids=(), identical=None,
+                 identical_out=None):
+    """Per record, what 2.4.1's scan looked at: every window folded and looked up."""
+    query = set(query_kmers)
+    if not query:
+        return []
+    exclude = {str(i).split(".")[0] for i in exclude_ids}
+    identical = identical or {}
+    out = []
+
+    def _consume(chunks, tid):
+        if not chunks or tid in exclude:
+            return
+        seq = "".join(chunks).upper()
+        if seq in identical:
+            if identical_out is not None:
+                identical_out[tid] = identical[seq]
+            return
+        hits = set()
+        for i in range(len(seq) - k + 1):
+            km = I.canonical_kmer(seq[i:i + k]) if canonical else seq[i:i + k]
+            if km in query:
+                hits.add(km)
+        out.append((tid, seq, hits))
+
+    chunks, tid = [], None
+    with io.open_text(path) as fh:
+        for line in fh:
+            if line.startswith(">"):
+                _consume(chunks, tid)
+                head = line[1:].strip()
+                tid = head.split("|")[0].split()[0].split(".")[0] if head else None
+                chunks = []
+            else:
+                chunks.append(line.strip())
+        _consume(chunks, tid)
+    return out
+
+
+def test_each_record_holds_what_the_simple_scan_finds_in_it(tmp_path):
+    r = random.Random(20261003)
+    for i in range(400):
+        c = _case(r, tmp_path, i)
+        args = (c["path"], c["query"], c["k"], c["canonical"], c["exclude_ids"], c["identical"])
+        want_out, got_out = {}, {}
+        want = _records_ref(*args, identical_out=want_out)
+        got = list(I._scan_records(*args, identical_out=got_out, seed=c["seed"]))
+        assert got == want and got_out == want_out, "case %d" % i
+
+
+def test_the_competitors_are_the_records_that_share_a_window_and_the_ones_asked_for(
+        tmp_path):
+    r = random.Random(3)
+    conf = _rand(r, 300)
+    query = I.kmers(conf, 31)
+    near, far, other = conf[40:140], _rand(r, 200), _rand(r, 150)
+    path = tmp_path / "bg.fa"
+    path.write_text(">A.1|g\n%s\n>B.2|g\n%s\n>C.1\n%s\n>A.4\n%s\n>A.5\n%s\n>\n%s\n"
+                    % (near, far, far, near, other, I.revcomp(near)))
+    got = I.scan_fasta_competitors(path, query, 31, keep_ids=["C.7"])
+    assert list(got) == ["A", "C", "record6"]          # file order; the copy of A dropped
+    assert got["A"] == (near, I.kmers(near, 31))
+    assert got["C"] == (far, set())                    # kept because it was asked for
+    assert got["record6"][1] == I.kmers(near, 31)
+    # a second A with other sequence that shares a window is kept under its own name
+    path.write_text(">A\n%s\n>A\n%s\n" % (near, conf[100:200]))
+    assert list(I.scan_fasta_competitors(path, query, 31)) == ["A", "A#2"]

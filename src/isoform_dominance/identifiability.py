@@ -167,8 +167,81 @@ def kmer_track(seq, k, canonical=True):
     return [seq[i:i + k] for i in range(len(seq) - k + 1)]
 
 
-#: Length of the seeds :func:`scan_background_fasta` looks up before it reads a window.
+#: Length of the seeds the background-FASTA scan looks up before it reads a window.
 FASTA_SEED = 16
+
+
+def _scan_records(path, query_kmers, k, canonical=True, exclude_ids=(), identical=None,
+                  identical_out=None, seed=FASTA_SEED):
+    """Yield ``(record id, sequence, windows)`` for each record of a background FASTA.
+
+    The sequence is the record's lines, stripped, joined and upper-cased; ``windows`` is
+    the set of ``query_kmers`` the record holds, in the form ``query_kmers`` gives them.
+    Records that :func:`scan_background_fasta` skips -- excluded, identical to a
+    configured transcript, or with no sequence line -- are not yielded, and nothing is
+    yielded for an empty query.  See :func:`scan_background_fasta` for the arguments and
+    for how a window is found.
+    """
+    query = set(query_kmers)
+    if not query:
+        return
+    exclude = {str(i).split(".")[0] for i in exclude_ids}
+    identical = identical or {}
+    lengths = {len(s) for s in identical}
+
+    # each way a record's window can read as a query window, to the query window it is
+    look = {}
+    for q in query:
+        if len(q) != k:
+            continue                    # a window of the record is k long
+        if canonical:
+            if canonical_kmer(q) != q:
+                continue                # a folded window is canonical, so never this
+            look[revcomp(q)] = q
+        look[q] = q
+    s = max(1, min(k, seed))
+    t = max(1, k - s + 1)
+    seeds = {w[j:j + s] for w in look for j in range(t)}
+
+    def _hits(seq):
+        hits = set()
+        n = len(seq)
+        if k <= 0 or n < k:
+            return hits
+        for p in range(0, n - s + 1, t):
+            if seq[p:p + s] in seeds:
+                # the windows whose seed position is p: they start at p - t + 1 .. p
+                for i in range(max(0, p - t + 1), min(p, n - k) + 1):
+                    hit = look.get(seq[i:i + k])
+                    if hit is not None:
+                        hits.add(hit)
+        return hits
+
+    def _consume(chunks, tid):
+        if not chunks or tid in exclude:
+            return None
+        seq = "".join(chunks).upper()
+        if len(seq) in lengths and seq in identical:
+            if identical_out is not None:
+                identical_out[tid] = identical[seq]
+            return None
+        return tid, seq, _hits(seq)
+
+    chunks, tid = [], None
+    with io.open_text(path) as fh:
+        for line in fh:
+            if line.startswith(">"):
+                rec = _consume(chunks, tid)
+                if rec is not None:
+                    yield rec
+                head = line[1:].strip()
+                tid = head.split("|")[0].split()[0].split(".")[0] if head else None
+                chunks = []
+            else:
+                chunks.append(line.strip())
+        rec = _consume(chunks, tid)
+        if rec is not None:
+            yield rec
 
 
 def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
@@ -178,7 +251,7 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
     Streams the file and never materialises the background's own k-mer set, so a
     whole-transcriptome FASTA (GENCODE, or the FASTA a Salmon index was built from)
     can be used as background; one record is held at a time, so memory is set by the
-    query and the longest record, not the file (a single 20 Mb record: about 110 MB).
+    query and the longest record, not the file (a single 20 Mb record: about 125 MB).
     Handles plain or gzipped input, told apart by the gzip magic bytes; ``exclude_ids`` drops records whose first
     ``|``- or whitespace-delimited field matches (version suffix ignored), which is
     how the transcripts under test are kept out of their own background.
@@ -199,59 +272,44 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
     hold one that matches are then read whole.  ``seed`` changes the speed, never the
     answer.
     """
-    query = set(query_kmers)
-    if not query:
-        return set()
-    exclude = {str(i).split(".")[0] for i in exclude_ids}
-    identical = identical or {}
-    lengths = {len(s) for s in identical}
     seen = set()
-
-    # each way a record's window can read as a query window, to the query window it is
-    look = {}
-    for q in query:
-        if len(q) != k:
-            continue                    # a window of the record is k long
-        if canonical:
-            if canonical_kmer(q) != q:
-                continue                # a folded window is canonical, so never this
-            look[revcomp(q)] = q
-        look[q] = q
-    s = max(1, min(k, seed))
-    t = max(1, k - s + 1)
-    seeds = {w[j:j + s] for w in look for j in range(t)}
-
-    def _consume(chunks, tid):
-        if not chunks or tid in exclude:
-            return
-        seq = "".join(chunks).upper()
-        if len(seq) in lengths and seq in identical:
-            if identical_out is not None:
-                identical_out[tid] = identical[seq]
-            return
-        n = len(seq)
-        if k <= 0 or n < k:
-            return
-        for p in range(0, n - s + 1, t):
-            if seq[p:p + s] in seeds:
-                # the windows whose seed position is p: they start at p - t + 1 .. p
-                for i in range(max(0, p - t + 1), min(p, n - k) + 1):
-                    hit = look.get(seq[i:i + k])
-                    if hit is not None:
-                        seen.add(hit)
-
-    chunks, tid = [], None
-    with io.open_text(path) as fh:
-        for line in fh:
-            if line.startswith(">"):
-                _consume(chunks, tid)
-                head = line[1:].strip()
-                tid = head.split("|")[0].split()[0].split(".")[0] if head else None
-                chunks = []
-            else:
-                chunks.append(line.strip())
-        _consume(chunks, tid)
+    for _, _, hits in _scan_records(path, query_kmers, k, canonical, exclude_ids, identical,
+                                    identical_out, seed):
+        seen |= hits
     return seen
+
+
+def scan_fasta_competitors(path, query_kmers, k, canonical=True, exclude_ids=(),
+                           identical=None, identical_out=None, *, keep_ids=(),
+                           seed=FASTA_SEED):
+    """The records of a background FASTA that share a window with ``query_kmers``.
+
+    ``{record id: (sequence, windows)}`` in file order, where ``windows`` is the set of
+    query windows the record holds; :func:`scan_background_fasta`'s answer is the union
+    of them.  A record that shares no window is left out unless its id (without its
+    version) is in ``keep_ids``.  Only the records kept are held in memory.  A second
+    record with an id already seen is left out when its sequence is the first's, and kept
+    as ``<id>#2`` (``#3``, ...) when it is not; a record whose header gives no id is
+    ``record<N>``, the N-th record scanned.  The other arguments are
+    :func:`scan_background_fasta`'s.
+    """
+    keep = {str(i).split(".")[0] for i in keep_ids}
+    out, n = {}, 0
+    for tid, seq, hits in _scan_records(path, query_kmers, k, canonical, exclude_ids,
+                                        identical, identical_out, seed):
+        n += 1
+        if not hits and tid not in keep:
+            continue
+        rid = tid if tid is not None else "record%d" % n
+        if rid in out:
+            if out[rid][0] == seq:
+                continue
+            m = 2
+            while "%s#%d" % (rid, m) in out:
+                m += 1
+            rid = "%s#%d" % (rid, m)
+        out[rid] = (seq, hits)
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -842,9 +900,20 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     sequences
         ``{transcript_id: cdna}``.  Anything missing is fetched from Ensembl.
     background_sequences, background_fasta, background_gene_transcripts
-        What uniqueness is judged against, beyond the other configured groups.  Pass a
+        What uniqueness is judged against, beyond the other configured groups, and the
+        columns of the compatibility system beside the configured transcripts.  Pass a
         FASTA -- ideally the one the Salmon index was built from -- for the honest
-        whole-index answer.  A FASTA record with the sequence of a configured
+        whole-index answer.  Each of its records that shares a window with a configured
+        transcript is a column, as a transcript of the gene background is, so a competitor
+        gives one answer whether it comes from the FASTA or from ``background_sequences``.
+        A record that shares no window with a configured transcript is not a column, and
+        is not followed through the background, although it can bear on the configured
+        estimands through a background transcript whose windows it shares: in one
+        constructed case a configured transcript lying wholly inside a background
+        transcript was estimable, and was not once a record held every window of the
+        background transcript outside it.  A record with the id (without version) of a
+        gene-background transcript is that transcript, once, with the FASTA's sequence
+        when the two differ.  A FASTA record with the sequence of a configured
         transcript is not counted, because Salmon's index keeps one of identical sequences;
         ``keep_duplicates=True`` counts it, for an index built with ``--keepDuplicates``.
         ``background_gene_transcripts`` defaults to ``"auto"``:
@@ -901,7 +970,12 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         ``log2_efflen_ratio`` and ``class_mean_efflen`` from :func:`class_efflen_ratio`,
         ``efflen_direction_in_band``, and ``distinguishing_window_position`` per class
         from :func:`position_summary`),
-        ``verdict`` with its ``reasons``, ``annotation`` (the config's
+        ``verdict`` with its ``reasons``, ``background`` (``gene_transcripts`` and
+        ``n_background_transcripts``, the gene background's columns;
+        ``fasta_competitors``, the FASTA records that are columns, each with the number of
+        distinct windows it shares with the configured transcripts, and
+        ``n_fasta_competitors``; ``sequence_from_fasta``, the gene-background transcripts
+        whose column is the FASTA's sequence), ``annotation`` (the config's
         ``ensembl_release``, and ``fetched_release``, the release any sequence was
         fetched from in this run -- None for both when absent), ``gene_total``
         (estimability of the sum of every column, with the transcripts that have no
@@ -1024,14 +1098,16 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
 
     # ---- window tracks ---------------------------------------------------- #
     tracks = {t: kmer_track(seqs[t], window, canonical) for t in needed}
-    bg_tracks = {t: kmer_track(s, window, canonical) for t, s in bg_seqs.items()}
-
     group_windows = {g: set().union(*(set(tracks[t]) for t in ids)) if ids else set()
                      for g, ids in group_ids.items()}
-    bg_windows = set().union(*(set(v) for v in bg_tracks.values())) if bg_tracks else set()
 
     # ---- an external FASTA background, streamed --------------------------- #
-    fasta_hits = set()
+    # A record that shares a window with a configured transcript is a column of the system,
+    # as the gene's other transcripts are.  Through 2.4.1 it took windows from the
+    # uniqueness layer only, so the same competitor gave a smaller rank and a smaller
+    # min |log2FC| passed as a FASTA than passed with background_sequences.
+    background = dict(sorted(bg_seqs.items()))      # id -> the sequence of its column
+    fasta_competitors, sequence_from_fasta = {}, []
     identical_to_configured = None
     if background_fasta:
         query = set().union(*group_windows.values()) if group_windows else set()
@@ -1040,13 +1116,25 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             identical, identical_to_configured = {}, {}
             for t in sorted(set(needed)):
                 identical.setdefault(seqs[t].strip().upper(), t)
-        fasta_hits = scan_background_fasta(
+        records = scan_fasta_competitors(
             background_fasta, query, window, canonical=canonical, exclude_ids=needed,
-            identical=identical, identical_out=identical_to_configured)
+            identical=identical, identical_out=identical_to_configured, keep_ids=bg_seqs)
+        for rid, (seq, hits) in records.items():
+            if rid in bg_seqs:
+                # one transcript in both is one column; when the FASTA holds other sequence
+                # for it (another release), the column is the FASTA's, which the index has
+                if seq != bg_seqs[rid].strip().upper():
+                    background[rid] = seq
+                    sequence_from_fasta.append(rid)
+            elif hits:
+                background[rid] = seq
+                fasta_competitors[rid] = len(hits)
         copies = index_scope.fasta_copies(background_fasta, needed,
                                           [config.get("gene")] if config.get("gene") else ())
     else:
         copies = []
+    bg_tracks = {t: kmer_track(s, window, canonical) for t, s in background.items()}
+    bg_windows = set().union(*(set(v) for v in bg_tracks.values())) if bg_tracks else set()
 
     # ---- per-group report ------------------------------------------------- #
     report = {}
@@ -1056,7 +1144,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         for g2, ws in group_windows.items():
             if g2 != g:
                 others |= ws
-        shared = others | bg_windows | fasta_hits
+        shared = others | bg_windows
         uniq = group_windows[g] - shared
 
         best = None
@@ -1102,7 +1190,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     # Poisson weights.  Flat in TPM across the gene's transcripts, which is the same
     # assumption the per-class read estimate already makes; real genes are skewed.
     all_lengths = {t: len(seqs[t]) for t in needed}
-    all_lengths.update({t: len(v) for t, v in bg_seqs.items()})
+    all_lengths.update({t: len(v) for t, v in background.items()})
     theta = np.array([expected_informative_reads(
         1.0, tpm, all_lengths.get(t, 0), depth=depth,
         mean_efflen=mean_efflen, frag_mean=frag_mean) for t in all_tids])
@@ -1189,9 +1277,12 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
                        "fetched_release": fetched_release},
         "background": {
             "gene_id": bg_gene_id,
-            "gene_transcripts": sorted(bg_tracks),
+            "gene_transcripts": sorted(bg_seqs),
             "fasta": str(background_fasta) if background_fasta else None,
-            "n_background_transcripts": len(bg_tracks),
+            "n_background_transcripts": len(bg_seqs),
+            "fasta_competitors": dict(sorted(fasta_competitors.items())),
+            "n_fasta_competitors": len(fasta_competitors),
+            "sequence_from_fasta": sorted(sequence_from_fasta),
             "keep_duplicates": keep_duplicates,
             "identical_to_configured": identical_to_configured,
             "same_name_copies": copies,
