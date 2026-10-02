@@ -313,18 +313,26 @@ def resolve_server(release=None, *, timeout=DEFAULT_TIMEOUT, retries=DEFAULT_RET
             "releases only." % (release, alias, e)) from e
 
 
-def fetch_cdna_batch(ids, **retry):
+def fetch_cdna_batch(ids, versions=None, **retry):
     """``{id: cdna}`` for Ensembl transcript ids, :data:`MAX_POST_IDS` per request.
 
     Versions are stripped from the ids.  Results are matched to ids by the ``query``
     field Ensembl echoes back (``id`` if it is absent), never by position.  An id for
     which Ensembl returns nothing is absent from the result; the caller decides whether
-    that is an error.  ``retry`` goes to :func:`request`.
+    that is an error.  ``versions``, a dict, receives the versioned id of each sequence
+    returned, when the answer gives one.  ``retry`` goes to :func:`request`.
     """
     want = list(dict.fromkeys(t.split(".")[0] for t in ids))
     out = {}
     for i in range(0, len(want), MAX_POST_IDS):
         chunk = want[i:i + MAX_POST_IDS]
         for item in request_json("/sequence/id?type=cdna", {"ids": chunk}, **retry):
-            out[(item.get("query") or item["id"]).split(".")[0]] = item["seq"]
+            tid = (item.get("query") or item["id"]).split(".")[0]
+            out[tid] = item["seq"]
+            if versions is not None:
+                full = str(item.get("id") or "")
+                if "." not in full and item.get("version") is not None:
+                    full = "%s.%s" % (tid, item["version"])
+                if "." in full:
+                    versions[tid] = full
     return out

@@ -47,6 +47,33 @@ versioning.
   proposals. A symbol no gene has exactly is looked for again ignoring case, as REST does,
   with a NOTE. The file is read in 16 MiB blocks and only a block that holds the gene is
   split into lines.
+- **`identifiability --gtf FILE --transcripts-fasta FILE`** (`analyze(..., gtf=,
+  transcripts_fasta=)`): the gene's transcripts from the GTF and their sequence from the
+  transcript FASTA of the same release, with no network (issue #13). The gene is the config's
+  `gene_id`; without one, the one GTF gene that holds every configured transcript; failing
+  that, the symbol's, by `annotate`'s rule. It must hold every configured transcript, and
+  every transcript of it must be in the FASTA at the GTF's version: a subset FASTA (one of
+  GENCODE's basic transcripts lacks 1,917 of the 4,396 transcripts of the 109 survey genes
+  at release 116, and `pc_transcripts` every non-coding one) or one of another release
+  stops the run with what to pass. The FASTA's ids are read from GENCODE's `|` headers and Ensembl's space-separated
+  ones; `_PAR_Y` records are skipped, and an id held twice is an error. The gene
+  background is the GTF's every other transcript of the gene, and goes the way a fetched
+  one does -- the identical-copy rule, the id merge with `--background-fasta`,
+  `--max-window-records`, `--decoys` and `--keep-duplicates` -- so a background the two
+  sources give alike gives one report; the tests hold that for LEPR and CD99 against
+  recorded REST 116 answers. `--transcripts-fasta` may be the `--background-fasta` too, and
+  serves alone a run with `--no-gene-background`. The two replace `--inputs`, `--sequences`
+  and `--background-sequences`; `--ensembl-release` must be the GTF's release. The report
+  gains `annotation.file_release` and `annotation.source` (the files' names, sizes and
+  SHA-256, and what the GTF's header says; None for both from REST), and
+  `background.gene_id` is the GTF's gene. `--save-inputs` records the files' release and
+  `annotation_source`, and `--inputs` repeats the run. A NOTE says when the config was
+  annotated against another release, or proposed from another GTF (by SHA-256).
+- **A NOTE when the index is of another release, in both modes**: `--background-fasta`
+  holding a configured transcript at another version than the sequence used here, listed in
+  `background.fasta_other_versions` (`{id: {"used", "fasta"}}`). The version used is the
+  file's, REST's (`ensembl.fetch_cdna_batch(..., versions=)`), or the one a config or
+  `--sequences` id carries.
 - `annotation_files`, which reads a GTF and a transcript FASTA with the standard library
   alone; `io.is_gzip` and `io.open_bytes`.
 

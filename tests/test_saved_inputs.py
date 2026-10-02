@@ -76,6 +76,7 @@ def test_a_saved_run_repeats_offline_with_the_same_answer(ens, tmp_path, capsys,
     offline = json.loads(capsys.readouterr().out)
     _same_answer(online, offline)
     assert offline["annotation"] == {"ensembl_release": OLD, "fetched_release": None,
+                                     "file_release": None, "source": None,
                                      "inputs_release": OLD}
 
 

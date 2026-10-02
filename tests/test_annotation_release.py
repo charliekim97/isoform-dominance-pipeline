@@ -57,13 +57,15 @@ def test_annotate_no_longer_writes_the_free_text_reference(serve):
 # --------------------------------------------------------------------------- #
 def test_the_report_carries_the_config_release(no_network):
     res = identifiability.analyze(dict(CONFIG, ensembl_release=116), sequences=OFFLINE)
-    assert res["annotation"] == {"ensembl_release": 116, "fetched_release": None}
+    assert res["annotation"] == {"ensembl_release": 116, "fetched_release": None,
+                                 "file_release": None, "source": None}
 
 
 def test_an_old_config_reports_no_release_and_still_runs(no_network):
     old = dict(CONFIG, reference="Ensembl REST (live annotation)")
     res = identifiability.analyze(old, sequences=OFFLINE)
-    assert res["annotation"] == {"ensembl_release": None, "fetched_release": None}
+    assert res["annotation"] == {"ensembl_release": None, "fetched_release": None,
+                                 "file_release": None, "source": None}
 
 
 def test_a_run_that_fetches_sequence_records_the_release_it_fetched_from(serve):
@@ -71,7 +73,8 @@ def test_a_run_that_fetches_sequence_records_the_release_it_fetched_from(serve):
     the config's release is not passed off as the release of the sequence used."""
     serve(release=117)
     res = identifiability.analyze(dict(CONFIG, ensembl_release=116))
-    assert res["annotation"] == {"ensembl_release": 116, "fetched_release": 117}
+    assert res["annotation"] == {"ensembl_release": 116, "fetched_release": 117,
+                                 "file_release": None, "source": None}
 
 
 def test_a_pinned_run_makes_no_request_at_all(no_network, tmp_path):

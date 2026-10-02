@@ -129,26 +129,33 @@ def same_name_copies(records, target_ids, gene_names=()):
             for _, c in sorted(copies.items())]
 
 
-def _relevant(heads, targets, names):
-    """The parsed ``heads`` that are a target transcript or carry one of ``names``."""
+def _relevant(heads, targets, names, versions=None):
+    """The parsed ``heads`` that are a target transcript or carry one of ``names``; and in
+    ``versions``, each target's versioned ids, the header's first ``|``-field or word."""
     out = []
     for head in heads:
+        if versions is not None:
+            first = head.strip().split("|")[0].split()
+            if first and _unversioned(first[0]) in targets:
+                versions.setdefault(_unversioned(first[0]), set()).add(first[0])
         r = parse_header(head)
         if r and (r["transcript"] in targets or r["gene_name"] in names):
             out.append(r)
     return out
 
 
-def copies_in(read_heads, target_ids, gene_names=()):
+def copies_in(read_heads, target_ids, gene_names=(), versions=None):
     """:func:`same_name_copies` over the headers ``read_heads()`` yields, holding only the
     records that can matter rather than every header of a whole-transcriptome FASTA.
 
     ``read_heads`` is called again, once, when the name the headers give the target
     transcripts is not among ``gene_names``: a copy can come before its reference gene.
+    ``versions``, a dict, receives the versioned ids the headers give each target
+    transcript (``{id: {versioned id, ...}}``).
     """
     targets = {_unversioned(t) for t in target_ids}
     names = {n for n in gene_names or () if n}
-    recs = _relevant(read_heads(), targets, names)
+    recs = _relevant(read_heads(), targets, names, versions)
     found = {r["gene_name"] for r in recs if r["transcript"] in targets}
     if found - names:
         names |= found
@@ -156,14 +163,14 @@ def copies_in(read_heads, target_ids, gene_names=()):
     return same_name_copies(recs, targets, names)
 
 
-def fasta_copies(path, target_ids, gene_names=()):
+def fasta_copies(path, target_ids, gene_names=(), versions=None):
     """:func:`copies_in` for a plain or gzipped FASTA (told by its magic bytes)."""
     def heads():
         with open_text(path) as fh:
             for line in fh:
                 if line.startswith(">"):
                     yield line[1:]
-    return copies_in(heads, target_ids, gene_names)
+    return copies_in(heads, target_ids, gene_names, versions)
 
 
 def without_identical(copies, identical):

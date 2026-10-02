@@ -352,12 +352,13 @@ def read_fasta(path, ids):
     return out
 
 
-def sequences_for(gene, fasta):
+def sequences_for(gene, fasta, versions=None):
     """Every transcript of ``gene`` (a :func:`scan` record) from ``fasta``: ``{id: seq}``.
 
     A transcript the FASTA lacks, or holds at another version, is an
     :class:`AnnotationFileError`: a background silently short of transcripts, or sequence
-    of another release, changes the answer.
+    of another release, changes the answer.  ``versions``, a dict, receives each id's
+    versioned id as the FASTA gives it.
     """
     want = {t["id"]: t for t in gene["Transcript"]}
     got = read_fasta(fasta, want)
@@ -369,19 +370,22 @@ def sequences_for(gene, fasta):
             "ncRNA -- does not hold them all; pass gencode.vN.transcripts.fa.gz of the GTF's "
             "release" % (fasta, len(missing), len(want), gene["id"], ", ".join(missing[:5]),
                          " and %d more" % (len(missing) - 5) if len(missing) > 5 else ""))
-    wrong = sorted(t for t, (v, _) in got.items() if _version(v) is not None
-                   and want[t]["version"] is not None and _version(v) != want[t]["version"])
+    wrong = sorted(t for t, (v, _) in got.items() if version(v) is not None
+                   and want[t]["version"] is not None and version(v) != want[t]["version"])
     if wrong:
         t = wrong[0]
         raise AnnotationFileError(
             "%s and the GTF disagree on the version of %d transcript(s) of %s (%s is %s in "
             "the FASTA and %s.%s in the GTF): they are of different releases"
             % (fasta, len(wrong), gene["id"], t, got[t][0], t, want[t]["version"]))
+    if versions is not None:
+        versions.update((t, v) for t, (v, _) in got.items())
     return {t: s for t, (_, s) in got.items()}
 
 
-def _version(versioned):
-    """``ENST00000349533.11`` -> 11; None without a version."""
+def version(versioned):
+    """``ENST00000349533.11`` -> 11, ``ENST00000381192.10_PAR_Y`` -> 10; None without a
+    version."""
     if "." not in versioned:
         return None
     v = versioned.split(".")[1].split("_")[0]

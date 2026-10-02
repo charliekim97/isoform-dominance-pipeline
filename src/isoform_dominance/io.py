@@ -132,7 +132,7 @@ def primary_pair(config):
 
 
 def save_inputs(path, captured, config, release, version, background_fasta=None,
-                decoys=None, max_window_records=None):
+                decoys=None, max_window_records=None, annotation_source=None):
     """Write the sequence an ``identifiability`` run used, so it can be repeated offline.
 
     ``captured`` is what :func:`isoform_dominance.identifiability.analyze` put in
@@ -163,6 +163,10 @@ def save_inputs(path, captured, config, release, version, background_fasta=None,
     ``gene_id`` is the Ensembl gene the gene background was fetched as -- or, when none was
     fetched, the config's ``gene_id`` -- so that a rerun can be refused a config of another
     gene of the same name.
+
+    A run on local files (``identifiability --gtf --transcripts-fasta``) records them as
+    ``annotation_source`` -- names, sizes, SHA-256 and what the GTF's header says -- and
+    ``release`` is theirs; each sequence's source is ``"file:<release>"``.
     """
     def _file(p):
         return p and {"path": str(p), "bytes": os.path.getsize(p), "sha256": file_sha256(p)}
@@ -178,6 +182,7 @@ def save_inputs(path, captured, config, release, version, background_fasta=None,
                                                               captured["background_sequences"]))),
            "background_fasta": fasta,
            "decoys": _file(decoys) or None,
+           "annotation_source": annotation_source,
            "sequence_sources": captured.get("sequence_sources"),
            "sequences": captured["sequences"],
            "background_sequences": captured["background_sequences"]}
@@ -242,6 +247,9 @@ def load_inputs(path):
         raise InputError("saved inputs %s: sequence_sources is %r, expected null or an object "
                          "of transcript id to \"supplied\" or \"fetched:<release>\""
                          % (path, sources))
+    if not isinstance(doc.get("annotation_source"), (dict, type(None))):
+        raise InputError("saved inputs %s: annotation_source is %r, expected null or an object"
+                         % (path, doc["annotation_source"]))
     for key in ("background_fasta", "decoys"):
         rec = doc.get(key)
         if rec is not None and not (isinstance(rec, dict)
