@@ -1191,6 +1191,9 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             identical_out=fasta_identical, keep_ids=bg_seqs,
             keep_sequences=() if keep_duplicates else set(norm.values()),
             decoys=decoy_names or (), stats=scan)
+        # a record whose header gives no id is still one record
+        fasta_identical = {(rid if rid is not None else "(no id %d)" % n): conf
+                           for n, (rid, conf) in enumerate(fasta_identical.items(), 1)}
         # a record the scan left out for a configured transcript's sequence
         records.update((rid, (seqs[conf].strip().upper(), None))
                        for rid, conf in fasta_identical.items() if rid in bg_seqs)

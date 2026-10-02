@@ -266,3 +266,11 @@ def test_a_gene_transcript_the_fasta_holds_as_a_configured_ones_sequence(tmp_pat
     assert bg["gene_transcripts"] == []
     rc0, res0, _ = _run(_files(tmp_path), capsys)          # no background at all
     assert _answer(res, rc) == _answer(res0, rc0)
+
+
+def test_a_copy_whose_header_gives_no_id_is_still_reported(tmp_path, capsys):
+    fa = tmp_path / "bg.fa"
+    fa.write_text(">\n%s\n>%s\n%s\n" % (SEQS[T1], CHRY, SEQS[T1]))
+    rc, res, err = _run(_files(tmp_path, {OTHER: BG[OTHER]}) + ["--background-fasta", str(fa)],
+                        capsys)
+    assert res["background"]["identical_to_configured"] == {"(no id 1)": T1, CHRY: T1}
