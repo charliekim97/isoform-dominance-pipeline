@@ -167,8 +167,12 @@ def kmer_track(seq, k, canonical=True):
     return [seq[i:i + k] for i in range(len(seq) - k + 1)]
 
 
+#: Length of the seeds :func:`scan_background_fasta` looks up before it reads a window.
+FASTA_SEED = 16
+
+
 def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
-                          identical=None, identical_out=None):
+                          identical=None, identical_out=None, *, seed=FASTA_SEED):
     """Return the subset of ``query_kmers`` that also occurs in a background FASTA.
 
     Streams the file and never materialises the background's own k-mer set, so a
@@ -184,6 +188,16 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
     ``identical_out``, a dict, receives record id -> that transcript.  Salmon's index does
     the same with such a record: unless it is built with ``--keepDuplicates`` it keeps
     only the first of identical sequences, so the record competes with nothing.
+
+    The answer is exact, and what folding every window of every record to its canonical
+    form and looking it up gives; only the work differs.  Each query window is looked up
+    in both orientations, so a record's windows are never folded.  And a record's window
+    is read only where a ``seed``-long substring of it is one of the query's: with
+    ``s = min(seed, k)`` and ``t = k - s + 1``, every window of length ``k`` holds the
+    ``s``-mer that starts at the one multiple of ``t`` among its first ``t`` positions, so
+    only the ``s``-mers at multiples of ``t`` are looked up, and the ``t`` windows that
+    hold one that matches are then read whole.  ``seed`` changes the speed, never the
+    answer.
     """
     query = set(query_kmers)
     if not query:
@@ -193,6 +207,20 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
     lengths = {len(s) for s in identical}
     seen = set()
 
+    # each way a record's window can read as a query window, to the query window it is
+    look = {}
+    for q in query:
+        if len(q) != k:
+            continue                    # a window of the record is k long
+        if canonical:
+            if canonical_kmer(q) != q:
+                continue                # a folded window is canonical, so never this
+            look[revcomp(q)] = q
+        look[q] = q
+    s = max(1, min(k, seed))
+    t = max(1, k - s + 1)
+    seeds = {w[j:j + s] for w in look for j in range(t)}
+
     def _consume(chunks, tid):
         if not chunks or tid in exclude:
             return
@@ -201,12 +229,16 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
             if identical_out is not None:
                 identical_out[tid] = identical[seq]
             return
-        for i in range(len(seq) - k + 1):
-            km = seq[i:i + k]
-            if canonical:
-                km = canonical_kmer(km)
-            if km in query:
-                seen.add(km)
+        n = len(seq)
+        if k <= 0 or n < k:
+            return
+        for p in range(0, n - s + 1, t):
+            if seq[p:p + s] in seeds:
+                # the windows whose seed position is p: they start at p - t + 1 .. p
+                for i in range(max(0, p - t + 1), min(p, n - k) + 1):
+                    hit = look.get(seq[i:i + k])
+                    if hit is not None:
+                        seen.add(hit)
 
     chunks, tid = [], None
     with io.open_text(path) as fh:
