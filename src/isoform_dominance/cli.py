@@ -290,6 +290,14 @@ def cmd_identifiability(a):
     except ValueError as e:
         print("config error: %s" % e, file=sys.stderr)
         return 1
+    except MemoryError as e:
+        print("error: out of memory%s.%s" % (
+            " (%s)" % e if str(e) else "",
+            " Each --background-fasta record that shares a window with a configured "
+            "transcript is a column of the compatibility system, so genome sequence (pass "
+            "--decoys) or a repeat that many records share can make the system too large."
+            if a.background_fasta else ""), file=sys.stderr)
+        return 1
     if inputs is not None:
         res["annotation"]["inputs_release"] = inputs["ensembl_release"]
         # a saved sequence reaches the run as supplied; the file says which were fetched

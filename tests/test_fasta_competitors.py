@@ -117,3 +117,21 @@ def test_an_id_in_both_backgrounds_is_one_column(tmp_path, capsys, differ):
     alone = _cli(tmp_path, capsys, "--background-sequences", str(used))
     assert _answer(rc, res) == _answer(*alone[:2])
     assert ("taken from --background-fasta" in err) is differ
+
+
+def test_a_system_too_large_for_memory_is_one_line_and_exit_1(tmp_path, capsys, monkeypatch):
+    """Every record that shares a window is a column, so a genome record or a repeat many
+    records share can make a system numpy cannot allocate: say so, not a traceback."""
+    def too_large(*a, **k):
+        raise MemoryError("Unable to allocate 3.73 GiB for an array with shape (8371, 59840)")
+    monkeypatch.setattr(I, "compatibility_matrix", too_large)
+    fa = _fasta(tmp_path / "bg.fa", {COMP: COMPETITOR})
+    cfg, sq = tmp_path / "cfg.json", tmp_path / "seqs.json"
+    cfg.write_text(json.dumps(CFG))
+    sq.write_text(json.dumps(SEQS))
+    rc = cli.main(["identifiability", "--config", str(cfg), "--sequences", str(sq),
+                   "--background-fasta", fa])
+    err = capsys.readouterr().err
+    assert rc == 1 and len(err.strip().splitlines()) == 1
+    assert err.startswith("error: out of memory (Unable to allocate 3.73 GiB")
+    assert "--decoys" in err
