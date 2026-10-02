@@ -91,9 +91,13 @@ report exactly `release` on `/info/data`. The alias is asked first, once, so a r
 an archived release never touches `rest.ensembl.org`; only if it fails is
 `rest.ensembl.org` asked which release is current. Raises `ensembl.ReleaseNotServed` (a
 `LookupError`) for a release later than the current one, for an archive reporting another
-release, for an archive whose alias redirects off the REST service -- which is how Ensembl
-retires one; releases 90 to 104 but 94 did on 2026-09-24 -- and for an archive still
-unreachable once the retries are spent, an outage or a retirement that looks like one. A
+release, for an archive whose alias redirects to Ensembl's page on archives
+(`www.ensembl.org/help/articles/archives`, or the same path on `ensembl.org`:
+`ensembl.RETIRED_HOSTS`, `ensembl.RETIRED_PATH`) -- which is how Ensembl retires one;
+releases 90 to 104 but 94 did on 2026-09-24, and 100, 103 and 104 on 2026-10-02 -- and
+for an archive still unreachable once the retries are spent, an outage or a retirement
+that looks like one. A redirect that ends anywhere else off the REST service, such as a
+maintenance page, is retried like an outage, not taken for a retirement. A
 release after 116 is refused as not on the REST API at all: Ensembl 116 (June 2026) is the
 last release of the legacy platform, and its REST API "remains available for e116 for long
 term use" with "no plans to port over" to the new one (`ensembl.REST_LAST_RELEASE`). On the
@@ -126,7 +130,7 @@ Return the set of length-`k` substrings (k-mers) of `seq` (upper-cased), each fo
 smaller of itself and its reverse complement unless `canonical=False` (the strand-aware
 behaviour up to v2.1.1).
 
-**`identifiability.analyze(config, k=31, sequences=None, *, canonical=True, window=None, background_sequences=None, background_fasta=None, background_gene_transcripts="auto", species=None, read_length=100, frag_mean=200.0, frag_sd=60.0, paired=True, depth=30_000_000, mean_efflen=1500.0, tpm=10.0, n_donors=1, conditioning_tau=10.0, min_informative_reads=50.0, min_log2fc=None, ensembl_release=None, inputs_out=None, keep_duplicates=False, retries=5, retry_wait=1.0) -> dict`**
+**`identifiability.analyze(config, k=31, sequences=None, *, canonical=True, window=None, background_sequences=None, background_fasta=None, decoys=None, background_gene_transcripts="auto", species=None, read_length=100, frag_mean=200.0, frag_sd=60.0, paired=True, depth=30_000_000, mean_efflen=1500.0, tpm=10.0, n_donors=1, conditioning_tau=10.0, min_informative_reads=50.0, min_log2fc=None, ensembl_release=None, inputs_out=None, keep_duplicates=False, retries=5, retry_wait=1.0) -> dict`**
 The three layers the `identifiability` command reports -- sequence uniqueness, the read
 model, and estimability on the class-collapsed compatibility system -- for each group and
 for the contrast named in `primary_comparison`. `sequences` and `background_sequences`
@@ -136,13 +140,34 @@ was supplied. Pass a dict as `inputs_out` to get back the sequence the run used
 (`sequences`, `background_sequences`, `fetched_release`) and the system it was built at
 (`k`, `window`, `canonical`, none of which is in the config), which `io.save_inputs`
 writes to a file. Returns a dict with `k`, `window`, `canonical`; `annotation`
-(`ensembl_release`, `fetched_release`); `background` (with `gene_id`, the gene the background was fetched as: by the config's `gene_id` when it has one, else by symbol, and a symbol whose gene holds none of the configured transcripts raises `ValueError`; `same_name_copies`, from `index_scope.fasta_copies`, when `background_fasta` is given; `keep_duplicates`; and `identical_to_configured`, the `background_fasta` records left out because their sequence is a configured transcript's, as record id -> that transcript, since Salmon's default index keeps one of identical sequences — None when `keep_duplicates=True`, which counts them, or with no FASTA); `design`; `groups` (per group:
+(`ensembl_release`, `fetched_release`); `background` (with `gene_id`, the gene the background was fetched as: by the config's `gene_id` when it has one, else by symbol, and a symbol whose gene holds none of the configured transcripts raises `ValueError`; `gene_transcripts` and `n_background_transcripts`, the gene background's columns of the compatibility system; `fasta` and `fasta_sha256`; `fasta_competitors`, the `background_fasta` records that share a window with a configured transcript and so are columns too, each with the number of distinct windows it shares, and `n_fasta_competitors`; `sequence_from_fasta`, the gene-background transcripts the FASTA holds with other sequence, whose column is the FASTA's; `decoys`, `decoys_sha256`, `decoys_listed`, `decoys_skipped` and `decoys_absent` (the listed names the FASTA does not hold), all None without `decoys`; `fasta_long_records`, the records read that are longer than `LONG_RECORD` (1 Mb), as id -> length; `same_name_copies`, from `index_scope.fasta_copies`, when `background_fasta` is given; `keep_duplicates`; `identical_to_configured` and `identical_to_background`, the background sequences -- the gene's, `background_sequences`' or FASTA records -- left out because their sequence is a configured transcript's or an earlier background sequence's, as id -> that transcript, since Salmon's default index keeps one of identical sequences, and `identical_source`, `"gene"`, `"sequences"` or `"fasta"` for each -- all three None when `keep_duplicates=True`, which counts every copy); `design`; `groups` (per group:
 `verdict`, `reasons`, `n_unique_kmers`, `unique_length`, `n_blocks`,
 `expected_informative_reads`, `estimable`, `conditioning_factor`, `gls_relative_se`,
 `min_resolvable_log2fc`, `coherence`, ...); `contrast` (the same estimability fields for
 the class contrast, plus the effective-length and distinguishing-window summaries);
 `counting_noise`; `gene_total`; `effect_resolvable` (None when no `min_log2fc` was
 given); `n_compatibility_classes`; `verdict` and `reasons`. The docstring defines each.
+
+`decoys` is the path of Salmon's `decoys.txt` (one record name per line, read by `io.read_decoys`), for a `background_fasta` that is a decoy-aware index's gentrome: those records are skipped unread. It needs a `background_fasta`; without one it is a `ValueError`.
+
+**`identifiability.scan_fasta_competitors(path, query_kmers, k, canonical=True, exclude_ids=(), identical=None, identical_out=None, *, keep_ids=(), keep_sequences=(), seed=16, decoys=(), stats=None) -> dict`**
+The records of a background FASTA that share a window with `query_kmers`, as
+`{record id: (sequence, windows)}` in file order; a record that shares none is left out
+unless its id is in `keep_ids` or its sequence in `keep_sequences`. `exclude_ids` are
+skipped, as are records whose sequence is a key of `identical` (each goes to
+`identical_out` as record id -> `identical[sequence]`) and records named in `decoys`.
+`stats` receives `decoys_skipped`, `decoys_found` and `long_records`.
+`identifiability.scan_background_fasta(path, query_kmers, k, ...)` returns the union of
+the windows, as through 2.4.1. Each query window is looked up in both orientations, and a
+record's window is read only where a `seed`-long substring at a stride of
+`k - seed + 1` matches: the answer is the one reading every window gives, and `seed`
+changes only the speed.
+
+**`identifiability.estimability(A, c, rcond=1e-10, *, svd=None) -> dict`**
+Whether `c'theta` is estimable from `E[y] = A theta` (`estimable`, `residual`, `rank`),
+and the structural `conditioning_factor`, from one singular value decomposition with one
+tolerance. `svd`, `np.linalg.svd(A.T, full_matrices=False)[:2]`, lets a caller asking about
+several functionals of one `A` decompose it once; the answer is the same.
 
 **`identifiability.class_efflen_ratio(lengths_a, lengths_b, frag_mean=200.0) -> (mean_a, mean_b, log2_ratio)`**
 Plain mean over each class's transcripts of `effective_length(L, frag_mean) = max(1, L -
@@ -219,7 +244,7 @@ None, as a possible copy.
 **`index_scope.copy_warning(copies, source) -> str | None`** — the warning the CLI prints;
 for copies without a region it says they may be same-name genes on a reference chromosome.
 
-**`index_scope.without_identical(copies, identical) -> list`** — `copies` less the records `identical` (record id -> configured transcript, the report's `identical_to_configured`) names; the CLI warns only about what is left, since Salmon's default index keeps one of identical sequences.
+**`index_scope.without_identical(copies, identical) -> list`** — `copies` less the records `identical` names (record id -> the transcript it equals: the CLI passes the report's `identical_to_configured` and `identical_to_background`); the CLI warns only about what is left, since Salmon's default index keeps one of identical sequences.
 
 ---
 
@@ -255,9 +280,10 @@ TPM, per cohort (a control for whether a dominance signal is a cell-type artefac
 
 **`io.load_config(path, need_groups=True) -> dict`** — load a config JSON; `io.InputError` (a `ValueError`) if it is not JSON, not an object, or, unless `need_groups` is false, has no `groups` object.
 **`io.load_json(path, what) -> object`** — parse a JSON file; `io.InputError` naming `what` and the file if it is not JSON.
-**`io.save_inputs(path, captured, config, release, version, background_fasta=None) -> dict`** — write the sequence an `identifiability` run used (`captured`, from `analyze(..., inputs_out=...)`) with the release it came from, as `"format": "isoform-dominance/inputs/1"` (`io.INPUTS_FORMAT`). `analysis` records the `k`, `window`, `canonical` and `gene_background` of the run, and `keep_duplicates` when it had a background FASTA, none of which the config holds; `sequence_sources` gives each id's `"supplied"` or `"fetched:<release>"`, and `release` is recorded only when every sequence was fetched from it. A `background_fasta` is recorded by path, size and SHA-256, not copied. `gene_id` is the gene the background was fetched as, or the config's `gene_id`. Backs `--save-inputs`.
-**`io.load_inputs(path) -> dict`** — read a file `save_inputs` wrote; `io.InputError` if it is not one, and for every field the caller goes on to read: `sequences` and `background_sequences` as objects of id to sequence, an `ensembl_release` that is a number or null, an `analysis` with integer `k` and `window` and boolean `canonical` (and `keep_duplicates`, when present), a `gene_id` that is a string or null, and a `background_fasta` that is null or has a path and a sha256. Which transcripts are a class and which are background is decided by the config the rerun is given, not by the saved grouping. Backs `--inputs`.
+**`io.save_inputs(path, captured, config, release, version, background_fasta=None, decoys=None) -> dict`** — write the sequence an `identifiability` run used (`captured`, from `analyze(..., inputs_out=...)`) with the release it came from, as `"format": "isoform-dominance/inputs/1"` (`io.INPUTS_FORMAT`). `analysis` records the `k`, `window`, `canonical` and `gene_background` of the run, and `keep_duplicates` when it had a background, gene or FASTA, none of which the config holds; `sequence_sources` gives each id's `"supplied"` or `"fetched:<release>"`, and `release` is recorded only when every sequence was fetched from it. A `background_fasta` and a `decoys` file are recorded by path, size and SHA-256, not copied. The gene background is saved whole, copies of configured transcripts included, so that a rerun with `--keep-duplicates` can count them. `gene_id` is the gene the background was fetched as, or the config's `gene_id`. Backs `--save-inputs`.
+**`io.load_inputs(path) -> dict`** — read a file `save_inputs` wrote; `io.InputError` if it is not one, and for every field the caller goes on to read: `sequences` and `background_sequences` as objects of id to sequence, an `ensembl_release` that is a number or null, an `analysis` with integer `k` and `window` and boolean `canonical` (and `keep_duplicates`, when present), a `gene_id` that is a string or null, and a `background_fasta` and `decoys` that are null or have a path and a sha256. Which transcripts are a class and which are background is decided by the config the rerun is given, not by the saved grouping. Backs `--inputs`.
 **`io.file_sha256(path) -> str`** — hex SHA-256 of a file's bytes.
+**`io.read_decoys(path) -> list`** — the record names in Salmon's `decoys.txt`, one per line (its first word, a leading `>` dropped); `io.InputError` when it names none.
 **`io.open_text(path)`** — open a text file for reading, gunzipping it when its first two bytes are the gzip magic (`1f 8b`), whatever its name.
 **`io.shared_transcripts(groups) -> dict`** — `{transcript: [group, ...]}` for each transcript more than one group names; `identifiability` refuses such a config and `extract` warns.
 **`io.transcript_to_group(groups) -> dict`** — invert `{group: [ENST...]}` to `{ENST(no version): group}`.

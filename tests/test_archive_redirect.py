@@ -1,7 +1,7 @@
 """Only a redirect to Ensembl's page on archives says a REST archive is retired.
 
 2.4.1 took any redirect that ended outside the REST service for a retired archive and did
-not try again, so a maintenance page served for an hour retired an archive for good.  On
+not try again, so a run that met a maintenance page reported a retired archive.  On
 2026-10-02 (``/info/ping``) the retired archives ended on the same page and the live ones on
 their own date-named host:
 

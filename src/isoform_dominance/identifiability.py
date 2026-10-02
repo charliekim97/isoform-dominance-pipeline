@@ -271,7 +271,7 @@ def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
     """Return the subset of ``query_kmers`` that also occurs in a background FASTA.
 
     Streams the file and never materialises the background's own k-mer set, so a
-    whole-transcriptome FASTA (GENCODE, or the FASTA a Salmon index was built from)
+    whole-transcriptome FASTA (GENCODE, or the transcript FASTA a Salmon index was built from)
     can be used as background; one record is held at a time, so memory is set by the
     query and the longest record, not the file (a single 20 Mb record: about 125 MB).
     Handles plain or gzipped input, told apart by the gzip magic bytes; ``exclude_ids`` drops records whose first
@@ -947,7 +947,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     background_sequences, background_fasta, background_gene_transcripts
         What uniqueness is judged against, beyond the other configured groups, and the
         columns of the compatibility system beside the configured transcripts.  Pass a
-        FASTA -- ideally the one the Salmon index was built from -- for the honest
+        FASTA -- the transcript FASTA the Salmon index was built from, without the genome
+        decoys (or pass ``decoys``) -- for the honest
         whole-index answer.  Each of its records that shares a window with a configured
         transcript is a column, as a transcript of the gene background is, so a competitor
         gives one answer whether it comes from the FASTA or from ``background_sequences``.

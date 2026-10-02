@@ -126,7 +126,9 @@ gzip -dc Homo_sapiens.GRCh38.cdna.all.fa.gz \
 
 The package checks for such an index where it can. `identifiability
 --background-fasta` warns when the FASTA holds a transcript with the configured gene's
-name under another gene id, and so does `extract` when `quant.sf` names carry the whole
+name under another gene id, unless its sequence is a configured or a background
+transcript's (of identical sequences the index keeps one, so such a copy splits no read),
+and so does `extract` when `quant.sf` names carry the whole
 GENCODE header (an index built without Salmon's `--gencode`). Only an Ensembl header says
 where a gene lies, so a same-name gene on a reference chromosome — the chrY copy of a
 pseudoautosomal gene such as CD99 or SHOX, or a distinct gene sharing the name — is left
