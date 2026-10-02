@@ -57,7 +57,12 @@ def load_sample_map(path):
     """CSV with columns donor,condition[,SRR] -> {donor: condition}."""
     cond = {}
     with open(path) as f:
-        for r in csv.DictReader(f):
+        reader = csv.DictReader(f)
+        if "donor" not in (reader.fieldnames or []):
+            raise InputError("sample map %s has no \"donor\" column (its columns: %s); "
+                             "expected donor,condition[,SRR]"
+                             % (path, ", ".join(reader.fieldnames or []) or "none"))
+        for r in reader:
             cond[r["donor"]] = r.get("condition", "NA")
     return cond
 

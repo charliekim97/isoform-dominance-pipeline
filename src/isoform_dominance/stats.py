@@ -39,7 +39,7 @@ import numpy as np
 import scipy.stats
 from scipy.stats import norm, wilcoxon
 
-from .io import primary_pair
+from .io import InputError, primary_pair
 
 #: Class colours. Identity follows the isoform class, not the panel index -- the
 #: cohort is already encoded by which panel a donor is in, so reusing the colour
@@ -87,7 +87,17 @@ COMBINATION_LABELS = {
 def load_perdonor(path, condition, gA, gB):
     don, A, B = [], [], []
     with open(path) as f:
-        for r in csv.DictReader(f):
+        reader = csv.DictReader(f)
+        need = ["donor", "%s_TPM" % gA, "%s_TPM" % gB]
+        if condition not in (None, "", "all"):
+            need.insert(1, "condition")
+        absent = [c for c in need if c not in (reader.fieldnames or [])]
+        if absent:
+            raise InputError("per-donor table %s has no %s column (its columns: %s); "
+                             "`extract` writes one for each group of the config"
+                             % (path, ", ".join(absent), ", ".join(reader.fieldnames or [])
+                                or "none"))
+        for r in reader:
             if condition not in (None, "", "all") and r["condition"] != condition:
                 continue
             don.append(r["donor"]); A.append(float(r["%s_TPM" % gA])); B.append(float(r["%s_TPM" % gB]))
@@ -375,7 +385,7 @@ def run(config, condition, cohorts, out, n_boot=DEFAULT_N_BOOT, seed=DEFAULT_SEE
     for i, name in enumerate(names):
         don, A, B = load_perdonor(cohorts[name], condition, gA, gB)
         if len(A) == 0:
-            raise ValueError(
+            raise InputError(
                 "cohort %s: no donors matched condition %r in %s."
                 % (name, condition, cohorts[name]))
         allA += list(A); allB += list(B)

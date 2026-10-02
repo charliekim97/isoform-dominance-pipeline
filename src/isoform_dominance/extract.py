@@ -1,16 +1,23 @@
 """Extract per-donor isoform-group TPM from Salmon quant.sf (stdlib only)."""
 import csv, os, glob, json
 from . import index_scope
-from .io import transcript_to_group, load_sample_map
+from .io import InputError, transcript_to_group, load_sample_map
+
+
+class NoQuantFiles(InputError, FileNotFoundError):
+    """No ``<quantdir>/<donor>/quant.sf``: an :class:`InputError` for the CLI's one line, and
+    a ``FileNotFoundError`` for callers that caught that before 2.4.1."""
 
 
 def quant_paths(quantdir):
-    """``{donor: quantdir/<donor>/quant.sf}``; FileNotFoundError if there is none."""
+    """``{donor: quantdir/<donor>/quant.sf}``; :class:`NoQuantFiles` if there is none."""
     quants = sorted(glob.glob(os.path.join(quantdir, "*", "quant.sf")))
     if not quants:
-        raise FileNotFoundError(
-            "No Salmon output found at %s. Expected one quant.sf per donor at "
-            "%s/<donor>/quant.sf." % (os.path.join(quantdir, "*", "quant.sf"), quantdir))
+        raise NoQuantFiles(
+            "No Salmon output found at %s%s. Expected one quant.sf per donor at "
+            "%s/<donor>/quant.sf." % (os.path.join(quantdir, "*", "quant.sf"),
+                                      "" if os.path.isdir(quantdir)
+                                      else " (%s is not a directory)" % quantdir, quantdir))
     return {os.path.basename(os.path.dirname(q)): q for q in quants}
 
 
