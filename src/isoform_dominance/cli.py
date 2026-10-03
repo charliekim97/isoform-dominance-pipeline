@@ -764,12 +764,15 @@ def cmd_stats(a):
         _emit(res)
         return EXIT_OK
     for det in res["detail"]:
-        line = ("  %-12s n=%d  %d/%d  fold=%.1fx [%.1f-%.1f]  P=%.4g (%s)"
+        line = ("  %-12s n=%d  %d/%d  fold=%.1fx [%.1f-%.1f%s]  P=%.4g (%s)"
                 % (det["cohort"], det["n"], det["n_greater"], det["n"],
-                   det["median_fold"], det["fold_ci"][0], det["fold_ci"][1], det["p"],
-                   det["wilcoxon_method"] or "no test"))
+                   det["median_fold"], det["fold_ci"][0], det["fold_ci"][1],
+                   ", range" if det["fold_ci_method"] == stats.FOLD_CI_RANGE else "",
+                   det["p"], det["wilcoxon_method"] or "no test"))
         if det["underpowered"]:
             line += "  (floor %.4g: cannot reach 0.05)" % det["p_floor"]
+        if det["approximation_below_floor"]:
+            line += "  (floor %.4g: %s)" % (det["p_floor"], stats.BELOW_FLOOR_NOTE)
         print(line)
     cn, cgt, cp, cfold = res["combined"]
     print("  %-12s n=%d  %d/%d  fold=%.1fx  P=%.4g (%s)"
@@ -777,7 +780,10 @@ def cmd_stats(a):
              res["pooled"]["wilcoxon_method"] or "no test"))
     for key in ("stouffer", "stratified_signed_rank"):
         c = res["combination"][key]
-        print("  %-12s k=%d cohorts  P=%.4g" % (key.upper(), c["k"], c["p"]))
+        print("  %-12s k=%d cohorts  P=%.4g  floor %.4g%s%s"
+              % (key.upper(), c["k"], c["p"], c["p_floor"],
+                 ": cannot reach 0.05" if c["underpowered"] else "",
+                 "  (%s)" % stats.BELOW_FLOOR_NOTE if c["approximation_below_floor"] else ""))
     print("  headline combination: %s. POOLED above is reported for continuity only: "
           "it pools donors across independent cohorts and so ignores the cohort factor."
           % res["headline_combination"])

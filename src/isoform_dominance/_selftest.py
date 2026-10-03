@@ -112,7 +112,7 @@ def evaluate(base):
     for key in COMBINATIONS:
         c = res["combination"][key]
         combinations[key] = {"label": stats.COMBINATION_LABELS[key], "k": c["k"],
-                             "p": c["p"],
+                             "p": c["p"], "p_floor": c["p_floor"],
                              "z": c["z"] if math.isfinite(c["z"]) else None}
     combinations["pooled"]["wilcoxon_method"] = res["pooled"]["wilcoxon_method"]
     return {"ok": all(c["ok"] for c in checks), "checks": checks,
@@ -145,7 +145,7 @@ def main():
     print("\n  cohort combinations (reported; only donor-pooled is checked above):")
     for key in COMBINATIONS:
         c = r["combinations"][key]
-        line = "    %-24s k=%d  P=%.4g" % (c["label"], c["k"], c["p"])
+        line = "    %-24s k=%d  P=%.4g  floor=%.4g" % (c["label"], c["k"], c["p"], c["p_floor"])
         if key == "pooled":
             line += "  (paired Wilcoxon, %s)" % c["wilcoxon_method"]
         if key == r["headline_combination"]:
