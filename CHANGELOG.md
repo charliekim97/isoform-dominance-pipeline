@@ -18,7 +18,7 @@ versioning.
 > decoys and one without as two, and writes the rows in 2.1.1's order again (2.4.0 sorted
 > them by donor name).
 
-## [Unreleased]
+## [2.6.0] - 2026-10-02
 
 ### Added
 - **`annotate --gtf FILE`** (`annotate.build_config_from_gtf`): the groups proposed from a
