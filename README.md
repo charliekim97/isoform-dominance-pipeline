@@ -231,6 +231,42 @@ annotation release the transcripts came from, so it is reported in the output an
 > The `--json` report names both files by SHA-256 too. A verdict quoted
 > without a release is not a reproducible claim.
 
+> **Offline, from GENCODE files.** REST serves release 116 and nothing later, so an index
+> built from GENCODE 51 or a later release can be matched only by that release's own files;
+> the same files serve any release offline. Take the comprehensive
+> `gencode.vN.annotation.gtf.gz` and the `gencode.vN.transcripts.fa.gz` of the same N -- not
+> the `basic` GTF, and not `pc_transcripts` -- of the release the index was built from (the
+> GENCODE-to-Ensembl table is at https://www.gencodegenes.org/human/releases.html: 44 is
+> Ensembl 110, 48 is 114, 50 is 116):
+>
+> ```bash
+> isoform-dominance annotate --gene LEPR --gtf gencode.v50.annotation.gtf.gz --out lepr.json
+> isoform-dominance identifiability --config lepr.json --gtf gencode.v50.annotation.gtf.gz \
+>     --transcripts-fasta gencode.v50.transcripts.fa.gz --min-log2fc 0.5
+> ```
+>
+> Neither makes a request. `annotate --gtf` writes the config REST gives at that release,
+> with the release the GTF's header names and an `annotation_source` block naming the file by
+> SHA-256: on the 109-gene survey panel, configs read from GENCODE 44, 48 and 50 matched
+> REST's at releases 110, 114 and 116 for every gene, and the cDNA of the transcript FASTA
+> matched REST's byte for byte (2,005, 2,066 and 4,396 transcripts). `scripts/parity/`
+> repeats that comparison; the tests hold it on a seven-gene extract, and a weekly job holds
+> the extract to live REST 116. `identifiability --gtf --transcripts-fasta` takes the gene's
+> transcripts from the GTF and their sequence from the FASTA, and the gene background goes
+> the way a fetched one does, so a background the two give alike gives one report. A
+> basic GTF is refused, as is a FASTA that lacks a transcript of the gene or holds one at
+> another version: each leaves out or changes what the index holds. Where it differs from
+> REST: a symbol is matched exactly first, and only then ignoring case, with a NOTE (REST
+> always ignores case); a symbol whose every gene lies off the reference chromosomes is not
+> in the comprehensive GTF, which holds those chromosomes only, and is refused (REST finds it
+> and refuses it too, naming where it lies). With `--background-fasta`, `--gtf` also says
+> what a gene of the same name in the index is -- a reference-chromosome gene such as the
+> chrY copy of CD99, which is no index-scope problem, or one the GTF does not hold, a copy
+> off the reference chromosomes or of another release -- where a GENCODE header alone
+> cannot. Since 2.6.0 a config lists its clusters by content in both modes, so `_clusters`
+> in a config `annotate` wrote from REST before 2.6.0 can be in another order; its groups and
+> pair are the same.
+
 | Layer | Reports | Why it is not the layer above |
 |---|---|---|
 | Sequence uniqueness | unique k-mers, bases covered, block structure | judged against a background — the gene's other transcripts by default, the whole index with `--background-fasta` — not just the configured classes |

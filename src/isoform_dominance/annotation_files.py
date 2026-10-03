@@ -35,7 +35,6 @@ import re
 import zlib
 
 from . import io
-from .index_scope import REFERENCE_REGIONS
 
 #: Bytes read from the GTF at a time.  Only a block that holds a needle is split into
 #: lines; parsing every line of GENCODE 50's comprehensive GTF took over 40 s.
@@ -307,13 +306,6 @@ def protein_length(cds, strand):
     first = min(cds, key=lambda c: c[0]) if strand == 1 else max(cds, key=lambda c: c[1])
     frame = int(first[2]) if first[2] in ("0", "1", "2") else 0
     return (nt + (3 - frame) % 3) // 3
-
-
-def reference_genes(records):
-    """The records on the reference chromosomes, without GENCODE's pre-44 ``_PAR_Y``
-    copies (REST before release 110 has no chrY gene for them)."""
-    return [g for g in records if g["seq_region_name"] in REFERENCE_REGIONS
-            and not g["_par_y"]]
 
 
 def fasta_id(head):
