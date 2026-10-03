@@ -49,7 +49,8 @@ from urllib.error import HTTPError
 
 import numpy as np
 
-from . import ensembl, index_scope, io
+from . import annotate, ensembl, index_scope, io
+from . import annotation_files as af
 from .ensembl import DEFAULT_RETRIES, DEFAULT_RETRY_WAIT
 
 ENSEMBL = ensembl.SERVER
@@ -1104,6 +1105,99 @@ def _verdict(entry, tau, min_reads=None, min_log2fc=None):
     return ("weakly_identifiable" if reasons else "identifiable"), reasons
 
 
+#: What :func:`analyze` says when ``gtf`` or ``transcripts_fasta`` is passed with what they
+#: replace, or without what they need; the CLI's flags by name.
+FILES_REPLACE = ("--gtf and --transcripts-fasta replace --inputs, --sequences and "
+                 "--background-sequences")
+GTF_WITHOUT_FASTA = "--gtf gives no sequence: pass --transcripts-fasta with it"
+FASTA_WITHOUT_GTF = ("--transcripts-fasta without --gtf gives no gene background: the gene's "
+                     "transcripts are the GTF's. Pass --gtf too, or --no-gene-background")
+
+
+def _from_files(config, needed, gtf, fasta, supplied, gene_background, species, release):
+    """The configured transcripts' sequence and the gene background from local files, for
+    :func:`analyze`'s ``gtf`` and ``transcripts_fasta``; see there."""
+    if fasta is None:
+        raise ValueError(GTF_WITHOUT_FASTA)
+    if supplied:
+        raise ValueError(FILES_REPLACE)
+    source = {"kind": "gtf" if gtf else "fasta",
+              "gtf": dict(af.provenance(gtf), **af.header(gtf)) if gtf else None,
+              "transcripts_fasta": af.provenance(fasta)}
+    versions = {}
+    if gtf is None:
+        if gene_background:
+            raise ValueError(FASTA_WITHOUT_GTF)
+        got = af.read_fasta(fasta, needed)
+        absent = [t for t in needed if t not in got]
+        if absent:
+            raise af.AnnotationFileError("%s has no record for %s, which the config names"
+                                         % (fasta, ", ".join(absent)))
+        return {"sequences": {t: got[t][1] for t in needed}, "background": {},
+                "gene_id": None, "gene_background": False, "versions":
+                {t: got[t][0] for t in needed}, "release": release, "source": source,
+                "same_name": None,
+                "label": "file:%s" % release if release is not None else "file"}
+    named = source["gtf"]["ensembl_release"]
+    if named is not None and release is not None and int(release) != named:
+        raise ValueError("%s is Ensembl release %d (\"%s\"); --ensembl-release %d contradicts "
+                         "it" % (gtf, named, source["gtf"]["description"], release))
+    release = named if named is not None else release
+    gene, same_name = _gtf_gene(config, needed, gtf, species)
+    have = {t["id"] for t in gene["Transcript"]}
+    absent = [t for t in needed if t not in have]
+    if absent:
+        raise ValueError("%s gives gene %s no transcript %s, which the config names"
+                         % (gtf, gene["id"], ", ".join(absent)))
+    if not gene_background:
+        gene = dict(gene, Transcript=[t for t in gene["Transcript"] if t["id"] in set(needed)])
+    every = af.sequences_for(gene, fasta, versions=versions)
+    return {"sequences": {t: every[t] for t in needed},
+            "background": {t: s for t, s in every.items() if t not in set(needed)},
+            "gene_id": gene["id"], "gene_background": gene_background, "versions": versions,
+            "release": release, "source": source, "same_name": same_name,
+            "label": "file:%s" % release if release is not None else "file"}
+
+
+def _gtf_gene(config, needed, gtf, species):
+    """The GTF record of the config's gene -- by ``gene_id``; else the one gene that holds
+    every configured transcript; else the symbol's, by ``annotate``'s rule -- and
+    ``{gene id: region}`` of the GTF's other genes of its name, which place a same-name
+    gene of the index (:func:`isoform_dominance.index_scope.placed_by_gtf`)."""
+    gene_id, symbol = config.get("gene_id"), config.get("gene")
+    recs = [g for g in af.scan(gtf, symbol=symbol or None, gene_id=gene_id or None,
+                               transcript_ids=() if gene_id else needed)
+            if not g["_par_y"]]
+    if gene_id:
+        g = next((r for r in recs if r["id"] == gene_id.split(".")[0]), None)
+        if g is None:
+            raise ValueError("%s has no gene %s, which the config's gene_id names"
+                             % (gtf, gene_id.split(".")[0]))
+    else:
+        want = set(needed)
+        holders = [r for r in recs if want and want <= {t["id"] for t in r["Transcript"]}]
+        if len(holders) == 1:
+            g = holders[0]
+        else:
+            named = [r for r in recs if symbol and r["display_name"] == symbol] or [
+                r for r in recs
+                if symbol and (r["display_name"] or "").upper() == symbol.upper()]
+            if not named:
+                raise ValueError("%s has no gene named %s, and no one gene of it holds every "
+                                 "transcript the config names; set the config's \"gene_id\""
+                                 % (gtf, symbol))
+            g = annotate.choose_among(symbol, named, species)[0]
+    if g["display_name"] != symbol:
+        # found by its id or its transcripts' lines, not by the name it has: read the
+        # whole gene, and the genes of that name
+        recs = [r for r in af.scan(gtf, symbol=g["display_name"], gene_id=g["id"])
+                if not r["_par_y"]]
+        g = next(r for r in recs if r["id"] == g["id"])
+    same = {r["id"]: r["seq_region_name"] for r in recs
+            if r["display_name"] == g["display_name"] and r["id"] != g["id"]}
+    return g, same
+
+
 def analyze(config, k=DEFAULT_K, sequences=None, *,
             canonical=True, window=None,
             background_sequences=None, background_fasta=None, decoys=None,
@@ -1115,6 +1209,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             min_informative_reads=DEFAULT_MIN_INFORMATIVE_READS,
             min_log2fc=None, ensembl_release=None, inputs_out=None,
             keep_duplicates=False, max_window_records=DEFAULT_MAX_WINDOW_RECORDS,
+            gtf=None, transcripts_fasta=None,
             retries=DEFAULT_RETRIES, retry_wait=DEFAULT_RETRY_WAIT):
     """Assess whether the configured isoform classes are measurable by short reads.
 
@@ -1197,14 +1292,31 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         anything has to be fetched.  None means the release ``rest.ensembl.org``
         currently serves; an earlier one is read from Ensembl's REST archive (see
         :func:`isoform_dominance.ensembl.resolve_server`).  Nothing is resolved, and no
-        request made, when every sequence was supplied.
+        request made, when every sequence was supplied.  With ``gtf`` it must be the
+        release the GTF's header names, and is recorded as the files' when it names none.
+    gtf, transcripts_fasta
+        Local annotation, in place of REST, ``sequences`` and ``background_sequences``:
+        GENCODE's comprehensive ``gencode.vN.annotation.gtf.gz`` and the
+        ``gencode.vN.transcripts.fa.gz`` of the same release (or Ensembl's GTF and cDNA
+        FASTA), read with no request (:mod:`isoform_dominance.annotation_files`).  The
+        gene is the config's ``gene_id``; without one, the one GTF gene that holds every
+        configured transcript; failing that, the symbol's, by the rule ``annotate``
+        follows (:func:`isoform_dominance.annotate.choose_among`).  It must hold every
+        configured transcript.  The gene background is the GTF's every other transcript
+        of the gene, and goes the way a fetched one does.  Every transcript of the gene
+        must be in the FASTA at the GTF's version: a FASTA short of some, or of another
+        release, is an error.  ``transcripts_fasta`` alone serves a run without the gene
+        background.  ``transcripts_fasta`` may be ``background_fasta`` too.
     inputs_out
         A dict to fill with the sequence this run used: ``sequences`` (the configured
         transcripts), ``background_sequences`` (the gene background, after the configured
         transcripts are removed from it), ``gene_background`` (whether this run had one, fetched
-        or supplied), ``fetched_release``, ``sequence_sources`` (each id's ``"supplied"`` or
-        ``"fetched:<release>"``), and the ``k``, ``window`` and ``canonical`` the system was
-        built at -- none of which is in the config.
+        or supplied), ``fetched_release``, ``file_release`` and ``annotation_source``
+        (``gtf`` and ``transcripts_fasta``'s, None without them), ``versions`` (the
+        versioned id of each sequence, where known), ``sequence_sources``
+        (each id's ``"supplied"``, ``"fetched:<release>"`` or ``"file:<release>"``), and
+        the ``k``, ``window`` and ``canonical`` the system was built at -- none of which
+        is in the config.
         Written to a file by :func:`isoform_dominance.io.save_inputs`, it repeats the run
         with no request at all, after the release's REST archive is gone.
     retries, retry_wait
@@ -1234,9 +1346,15 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         ``identical_to_background``, the background sequences left out as copies, each
         mapped to the transcript it equals, and ``identical_source``, where each came
         from: ``"gene"``, ``"sequences"`` or ``"fasta"`` -- all three None with
-        ``keep_duplicates``), ``annotation`` (the config's
+        ``keep_duplicates``; ``same_name_copies``, the FASTA's genes of the configured
+        gene's name under another gene id, each with its ``kind`` when ``gtf`` places it
+        (:func:`isoform_dominance.index_scope.placed_by_gtf`); ``fasta_other_versions``, the configured transcripts the FASTA
+        holds at another version than the sequence used here, ``{id: {"used", "fasta"}}``,
+        None without a FASTA), ``annotation`` (the config's
         ``ensembl_release``, and ``fetched_release``, the release any sequence was
-        fetched from in this run -- None for both when absent), ``gene_total``
+        fetched from in this run -- None for both when absent; ``file_release``, the
+        release of ``gtf``, and ``source``, the files' names, sizes and SHA-256 and what
+        the GTF's header says -- None for both without them), ``gene_total``
         (estimability of the sum of every column, with the transcripts that have no
         window at all, ``transcripts_without_windows``, and those whose every window was
         dropped, ``transcripts_all_windows_dropped``, which the sum leaves out; with windows
@@ -1289,9 +1407,22 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     group_ids = {g: [t.split(".")[0] for t in ids] for g, ids in groups.items()}
     needed = [t for ids in group_ids.values() for t in ids]
     seqs = {tid.split(".")[0]: s for tid, s in (sequences or {}).items()}
+    # the version of the sequence used for each configured transcript, where known: the
+    # one an index of another release holds is said (fasta_other_versions)
+    used = {t.split(".")[0]: t for ids in groups.values() for t in ids if "." in t}
+    used.update((t.split(".")[0], t) for t in (sequences or {}) if "." in t)
 
     # ---- background transcripts of the same gene -------------------------- #
     bg_seqs = {t.split(".")[0]: s for t, s in (background_sequences or {}).items()}
+    files = None
+    if gtf is not None or transcripts_fasta is not None:
+        files = _from_files(config, needed, gtf, transcripts_fasta,
+                            sequences is not None or background_sequences is not None,
+                            background_gene_transcripts is not False,
+                            species or config.get("species", "homo_sapiens"), ensembl_release)
+        seqs, bg_seqs = dict(files["sequences"]), dict(files["background"])
+        used.update(files["versions"])
+        background_gene_transcripts = False     # it is the files', and nothing is fetched
     supplied = set(seqs) | set(bg_seqs)         # for inputs_out's sequence_sources
     if background_gene_transcripts == "auto":
         # only reach for the network when we are already going there for sequence
@@ -1311,7 +1442,9 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     # not that the gene background around them belongs to another gene
     missing = [t for t in needed if t not in seqs]
     if missing:
-        got = ensembl.fetch_cdna_batch(missing, **net)
+        fetched = {}
+        got = ensembl.fetch_cdna_batch(missing, versions=fetched, **net)
+        used.update(fetched)
         absent = [t for t in missing if t not in got]
         if absent:
             raise ValueError("Ensembl release %s has no cDNA for %s, which the config names"
@@ -1346,9 +1479,14 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
                    "(`annotate` records it), or pass --no-gene-background."))
         # all or nothing: this used to swallow any error part-way through and carry
         # on with whatever had arrived, which is a different answer, silently
+        fetched = {}
         bg_seqs.update(ensembl.fetch_cdna_batch(
-            [t for t in all_ids if t not in needed], **net))
+            [t for t in all_ids if t not in needed], versions=fetched, **net))
+        used.update(fetched)
     bg_seqs = {t: s for t, s in bg_seqs.items() if t not in needed}
+    if files is not None and files["gene_background"]:
+        # the gene the background is, as a fetched one names it: none without one
+        bg_gene_id = files["gene_id"]
     if inputs_out is not None:
         inputs_out.update(sequences={t: seqs[t] for t in needed},
                           background_sequences=dict(bg_seqs),
@@ -1356,12 +1494,18 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
                           # under another grouping must not move transcripts into a
                           # background the run never had
                           gene_background=bool(fetch_gene_background
-                                               or background_sequences is not None),
+                                               or background_sequences is not None
+                                               or (files and files["gene_background"])),
                           gene_id=bg_gene_id,
                           keep_duplicates=keep_duplicates,
                           fetched_release=fetched_release,
+                          file_release=files["release"] if files else None,
+                          annotation_source=files["source"] if files else None,
+                          versions={t: used[t] for t in sorted(set(needed) | set(bg_seqs))
+                                    if t in used},
                           sequence_sources={
-                              t: "supplied" if t in supplied else "fetched:%s" % fetched_release
+                              t: files["label"] if files else "supplied" if t in supplied
+                              else "fetched:%s" % fetched_release
                               for t in list(needed) + sorted(bg_seqs)},
                           k=k, window=window, canonical=canonical)
 
@@ -1375,7 +1519,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     # is a configured transcript's, or one already counted, competes with nothing: through
     # 2.4.1 that held for a FASTA record identical to a configured transcript and for
     # nothing else (issue #15).  --keep-duplicates counts every copy.
-    source = "gene" if fetch_gene_background else "sequences"
+    source = "gene" if fetch_gene_background or (files and files["gene_background"]) \
+        else "sequences"
     configured = {}
     for t in sorted(set(needed)):
         configured.setdefault(seqs[t].strip().upper(), t)
@@ -1428,10 +1573,24 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
                 gene[t] = (seq, "fasta")
                 sequence_from_fasta.append(t)
             cols, first, same_c, same_b, where = _gene_columns()
+        in_fasta = {}
         copies = index_scope.fasta_copies(background_fasta, needed,
-                                          [config.get("gene")] if config.get("gene") else ())
+                                          [config.get("gene")] if config.get("gene") else (),
+                                          versions=in_fasta)
+        if files is not None and files["same_name"] is not None:
+            # what a GENCODE header does not say, the GTF does: where a same-name gene lies
+            copies = index_scope.placed_by_gtf(copies, files["same_name"])
+        # a configured transcript the index holds at another version than the sequence
+        # used here: the index was built from another release
+        other_versions = {}
+        for t in sorted(set(needed)):
+            mine = af.version(used.get(t, ""))
+            theirs = sorted(v for v in in_fasta.get(t, ())
+                            if af.version(v) not in (None, mine))
+            if mine is not None and theirs:
+                other_versions[t] = {"used": used[t], "fasta": theirs}
     else:
-        copies = []
+        copies, other_versions = [], None
     background = dict(cols)                     # id -> the sequence of its column
     fasta_competitors = {}
     dropped = frozenset()
@@ -1612,7 +1771,9 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         "window": window,
         "canonical": canonical,
         "annotation": {"ensembl_release": config.get("ensembl_release"),
-                       "fetched_release": fetched_release},
+                       "fetched_release": fetched_release,
+                       "file_release": files["release"] if files else None,
+                       "source": files["source"] if files else None},
         "background": {
             "gene_id": bg_gene_id,
             "gene_transcripts": gene_columns,
@@ -1644,6 +1805,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             "identical_to_background": identical_to_background,
             "identical_source": identical_source,
             "same_name_copies": copies,
+            "fasta_other_versions": other_versions,
         },
         "design": {"read_length": read_length, "paired": paired,
                    "frag_mean": frag_mean, "frag_sd": frag_sd, "depth": depth,

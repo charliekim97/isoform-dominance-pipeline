@@ -361,7 +361,8 @@ def test_cli_identify_takes_the_release(ens, tmp_path, capsys):
     assert cli.main(["identify", "--config", str(cfg), "--ensembl-release", str(OLD),
                      "--json"]) == cli.EXIT_OK
     rep = json.loads(capsys.readouterr().out)
-    assert rep["annotation"] == {"ensembl_release": OLD, "fetched_release": OLD}
+    assert rep["annotation"] == {"ensembl_release": OLD, "fetched_release": OLD,
+                                 "file_release": None, "source": None}
 
 
 def test_the_mismatch_note_names_the_flag_that_fetches_the_configs_release(ens, tmp_path,

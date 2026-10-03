@@ -22,11 +22,13 @@ with ``--min-log2fc``:
 ===== ==============================================================
 """
 import argparse
+import gzip
 import http.client
 import json
 import math
 import os
 import sys
+import zlib
 
 from . import (__version__, annotate, contamination, ensembl, extract, identifiability,
                index_scope, io, stats)
@@ -109,9 +111,11 @@ def _bad_url(e):
 
 
 def cmd_annotate(a):
+    notes = []
     try:
         cfg = annotate.run(a.gene, a.out, species=a.species, release=a.ensembl_release,
-                           gene_id=a.gene_id, retries=a.retries, retry_wait=a.retry_wait)
+                           gene_id=a.gene_id, gtf=a.gtf, notes=notes, retries=a.retries,
+                           retry_wait=a.retry_wait)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
     except http.client.InvalidURL as e:
@@ -122,6 +126,8 @@ def cmd_annotate(a):
         print("error: %s" % e, file=sys.stderr)
         return 1
     # the notes go to stderr with --json too: they are what the JSON alone does not say
+    for note in notes:
+        print("  NOTE: %s" % note, file=sys.stderr)
     choice = cfg.get("_gene_choice") or {}
     if choice.get("reason") and choice["reason"] != "given by --gene-id":
         print("  NOTE: %s" % choice["reason"], file=sys.stderr)
@@ -255,14 +261,57 @@ def _load_saved_inputs(a, cfg):
     rest = {t: s for t, s in pool.items() if t not in needed}
     # a file written before 2.4.1 does not say; a background it saved is the evidence
     had = inputs["analysis"].get("gene_background", bool(inputs["background_sequences"]))
+    # each sequence under its versioned id where the file knows it, as the run had it
+    versions = {t: v for t, v in (inputs.get("versions") or {}).items()
+                if v.split(".")[0] == t}
     return dict(inputs,
-                sequences={t: pool[t] for t in sorted(needed)},
+                sequences={versions.get(t, t): pool[t] for t in sorted(needed)},
                 background_sequences=rest, gene_background=had,
                 left_out=[] if had else sorted(rest))
 
 
+def _file_flags(a):
+    """What is wrong with how --gtf and --transcripts-fasta were passed, or None.  The
+    flags they replace are checked here, before the files those name are read;
+    ``analyze`` refuses the rest of what does not go together."""
+    if (a.gtf or a.transcripts_fasta) and (a.inputs or a.sequences or a.background_sequences):
+        return identifiability.FILES_REPLACE
+    return None
+
+
+def _file_notes(cfg, res, gtf):
+    """What a run on local files says about the config it was given."""
+    src = res["annotation"].get("source") or {}
+    head = src.get("gtf")
+    if not head:
+        return []
+    notes = []
+    rel, file_rel = cfg.get("ensembl_release"), res["annotation"]["file_release"]
+    if head["ensembl_release"] is None:
+        notes.append("--gtf %s names no Ensembl release in its header; %s"
+                     % (gtf, "the release is recorded as %d, from --ensembl-release" % file_rel
+                        if file_rel is not None else "no release is recorded. Pass "
+                        "--ensembl-release N to record the one the files are of"))
+    if rel is not None and file_rel is not None and rel != file_rel:
+        notes.append("the config was annotated against Ensembl release %s, and --gtf %s is "
+                     "release %s: the groups may name transcripts whose sequence has changed, "
+                     "and the gene may have transcripts they do not name. `annotate --gtf` "
+                     "proposes groups from it." % (rel, gtf, file_rel))
+    was = cfg.get("annotation_source") or {}
+    if was.get("sha256") and was["sha256"] != head["sha256"]:
+        notes.append("the config was proposed from %s (sha256 %s...), not from this --gtf "
+                     "(sha256 %s...); if the two are not the same release of the same "
+                     "annotation, the groups may not be this file's."
+                     % (was.get("file"), was["sha256"][:12], head["sha256"][:12]))
+    return notes
+
+
 def cmd_identifiability(a):
     cfg = io.load_config(a.config)
+    wrong = _file_flags(a)
+    if wrong:
+        print("config error: %s" % wrong, file=sys.stderr)
+        return 1
     if a.save_inputs:
         # checked before the run, which can spend minutes on an archive, not after it
         if os.path.isdir(a.save_inputs):
@@ -307,6 +356,7 @@ def cmd_identifiability(a):
             min_log2fc=a.min_log2fc, ensembl_release=a.ensembl_release,
             inputs_out=captured, keep_duplicates=a.keep_duplicates,
             max_window_records=a.max_window_records,
+            gtf=a.gtf, transcripts_fasta=a.transcripts_fasta,
             retries=a.retries, retry_wait=a.retry_wait)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
@@ -325,12 +375,15 @@ def cmd_identifiability(a):
             "smaller --max-window-records, or --decoys for genome sequence, makes it smaller."
             if a.background_fasta else ""), file=sys.stderr)
         return 1
+    for note in _file_notes(cfg, res, a.gtf):
+        print("  NOTE: " + note, file=sys.stderr)
     if inputs is not None:
         res["annotation"]["inputs_release"] = inputs["ensembl_release"]
-        # a saved sequence reaches the run as supplied; the file says which were fetched
+        # a saved sequence reaches the run as supplied; the file says which were fetched,
+        # or read from the gene's GTF
         was = inputs.get("sequence_sources") or {}
         for t, src in (res["background"].get("identical_source") or {}).items():
-            if src == "sequences" and was.get(t, "").startswith("fetched:"):
+            if src == "sequences" and was.get(t, "").startswith(("fetched:", "file")):
                 res["background"]["identical_source"][t] = "gene"
         if background is not None and res["background"]["gene_id"] is None:
             # the gene the live run fetched its background as, which the file recorded
@@ -367,21 +420,25 @@ def cmd_identifiability(a):
         kinds = sorted(set(sources.values()))
         # one release only when every sequence came from it
         release = (int(kinds[0].split(":", 1)[1])
-                   if len(kinds) == 1 and kinds[0].startswith("fetched:") else None)
+                   if len(kinds) == 1 and kinds[0].startswith(("fetched:", "file:")) else None)
         if captured.get("gene_id") is None and inputs is not None:
             captured["gene_id"] = inputs.get("gene_id")
+        source = captured.get("annotation_source") or (
+            inputs.get("annotation_source") if inputs is not None else None)
         io.save_inputs(a.save_inputs, captured, cfg, release, __version__,
                        background_fasta=a.background_fasta, decoys=a.decoys,
-                       max_window_records=a.max_window_records)
+                       max_window_records=a.max_window_records, annotation_source=source)
         n_sup = sum(v == "supplied" for v in sources.values())
-        print("  saved this run's sequence (%s) to %s; repeat it with no network: "
+        files = ", from %s" % source["transcripts_fasta"]["file"] if source else ""
+        print("  saved this run's sequence (%s%s) to %s; repeat it with no network: "
               "--inputs %s" % ("Ensembl release %s" % release if release is not None
+                               else "release unknown" if source
                                else "release unknown: supplied offline" if n_sup == len(sources)
                                else "%d supplied, %d fetched from %s; no one release recorded"
                                % (n_sup, len(sources) - n_sup, ", ".join(
                                    "release " + k.split(":", 1)[1] for k in kinds
                                    if k != "supplied")),
-                               a.save_inputs, a.save_inputs), file=sys.stderr)
+                               files, a.save_inputs, a.save_inputs), file=sys.stderr)
     return code
 
 
@@ -402,7 +459,8 @@ def _report(a, res):
     # read the configured transcripts would get: the NOTEs below, not this warning
     warning = index_scope.copy_warning(
         index_scope.without_identical(bg["same_name_copies"], dict(same, **twins)),
-        "--background-fasta %s" % a.background_fasta)
+        "--background-fasta %s" % a.background_fasta,
+        gtf="--gtf %s" % a.gtf if a.gtf else None)
     if warning:
         print("  " + warning, file=sys.stderr)
 
@@ -480,6 +538,14 @@ def _report(a, res):
               "(%s); %d decoy record(s) were left out." % (
                   a.decoys, len(bg["decoys_absent"]), _listed(bg["decoys_absent"]),
                   bg["decoys_skipped"]), file=sys.stderr)
+    other = bg.get("fasta_other_versions") or {}
+    if other:
+        print("  NOTE: --background-fasta holds %d configured transcript(s) at another version "
+              "than the sequence used here (%s): the index was built from another release. "
+              "Its reads come from the index's sequence; propose the groups and take the "
+              "sequence from the release the index was built from." % (len(other), "; ".join(
+                  "%s here, %s there" % (v["used"], ", ".join(v["fasta"]))
+                  for _, v in sorted(other.items())[:5])), file=sys.stderr)
     # one taken from the FASTA that is a copy is said by the copy NOTEs above
     replaced = [t for t in bg.get("sequence_from_fasta") or [] if t not in same
                 and t not in twins]
@@ -502,14 +568,21 @@ def _report(a, res):
     rel = res["annotation"]["ensembl_release"]
     got = res["annotation"]["fetched_release"]
     saved = res["annotation"].get("inputs_release")
-    print("  annotation: %s%s%s"
+    files = res["annotation"].get("source")
+    print("  annotation: %s%s%s%s"
           % ("Ensembl release %s" % rel if rel is not None
              else "release not recorded in the config",
              "; sequence fetched from release %s" % got
              if got is not None and got != rel else "",
              "; sequence from saved inputs (%s, %s)"
              % ("release %s" % saved if saved is not None else "release not recorded",
-                a.inputs) if a.inputs else ""))
+                a.inputs) if a.inputs else "",
+             "; %s from %s (%s)"
+             % ("transcripts and sequence" if files["gtf"] else "sequence",
+                " and ".join(f["file"] for f in (files["gtf"], files["transcripts_fasta"]) if f),
+                "release %s" % res["annotation"]["file_release"]
+                if res["annotation"]["file_release"] is not None else "release not recorded")
+             if files else ""))
     if a.inputs and rel is not None and saved != rel:
         print("  NOTE: the config was annotated against Ensembl release %s, and the saved "
               "inputs %s." % (rel, "are from release %s" % saved if saved is not None
@@ -767,6 +840,11 @@ def build_parser():
     s.add_argument("--gene-id", metavar="ENSG",
                    help="the Ensembl gene to propose groups from, when the symbol names more "
                         "than one on the reference chromosomes")
+    s.add_argument("--gtf", metavar="FILE",
+                   help="propose the groups from this GTF, with no network: GENCODE's "
+                        "comprehensive gencode.vN.annotation.gtf.gz (not basic) of the release "
+                        "the index was built from. The release recorded is the one its header "
+                        "names; --ensembl-release, when given, must be the same")
     s.add_argument("--out", required=True); s.set_defaults(func=cmd_annotate)
 
     s = _net(_json(sub.add_parser(
@@ -789,6 +867,17 @@ def build_parser():
     s.add_argument("--inputs", metavar="FILE",
                    help="run on sequence saved by --save-inputs, with no request at all; "
                         "replaces --sequences, --background-sequences and --ensembl-release")
+    s.add_argument("--gtf", metavar="FILE",
+                   help="the gene's transcripts from this GTF, with no network: GENCODE's "
+                        "comprehensive gencode.vN.annotation.gtf.gz of the release the index "
+                        "was built from (not basic). Goes with --transcripts-fasta, and "
+                        "replaces --inputs, --sequences and --background-sequences")
+    s.add_argument("--transcripts-fasta", metavar="FILE",
+                   help="their sequence, from the transcript FASTA of the GTF's release "
+                        "(gencode.vN.transcripts.fa.gz, not pc_transcripts): every "
+                        "transcript of the gene must be in it at the GTF's version. It may "
+                        "be the --background-fasta too. Without --gtf only with "
+                        "--no-gene-background")
     s.add_argument("--sequences", help="optional JSON {transcript_id: cdna} (offline)")
     s.add_argument("--background-sequences", help="optional JSON {transcript_id: cdna} of background transcripts")
     s.add_argument("--background-fasta",
@@ -878,6 +967,10 @@ def main(argv=None):
         return args.func(args) or 0
     except io.InputError as e:              # a file named on the command line is unusable
         print("error: %s" % e, file=sys.stderr)
+        return 1
+    except (EOFError, zlib.error, gzip.BadGzipFile) as e:    # ... or a cut-short download
+        print("error: an input file is a truncated or corrupt gzip file (%s); download it "
+              "again" % e, file=sys.stderr)
         return 1
     except OSError as e:                    # ... or cannot be opened: one line, not a trace
         if e.filename is None:

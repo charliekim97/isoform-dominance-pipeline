@@ -18,6 +18,97 @@ versioning.
 > decoys and one without as two, and writes the rows in 2.1.1's order again (2.4.0 sorted
 > them by donor name).
 
+## [Unreleased]
+
+### Added
+- **`annotate --gtf FILE`** (`annotate.build_config_from_gtf`): the groups proposed from a
+  local GENCODE GTF -- the comprehensive `gencode.vN.annotation.gtf.gz`, or an Ensembl GTF --
+  with no network (issue #13). Ensembl 116 is the last release of the legacy platform, and
+  its REST API is kept for 116 only, so an index built from GENCODE 51 or later can be
+  matched only by its own files. The config is the one `annotate` writes from REST at the
+  release the file is of, `annotation_source` aside: on the 109-gene survey panel the
+  configs read from GENCODE 44, 48 and 50 equal the ones written from REST at releases 110,
+  114 and 116 for every gene, and the sequences read from the transcript FASTA equal REST's
+  cDNA byte for byte (2,005, 2,066 and 4,396 transcripts); `scripts/parity/` repeats the
+  comparison, and the tests hold it on a GENCODE 50 extract of seven genes.
+  A protein's length is
+  `(sum of CDS nt + (3 - frame of the 5'-most CDS) % 3) // 3`, which pads a CDS that starts
+  mid-codon as Ensembl does (`sum // 3` is wrong for 7,412 transcripts of GENCODE 50); the
+  canonical transcript is the one tagged exactly `Ensembl_canonical` (not GENCODE 50's
+  `Ensembl_canonical_extended`, and not MANE); and clusters are listed by content (see
+  Changed). Ids lose their version, `chr` is dropped and `chrM` is `MT`, and the `_PAR_Y`
+  copies of GENCODE 25-43 are left out, as REST before 110 has no chrY gene for them. The
+  gene is chosen by the rule REST follows, now `annotate.choose_among`. The release recorded
+  is the one the header names (`##description: ... version 50 (Ensembl 116)`);
+  `--ensembl-release`, when given, must be the same, and a header that names none is
+  accepted with a NOTE. The config gains `annotation_source`: `kind`, `file`, `bytes`,
+  `sha256`, `provider`, `gencode_release`, `ensembl_release`, `date`, `description` and
+  `n_transcripts` (the gene's transcripts of every biotype). A GENCODE basic GTF -- every
+  line below a gene tagged `basic`, in a file of at least 100 transcripts -- is refused: it
+  leaves out transcripts the index holds, and at release 110 it changed 51 of 109
+  proposals. A symbol no gene has exactly is looked for again ignoring case, as REST does,
+  with a NOTE; a gene none of whose transcripts the GTF tags `Ensembl_canonical` is said in
+  a NOTE too, as its canonical class falls back to the longest protein. The file is read in
+  16 MiB blocks and only a block that holds the gene is split into lines.
+- **`identifiability --gtf FILE --transcripts-fasta FILE`** (`analyze(..., gtf=,
+  transcripts_fasta=)`): the gene's transcripts from the GTF and their sequence from the
+  transcript FASTA of the same release, with no network (issue #13). The gene is the config's
+  `gene_id`; without one, the one GTF gene that holds every configured transcript; failing
+  that, the symbol's, by `annotate`'s rule. It must hold every configured transcript, and
+  every transcript of it must be in the FASTA at the GTF's version: a subset FASTA (one of
+  GENCODE's basic transcripts lacks 1,917 of the 4,396 transcripts of the 109 survey genes
+  at release 116, and `pc_transcripts` every non-coding one) or one of another release
+  stops the run with what to pass. The FASTA's ids are read from GENCODE's `|` headers and Ensembl's space-separated
+  ones; `_PAR_Y` records are skipped, and an id held twice is an error. The gene
+  background is the GTF's every other transcript of the gene, and goes the way a fetched
+  one does -- the identical-copy rule, the id merge with `--background-fasta`,
+  `--max-window-records`, `--decoys` and `--keep-duplicates` -- so a background the two
+  sources give alike gives one report; the tests hold that for LEPR and CD99 against
+  recorded REST 116 answers. `--transcripts-fasta` may be the `--background-fasta` too, and
+  serves alone a run with `--no-gene-background`. The two replace `--inputs`, `--sequences`
+  and `--background-sequences`; `--ensembl-release` must be the GTF's release. The report
+  gains `annotation.file_release` and `annotation.source` (the files' names, sizes and
+  SHA-256, and what the GTF's header says; None for both from REST), and
+  `background.gene_id` is the GTF's gene when it is the background. `--save-inputs`
+  records the files' release and `annotation_source`, and `--inputs` repeats the run. A NOTE says when the config was
+  annotated against another release, or proposed from another GTF (by SHA-256).
+- **A NOTE when the index is of another release, in both modes**: `--background-fasta`
+  holding a configured transcript at another version than the sequence used here, listed in
+  `background.fasta_other_versions` (`{id: {"used", "fasta"}}`). The version used is the
+  file's, REST's (`ensembl.fetch_cdna_batch(..., versions=)`), or the one a config or
+  `--sequences` id carries; saved inputs record it (`versions`), so a rerun says it too.
+- A truncated or corrupt gzip input -- a GTF, a FASTA, a `--background-fasta` -- is one line
+  and exit 1, not a traceback.
+- **With `--gtf`, a same-name gene of the index is placed** (`index_scope.placed_by_gtf`). A
+  GENCODE header does not say where a gene lies, so through 2.5.0 a gene of the configured
+  gene's name under another id was reported as one that "may be" a copy on a scaffold,
+  patch or alternate locus. With the GTF each gains `kind` in `same_name_copies`:
+  `reference_gene`, a gene on a reference chromosome -- the chrY copy of a pseudoautosomal
+  gene, or HERC3's second gene -- which an index of the reference chromosomes keeps, and
+  which is no longer warned of; `off_reference`, placed by a GTF that holds the scaffolds
+  and patches; or `not_in_gtf`, which the warning calls a copy off the reference
+  chromosomes or a gene of another release.
+- **A weekly job holds the GENCODE 50 extract to live REST 116** (`gtf-parity` in
+  `ensembl-nightly.yml`): `annotate` for LEPR, CD99 and FOXO1, `identifiability` for LEPR and
+  CD99, and whether REST gives the version of the cDNA it serves. An outage is skipped, a
+  retired archive and a moved answer warned of; the step is tested against an offline fake.
+- **`scripts/parity/`**: `record_rest.py` records REST's answers for a gene list at one
+  release, `compare.py` compares them with a GTF and transcript FASTA of that release,
+  config by config, each gene's transcript set, and cDNA by MD5, and `timing.py` times the
+  file mode. On the extract in `tests/data/gencode_mini`: 6/6 configs and transcript sets
+  equal, 217/217 cDNA byte-identical.
+- `annotation_files`, which reads a GTF and a transcript FASTA with the standard library
+  alone; `io.is_gzip` and `io.open_bytes`.
+
+### Changed
+- **`_clusters` and `_proposal.tied_with` are listed by content in both modes**: most
+  transcripts first, then the longer representative protein, then the lower terminal-acceptor
+  coordinate. Through 2.5.0 clusters with as many transcripts kept the order in which REST
+  listed the transcripts, and REST at 116 and the GENCODE 50 GTF list them in different
+  orders for 104 of 109 survey genes. A REST config's `_clusters` can be listed in another
+  order than 2.5.0 wrote; its groups and `primary_comparison` are unchanged, as the
+  proposal already broke every tie by content.
+
 ## [2.5.0] - 2026-10-02
 
 ### Added

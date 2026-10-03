@@ -16,7 +16,8 @@ A same-name gene on a reference chromosome is not such a copy: an index built fr
 reference chromosomes keeps it.  An Ensembl header names the region, and such a gene is
 not reported.  A GENCODE header does not, so there it is reported too, as a possible copy:
 the chrY copy of a pseudoautosomal gene such as CD99 or SHOX, which GENCODE 44, 48 and 50
-give its own gene id, or a distinct gene sharing the name, such as HERC3.
+give its own gene id, or a distinct gene sharing the name, such as HERC3.  With the GTF of
+the release (``identifiability --gtf``) each is placed: :func:`placed_by_gtf`.
 
 The copies are found from the FASTA headers, which describe exactly the file the index was
 built from, and not from Ensembl REST: ``xrefs/symbol/homo_sapiens/SMN1`` also returns
@@ -129,26 +130,33 @@ def same_name_copies(records, target_ids, gene_names=()):
             for _, c in sorted(copies.items())]
 
 
-def _relevant(heads, targets, names):
-    """The parsed ``heads`` that are a target transcript or carry one of ``names``."""
+def _relevant(heads, targets, names, versions=None):
+    """The parsed ``heads`` that are a target transcript or carry one of ``names``; and in
+    ``versions``, each target's versioned ids, the header's first ``|``-field or word."""
     out = []
     for head in heads:
+        if versions is not None:
+            first = head.strip().split("|")[0].split()
+            if first and _unversioned(first[0]) in targets:
+                versions.setdefault(_unversioned(first[0]), set()).add(first[0])
         r = parse_header(head)
         if r and (r["transcript"] in targets or r["gene_name"] in names):
             out.append(r)
     return out
 
 
-def copies_in(read_heads, target_ids, gene_names=()):
+def copies_in(read_heads, target_ids, gene_names=(), versions=None):
     """:func:`same_name_copies` over the headers ``read_heads()`` yields, holding only the
     records that can matter rather than every header of a whole-transcriptome FASTA.
 
     ``read_heads`` is called again, once, when the name the headers give the target
     transcripts is not among ``gene_names``: a copy can come before its reference gene.
+    ``versions``, a dict, receives the versioned ids the headers give each target
+    transcript (``{id: {versioned id, ...}}``).
     """
     targets = {_unversioned(t) for t in target_ids}
     names = {n for n in gene_names or () if n}
-    recs = _relevant(read_heads(), targets, names)
+    recs = _relevant(read_heads(), targets, names, versions)
     found = {r["gene_name"] for r in recs if r["transcript"] in targets}
     if found - names:
         names |= found
@@ -156,14 +164,38 @@ def copies_in(read_heads, target_ids, gene_names=()):
     return same_name_copies(recs, targets, names)
 
 
-def fasta_copies(path, target_ids, gene_names=()):
+def fasta_copies(path, target_ids, gene_names=(), versions=None):
     """:func:`copies_in` for a plain or gzipped FASTA (told by its magic bytes)."""
     def heads():
         with open_text(path) as fh:
             for line in fh:
                 if line.startswith(">"):
                     yield line[1:]
-    return copies_in(heads, target_ids, gene_names)
+    return copies_in(heads, target_ids, gene_names, versions)
+
+
+def placed_by_gtf(copies, regions):
+    """:func:`same_name_copies`' result, each gene placed by a GTF.
+
+    ``regions`` maps the gene ids of the GTF's genes of the name to their region (Ensembl's
+    names: ``1``, ``X``, ``KI270713.1``).  Each copy gains ``kind``: ``"reference_gene"``,
+    a gene of the name on a reference chromosome -- the chrY copy of a pseudoautosomal
+    gene, or another gene that shares the name, which an index of the reference
+    chromosomes keeps; ``"off_reference"``, a copy on a scaffold, patch or alternate locus;
+    or ``"not_in_gtf"``, a gene the GTF does not hold.  GENCODE's comprehensive GTF holds
+    the reference chromosomes only, so that is a copy off them too, or a gene of another
+    release than the GTF's.  A copy's ``region`` is the GTF's when the GTF holds it.
+    """
+    out = []
+    for c in copies:
+        if c["gene_id"] in regions:
+            region = regions[c["gene_id"]]
+            kind = "reference_gene" if region in REFERENCE_REGIONS else "off_reference"
+        else:
+            region = c["region"]
+            kind = "off_reference" if region else "not_in_gtf"
+        out.append(dict(c, region=region, kind=kind))
+    return out
 
 
 def without_identical(copies, identical):
@@ -183,17 +215,21 @@ def without_identical(copies, identical):
     return out
 
 
-def copy_warning(copies, source):
+def copy_warning(copies, source, gtf=None):
     """The one-paragraph warning for :func:`same_name_copies`' result, or None.
 
     A copy with a region (an Ensembl header) is on a non-reference region.  One without (a
     GENCODE header) may instead be a same-name gene on a reference chromosome, and the
-    warning says so rather than calling it a copy.
+    warning says so rather than calling it a copy.  A copy :func:`placed_by_gtf` placed is
+    said as what it is: a reference gene is no index-scope problem and is not warned of,
+    and one ``gtf`` (the GTF's name, for the message) does not hold is said as such.
     """
+    copies = [c for c in copies if c.get("kind") != "reference_gene"]
     if not copies:
         return None
-    placed = [c for c in copies if c["region"]]
-    unplaced = [c for c in copies if not c["region"]]
+    absent = [c for c in copies if c.get("kind") == "not_in_gtf"]
+    placed = [c for c in copies if c["region"] and c not in absent]
+    unplaced = [c for c in copies if not c["region"] and c not in absent]
     names = "/".join(sorted({c["gene_name"] for c in copies}))
 
     def listed(cs):           # the transcript ids are in the JSON; here, how many
@@ -214,6 +250,13 @@ def copy_warning(copies, source):
                      "configured transcripts' (%s), which may be copies on scaffolds, "
                      "patches or alternate loci."
                      % (source, n_tx(unplaced), names, len(unplaced), listed(unplaced)))
+    if absent:
+        parts.append("%s has %d transcript(s) named %s under %d gene id(s) that %s does not "
+                     "hold (%s): copies on scaffolds, patches or alternate loci, which "
+                     "GENCODE's reference-chromosome GTF leaves out, or genes of another "
+                     "release than the GTF's."
+                     % (source, n_tx(absent), names, len(absent), gtf or "the GTF",
+                        listed(absent)))
     parts.append("If the Salmon index was built from it, reads are split between the "
                  "configured transcripts and such copies, which `extract` does not count, "
                  "and the class totals are biased. Build the index from "
@@ -226,7 +269,7 @@ def copy_warning(copies, source):
                      "the name. That is not an index-scope problem: an index rebuilt from "
                      "reference chromosomes keeps it. An id that is in the "
                      "reference-chromosome GTF (gencode.vX.annotation.gtf.gz) is one of "
-                     "these.")
+                     "these; `identifiability --gtf` with that GTF tells them apart.")
     return "WARNING: " + " ".join(parts)
 
 

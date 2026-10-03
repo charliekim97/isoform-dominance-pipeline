@@ -35,7 +35,7 @@ transcripts on their 3' terminal-exon splice acceptor.
 Query Ensembl for the gene `lookup/symbol` gives and return `{gene, gene_id, species, strand, transcripts: [{id, protein_aa, terminal_acceptor, is_canonical}]}` (`annotate.transcripts_of(record, gene)` does the same for an expanded lookup record). Raises `ValueError` if no protein-coding transcripts with a translation are found. `server` is a base URL from `ensembl.resolve_server`; None is the current release. Network access required.
 
 **`annotate.cluster_by_terminal_exon(info) -> list`**
-Group the transcripts from `fetch_transcripts` by terminal-exon acceptor coordinate; returns clusters sorted by size, each `{acceptor, rep_aa, n, canonical, ids}`.
+Group the transcripts from `fetch_transcripts` by terminal-exon acceptor coordinate; returns clusters, each `{acceptor, rep_aa, n, canonical, ids}`, listed by content: most transcripts first, then the longer representative protein, then the lower acceptor coordinate. So are a config's `_clusters` and `_proposal.tied_with`; through 2.5.0 clusters with as many transcripts were listed in the order the source gave the transcripts, which REST and a GTF give differently.
 
 **`annotate.propose_groups(info) -> (groups, primary, clusters)`**
 Choose the canonical cluster and the largest alternative cluster, returning `groups` ({label: [ids]}, labels like `iso_896aa`), the `primary_comparison` list (alternative first), and all clusters. The rule is `annotate.ALTERNATIVE_RULE`: the non-canonical cluster with the most transcripts, a tie going to the longer representative protein, and a tie on both to the lower terminal-acceptor coordinate, so the proposal is a function of the annotation alone.
@@ -46,13 +46,19 @@ The clusters the alternative class was chosen over on the tie-breaks rather than
 **`annotate.choose_gene(gene, species, looked_up, **net) -> (record, choice)`**
 The gene a symbol means. `looked_up` is the expanded record `lookup/symbol` gave; `xrefs/symbol` lists the other genes of the name and one `lookup/id` keeps those whose display name is the symbol and that lie on 1–22, X, Y or MT (`xrefs/symbol/SMN1` also lists SMN2 and alternate-locus copies). One such gene: `(it, None)`, with no `lookup/id` when xrefs lists no other gene. A chrX/chrY pair — a pseudoautosomal gene — gives the chrX gene, the copy a GENCODE-built Salmon index keeps (`annotate.GENE_RULE`). Any other two or more raise `annotate.AmbiguousGene` (a `ValueError`) listing each gene's id, location and transcript count. `choice` is `{rule, chosen, candidates, reason}` when there was a choice to make, or when xrefs listed no gene and the others were not looked for.
 
+**`annotate.choose_among(gene, named, species="homo_sapiens") -> (record | None, choice | None)`**
+The rule both sources follow, `choose_gene` from REST and `build_config_from_gtf` from a GTF: among `named`, the expanded records of every gene whose display name is the symbol, the human candidates are those on a reference chromosome; one is taken with no choice recorded, of a chrX/chrY pair the chrX gene, and any other two or more raise `AmbiguousGene`. `NotOnReference` when every one of `named` lies off the reference chromosomes.
+
 `annotate.NotOnReference` (a `ValueError`) is raised for a human symbol none of whose genes lies on a reference chromosome (1-22, X, Y, MT); the message lists each gene with its region, and `gene_id=` takes one of them anyway. The region and chrX/chrY rules apply to `homo_sapiens` only (`annotate.REFERENCE_SPECIES`); for any other species two genes of the name are `AmbiguousGene`.
 
 **`annotate.build_config(gene, species="homo_sapiens", release=None, gene_id=None) -> dict`**
 Convenience wrapper returning a complete, reviewable config dict (including `gene_id`, the Ensembl gene the groups were proposed from, `ensembl_release`, `_proposed` notes, `_clusters`, and `_proposal`: `alternative_rule` and `tied_with`, the clusters from `alternative_ties`, and `_gene_choice` from `choose_gene` when there was a choice). `gene_id` names the gene outright, by `lookup/id`, and must be a gene of the symbol; it is `--gene-id`. `release` is the Ensembl release to propose the groups from; None is the one `rest.ensembl.org` currently serves, and an earlier one is read from Ensembl's REST archive (see `ensembl.resolve_server`). `ensembl_release` records the release the server reported.
 
-**`annotate.run(gene, out, species="homo_sapiens", release=None, gene_id=None) -> dict`**
-As `build_config`, but also writes the config JSON to `out`. Backs the `annotate` CLI subcommand; `release` is `--ensembl-release`, `gene_id` is `--gene-id`.
+**`annotate.build_config_from_gtf(gene, gtf, species="homo_sapiens", gene_id=None, release=None, notes=None, block=annotation_files.BLOCK) -> dict`**
+`build_config` from a local GTF -- GENCODE's comprehensive `gencode.vN.annotation.gtf.gz`, or an Ensembl GTF -- with no network (issue #13). The GTF is read by `annotation_files.scan` as REST-shaped records and the gene chosen by `choose_among`, so the config is the one `build_config` writes from the release the file is of, but for `annotation_source`: `{kind: "gtf", file, bytes, sha256, provider, gencode_release, ensembl_release, date, description, n_transcripts}`, `n_transcripts` the gene's transcripts of every biotype. `ensembl_release` is the release the header's `##description` names (`... version 50 (Ensembl 116)`); `release`, when given, must be the same, or `ValueError`, and is recorded as the file's when the header names none. `gene_id` must be a gene of the GTF named `gene`. A symbol no gene has exactly is looked for again ignoring case. A GENCODE basic GTF raises `annotation_files.BasicGTF`. `notes`, a list, receives what a REST run cannot see: a header with no release, a symbol found only ignoring case, a gene none of whose transcripts the GTF tags `Ensembl_canonical` (its canonical class then falls back to the longest protein). `block` is the size of the pieces the file is read in.
+
+**`annotate.run(gene, out, species="homo_sapiens", release=None, gene_id=None, gtf=None, notes=None) -> dict`**
+As `build_config`, or `build_config_from_gtf` when `gtf` is given, but also writes the config JSON to `out`. Backs the `annotate` CLI subcommand; `release` is `--ensembl-release`, `gene_id` is `--gene-id`, `gtf` is `--gtf`.
 
 ```python
 cfg = annotate.build_config("FLT1")
@@ -69,9 +75,10 @@ Check whether isoform groups can be distinguished by short reads.
 **`identifiability.fetch_cdna(transcript_id, **retry) -> str`**
 Fetch one transcript's cDNA sequence from Ensembl. Network access required.
 
-**`ensembl.fetch_cdna_batch(ids, **retry) -> dict`**
+**`ensembl.fetch_cdna_batch(ids, versions=None, **retry) -> dict`**
 `{id: cdna}` via `POST /sequence/id`, 50 ids per request, matched back to ids by the
-`query` field Ensembl echoes. `analyze` fetches all of its sequence this way.
+`query` field Ensembl echoes. `analyze` fetches all of its sequence this way. `versions`, a
+dict, receives each sequence's versioned id when the answer gives one.
 
 **`ensembl.fetch_release(**retry) -> int`**
 The release the server is serving, from `GET /info/data`; raises `ValueError` unless it
@@ -107,7 +114,8 @@ CLI it is `--ensembl-release N` on `annotate` and `identifiability`.
 server = ensembl.resolve_server(110)   # 'https://jul2023.rest.ensembl.org' -- GENCODE 44
 cfg = annotate.build_config("LEPR", release=110)
 res = identifiability.analyze(cfg, ensembl_release=110)
-res["annotation"]                      # {'ensembl_release': 110, 'fetched_release': 110}
+res["annotation"]                      # {'ensembl_release': 110, 'fetched_release': 110,
+                                       #  'file_release': None, 'source': None}
 ```
 
 **Retries.** Every Ensembl request (`annotate`'s lookup included) goes through
@@ -130,17 +138,17 @@ Return the set of length-`k` substrings (k-mers) of `seq` (upper-cased), each fo
 smaller of itself and its reverse complement unless `canonical=False` (the strand-aware
 behaviour up to v2.1.1).
 
-**`identifiability.analyze(config, k=31, sequences=None, *, canonical=True, window=None, background_sequences=None, background_fasta=None, decoys=None, background_gene_transcripts="auto", species=None, read_length=100, frag_mean=200.0, frag_sd=60.0, paired=True, depth=30_000_000, mean_efflen=1500.0, tpm=10.0, n_donors=1, conditioning_tau=10.0, min_informative_reads=50.0, min_log2fc=None, ensembl_release=None, inputs_out=None, keep_duplicates=False, max_window_records=20, retries=5, retry_wait=1.0) -> dict`**
+**`identifiability.analyze(config, k=31, sequences=None, *, canonical=True, window=None, background_sequences=None, background_fasta=None, decoys=None, background_gene_transcripts="auto", species=None, read_length=100, frag_mean=200.0, frag_sd=60.0, paired=True, depth=30_000_000, mean_efflen=1500.0, tpm=10.0, n_donors=1, conditioning_tau=10.0, min_informative_reads=50.0, min_log2fc=None, ensembl_release=None, inputs_out=None, keep_duplicates=False, max_window_records=20, gtf=None, transcripts_fasta=None, retries=5, retry_wait=1.0) -> dict`**
 The three layers the `identifiability` command reports -- sequence uniqueness, the read
 model, and estimability on the class-collapsed compatibility system -- for each group and
 for the contrast named in `primary_comparison`. `sequences` and `background_sequences`
 are optional `{transcript_id: cdna}` dicts; whatever is missing is fetched from Ensembl
 release `ensembl_release` (None: the current one), and nothing is fetched when everything
 was supplied. Pass a dict as `inputs_out` to get back the sequence the run used
-(`sequences`, `background_sequences`, `fetched_release`) and the system it was built at
+(`sequences`, `background_sequences`, `fetched_release`, `file_release`, `annotation_source`) and the system it was built at
 (`k`, `window`, `canonical`, none of which is in the config), which `io.save_inputs`
 writes to a file. Returns a dict with `k`, `window`, `canonical`; `annotation`
-(`ensembl_release`, `fetched_release`); `background` (with `gene_id`, the gene the background was fetched as: by the config's `gene_id` when it has one, else by symbol, and a symbol whose gene holds none of the configured transcripts raises `ValueError`; `gene_transcripts` and `n_background_transcripts`, the gene background's columns of the compatibility system; `fasta` and `fasta_sha256`; `fasta_competitors`, the `background_fasta` records that are columns too, each with the number of distinct configured windows it holds, and `n_fasta_competitors`; `max_window_records`; `fasta_left_out`, the records that hold a window of the system and were left out; `windows_dropped`, the distinct windows dropped (`total`, `configured` of `configured_of`, and `columns`, per column id); `sequence_from_fasta`, the gene-background transcripts the FASTA holds with other sequence, whose column is the FASTA's; `decoys`, `decoys_sha256`, `decoys_listed`, `decoys_skipped` and `decoys_absent` (the listed names the FASTA does not hold), all None without `decoys`; `fasta_long_records`, the records read that are longer than `LONG_RECORD` (1 Mb), as id -> length; `same_name_copies`, from `index_scope.fasta_copies`, when `background_fasta` is given; `keep_duplicates`; `identical_to_configured` and `identical_to_background`, the background sequences -- the gene's, `background_sequences`' or FASTA records -- left out because their sequence is a configured transcript's or an earlier background sequence's, as id -> that transcript, since Salmon's default index keeps one of identical sequences, and `identical_source`, `"gene"`, `"sequences"` or `"fasta"` for each -- all three None when `keep_duplicates=True`, which counts every copy); `design`; `groups` (per group:
+(`ensembl_release`, `fetched_release`, and `file_release` and `source`, the local files', None without them); `background` (with `gene_id`, the gene the background was fetched as: by the config's `gene_id` when it has one, else by symbol, and a symbol whose gene holds none of the configured transcripts raises `ValueError`; `gene_transcripts` and `n_background_transcripts`, the gene background's columns of the compatibility system; `fasta` and `fasta_sha256`; `fasta_competitors`, the `background_fasta` records that are columns too, each with the number of distinct configured windows it holds, and `n_fasta_competitors`; `max_window_records`; `fasta_left_out`, the records that hold a window of the system and were left out; `windows_dropped`, the distinct windows dropped (`total`, `configured` of `configured_of`, and `columns`, per column id); `sequence_from_fasta`, the gene-background transcripts the FASTA holds with other sequence, whose column is the FASTA's; `decoys`, `decoys_sha256`, `decoys_listed`, `decoys_skipped` and `decoys_absent` (the listed names the FASTA does not hold), all None without `decoys`; `fasta_long_records`, the records read that are longer than `LONG_RECORD` (1 Mb), as id -> length; `same_name_copies`, from `index_scope.fasta_copies`, when `background_fasta` is given, each placed by `index_scope.placed_by_gtf` when `gtf` is; `fasta_other_versions`, the configured transcripts `background_fasta` holds at another version than the sequence used, as `{id: {"used", "fasta"}}` (None without a FASTA); `keep_duplicates`; `identical_to_configured` and `identical_to_background`, the background sequences -- the gene's, `background_sequences`' or FASTA records -- left out because their sequence is a configured transcript's or an earlier background sequence's, as id -> that transcript, since Salmon's default index keeps one of identical sequences, and `identical_source`, `"gene"`, `"sequences"` or `"fasta"` for each -- all three None when `keep_duplicates=True`, which counts every copy); `design`; `groups` (per group:
 `verdict`, `reasons`, `n_unique_kmers`, `unique_length`, `n_blocks`,
 `expected_informative_reads`, `estimable`, `conditioning_factor`, `gls_relative_se`,
 `min_resolvable_log2fc`, `coherence`, ...); `contrast` (the same estimability fields for
@@ -149,6 +157,8 @@ the class contrast, plus the effective-length and distinguishing-window summarie
 given); `n_compatibility_classes`; `verdict` and `reasons`. The docstring defines each.
 
 A `background_fasta` record with the id of a gene-background transcript is that transcript; every other record that is no copy is an outside record. An outside record that holds a configured window found in at most `max_window_records` outside records (each counted once; default `identifiability.DEFAULT_MAX_WINDOW_RECORDS = 20`) is a column, unless it is longer than `LONG_RECORD`; every window of a column that an outside record left out holds is dropped from every layer -- the unique windows, the read model and the system -- in two passes over the FASTA (the columns' windows, then the added records'). `compatibility_matrix(tracks, ids, drop=)` leaves those windows out and keeps each column's window count as its denominator, so the system is the one with every outside record a column, less the rows that touch a left-out record: what is estimable here is estimable there, with a GLS standard error no smaller. `gene_total` leaves out a column whose every window was dropped and lists it as `transcripts_all_windows_dropped`; `transcripts_without_windows` lists only the transcripts shorter than the window, and it alone sets the CLI's exit 2 (`cli._identifiability_exit`): with windows dropped a column sums to less than one, and the gene total can leave the row space with no transcript windowless. The contrast's `gls_relative_se` is the delta-method SE of log(A/B) only when its gradient `c_a/a - c_b/b` is estimable, and infinite otherwise.
+
+`gtf` and `transcripts_fasta` take the gene's transcripts and their sequence from local files instead of REST, `sequences` and `background_sequences` (`ValueError` with either; on the CLI `--gtf` and `--transcripts-fasta`): GENCODE's comprehensive GTF and the `gencode.vN.transcripts.fa.gz` of the same release, or Ensembl's GTF and cDNA FASTA. The gene is the config's `gene_id`; without one, the one GTF gene that holds every configured transcript; failing that, the symbol's by `annotate.choose_among`. It must hold every configured transcript, and every transcript of it must be in the FASTA at the GTF's version (`annotation_files.AnnotationFileError` otherwise, naming what is missing or which versions differ). The gene background is every other transcript of the gene -- and `background.gene_id` the gene, as for a fetched background -- and goes the way a fetched one does: the identical-copy rule, the id merge with `background_fasta`, `max_window_records` and `decoys`. `transcripts_fasta` alone serves a run with `background_gene_transcripts=False`; it may be the `background_fasta` too. `ensembl_release`, given with `gtf`, must be the release the GTF's header names. Nothing is fetched.
 
 `decoys` is the path of Salmon's `decoys.txt` (one record name per line, read by `io.read_decoys`), for a `background_fasta` that is a decoy-aware index's gentrome: those records are skipped unread. It needs a `background_fasta`; without one it is a `ValueError`.
 
@@ -226,6 +236,35 @@ when a list is given.
 
 ---
 
+## `annotation_files`
+
+A GTF and a transcript FASTA read offline, with the standard library alone (issue #13).
+Ensembl 116 is the last release of the legacy platform and its REST API is kept for 116
+only, so an index built from GENCODE 51 or later can be matched only by its own files.
+
+**`annotation_files.scan(path, symbol=None, gene_id=None, transcript_ids=(), block=BLOCK, info=None) -> list`**
+Every gene of the GTF named `symbol`, with `gene_id`, or holding one of `transcript_ids`,
+as records shaped like REST's `lookup/...?expand=1` -- exactly the fields the package
+reads -- so that `annotate.transcripts_of` runs unchanged on either. The file is read in
+pieces of `block` bytes (`annotation_files.BLOCK`, 16 MiB), each ending at a line's end, and
+only a piece that holds a needle is split into lines. Ids lose their version; a region is
+the seqname without `chr`, `chrM` is `MT`; the `_PAR_Y` copies of GENCODE 25-43 are kept
+apart (`_par_y`). The protein length is `protein_length`'s; the canonical transcript is the
+one tagged exactly `Ensembl_canonical`. A `symbol` no gene has exactly is looked for again
+ignoring case (`info["case_insensitive"]`). A GENCODE basic GTF -- every line below a gene
+tagged `basic`, in a file of at least `MIN_BASIC_TRANSCRIPTS` (100) transcripts -- raises
+`annotation_files.BasicGTF`.
+
+**`annotation_files.protein_length(cds, strand) -> int | None`** — Ensembl's `Translation.length` from a transcript's CDS features `[(start, end, frame)]`, which leave out the stop codon: `(sum of nt + (3 - frame of the 5'-most CDS) % 3) // 3`, the 5'-most CDS on the minus strand being the one that ends furthest along.
+
+**`annotation_files.header(path) -> dict`** — `provider`, `description`, `date`, `gencode_release` (an integer, or `"M37"`-style for mouse) and `ensembl_release`, from GENCODE's `##` header; None for what it does not say (an Ensembl GTF's `#!` header names no release).
+
+**`annotation_files.read_fasta(path, ids) -> dict`** and **`sequences_for(gene, fasta, versions=None) -> dict`** — a transcript FASTA's records by unversioned id, from GENCODE's `|` headers or Ensembl's space-separated ones; `_PAR_Y` records are skipped and an id held twice is an `AnnotationFileError`. `sequences_for` gives every transcript of a `scan` record, and raises `AnnotationFileError` for one the FASTA lacks (with what to pass instead of a subset FASTA) or holds at another version than the GTF.
+
+**`annotation_files.provenance(path) -> dict`** — `{file, bytes, sha256}`. A truncated or corrupt gzip file is one `AnnotationFileError`, not a traceback.
+
+---
+
 ## `index_scope`
 
 Same-name copies of a gene on scaffolds, patches and alternate loci, which GENCODE ≥ 48
@@ -248,8 +287,14 @@ None, as a possible copy.
 **`index_scope.fasta_copies(path, target_ids, gene_names=()) -> list`**
 `same_name_copies` over a plain or gzipped FASTA, streamed.
 
-**`index_scope.copy_warning(copies, source) -> str | None`** — the warning the CLI prints;
+**`index_scope.fasta_copies(..., versions=None)`** also fills `versions`, a dict, with the versioned ids the headers give each target transcript, `{id: {versioned id, ...}}`.
+
+**`index_scope.placed_by_gtf(copies, regions) -> list`** — `copies` with each gene placed by a GTF: `regions` maps the gene ids of the GTF's genes of the name to their region. Each gains `kind`: `"reference_gene"` (on a reference chromosome: the chrY copy of a pseudoautosomal gene, or another gene of the name, which an index of the reference chromosomes keeps), `"off_reference"`, or `"not_in_gtf"` (GENCODE's comprehensive GTF holds the reference chromosomes only, so a copy off them, or a gene of another release); `region` is the GTF's when it holds the gene.
+
+**`index_scope.copy_warning(copies, source, gtf=None) -> str | None`** — the warning the CLI prints;
 for copies without a region it says they may be same-name genes on a reference chromosome.
+A copy `placed_by_gtf` placed on a reference chromosome is not warned of, and one the GTF
+(`gtf`, its name for the message) does not hold is said as such.
 
 **`index_scope.without_identical(copies, identical) -> list`** — `copies` less the records `identical` names (record id -> the transcript it equals: the CLI passes the report's `identical_to_configured` and `identical_to_background`); the CLI warns only about what is left, since Salmon's default index keeps one of identical sequences.
 
@@ -287,11 +332,11 @@ TPM, per cohort (a control for whether a dominance signal is a cell-type artefac
 
 **`io.load_config(path, need_groups=True) -> dict`** — load a config JSON; `io.InputError` (a `ValueError`) if it is not JSON, not an object, or, unless `need_groups` is false, has no `groups` object.
 **`io.load_json(path, what) -> object`** — parse a JSON file; `io.InputError` naming `what` and the file if it is not JSON.
-**`io.save_inputs(path, captured, config, release, version, background_fasta=None, decoys=None, max_window_records=None) -> dict`** — write the sequence an `identifiability` run used (`captured`, from `analyze(..., inputs_out=...)`) with the release it came from, as `"format": "isoform-dominance/inputs/1"` (`io.INPUTS_FORMAT`). `analysis` records the `k`, `window`, `canonical` and `gene_background` of the run, `max_window_records` when it had a FASTA, and `keep_duplicates` when it had a background, gene or FASTA, none of which the config holds; `sequence_sources` gives each id's `"supplied"` or `"fetched:<release>"`, and `release` is recorded only when every sequence was fetched from it. A `background_fasta` and a `decoys` file are recorded by path, size and SHA-256, not copied. The gene background is saved whole, copies of configured transcripts included, so that a rerun with `--keep-duplicates` can count them. `gene_id` is the gene the background was fetched as, or the config's `gene_id`. Backs `--save-inputs`.
-**`io.load_inputs(path) -> dict`** — read a file `save_inputs` wrote; `io.InputError` if it is not one, and for every field the caller goes on to read: `sequences` and `background_sequences` as objects of id to sequence, an `ensembl_release` that is a number or null, an `analysis` with integer `k` and `window` and boolean `canonical` (and `keep_duplicates`, when present), a `gene_id` that is a string or null, and a `background_fasta` and `decoys` that are null or have a path and a sha256. Which transcripts are a class and which are background is decided by the config the rerun is given, not by the saved grouping. Backs `--inputs`.
+**`io.save_inputs(path, captured, config, release, version, background_fasta=None, decoys=None, max_window_records=None, annotation_source=None) -> dict`** — write the sequence an `identifiability` run used (`captured`, from `analyze(..., inputs_out=...)`) with the release it came from, as `"format": "isoform-dominance/inputs/1"` (`io.INPUTS_FORMAT`). `analysis` records the `k`, `window`, `canonical` and `gene_background` of the run, `max_window_records` when it had a FASTA, and `keep_duplicates` when it had a background, gene or FASTA, none of which the config holds; `sequence_sources` gives each id's `"supplied"`, `"fetched:<release>"` or `"file:<release>"`, and `release` is recorded only when every sequence came from it. A run on local files records them as `annotation_source` (the report's `annotation.source`). `versions` gives each sequence's versioned id where the run knew it, and a rerun passes it on, so `background.fasta_other_versions` survives `--inputs`. A `background_fasta` and a `decoys` file are recorded by path, size and SHA-256, not copied. The gene background is saved whole, copies of configured transcripts included, so that a rerun with `--keep-duplicates` can count them. `gene_id` is the gene the background was fetched as, or the config's `gene_id`. Backs `--save-inputs`.
+**`io.load_inputs(path) -> dict`** — read a file `save_inputs` wrote; `io.InputError` if it is not one, and for every field the caller goes on to read: `sequences` and `background_sequences` as objects of id to sequence, an `ensembl_release` that is a number or null, an `analysis` with integer `k` and `window` and boolean `canonical` (and `keep_duplicates`, when present), a `gene_id` that is a string or null, a `background_fasta` and `decoys` that are null or have a path and a sha256, an `annotation_source` that is null or names the files a run read (`kind`, `gtf`, `transcripts_fasta`), and `versions` that is null or an object of id to versioned id. Which transcripts are a class and which are background is decided by the config the rerun is given, not by the saved grouping. Backs `--inputs`.
 **`io.file_sha256(path) -> str`** — hex SHA-256 of a file's bytes.
 **`io.read_decoys(path) -> list`** — the record names in Salmon's `decoys.txt`, one per line (its first word, a leading `>` dropped); `io.InputError` when it names none.
-**`io.open_text(path)`** — open a text file for reading, gunzipping it when its first two bytes are the gzip magic (`1f 8b`), whatever its name.
+**`io.open_text(path)`** — open a text file for reading, gunzipping it when its first two bytes are the gzip magic (`1f 8b`, `io.is_gzip`), whatever its name; `io.open_bytes(path)` the same for bytes.
 **`io.shared_transcripts(groups) -> dict`** — `{transcript: [group, ...]}` for each transcript more than one group names; `identifiability` refuses such a config and `extract` warns.
 **`io.transcript_to_group(groups) -> dict`** — invert `{group: [ENST...]}` to `{ENST(no version): group}`.
 **`io.load_sample_map(path) -> dict`** — read a `donor,condition[,SRR]` CSV to `{donor: condition}`.

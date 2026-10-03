@@ -27,13 +27,22 @@ def load_json(path, what):
                              % (what, path, e.object[e.start], e.start)) from e
 
 
-def open_text(path):
-    """Open a possibly gzipped text file for reading, telling gzip by its first two bytes
-    (``1f 8b``) rather than by its name: a plain file called ``.gz`` and a gzipped one
-    called ``.GZ`` or nothing at all are both common."""
+def is_gzip(path):
+    """Is ``path`` gzipped?  Told by its first two bytes (``1f 8b``), not by its name: a
+    plain file called ``.gz`` and a gzipped one called ``.GZ`` or nothing at all are both
+    common."""
     with open(path, "rb") as f:
-        gz = f.read(2) == b"\x1f\x8b"
-    return gzip.open(path, "rt") if gz else open(path)
+        return f.read(2) == b"\x1f\x8b"
+
+
+def open_text(path):
+    """Open a possibly gzipped text file for reading (:func:`is_gzip`)."""
+    return gzip.open(path, "rt") if is_gzip(path) else open(path)
+
+
+def open_bytes(path):
+    """Open a possibly gzipped file for reading bytes (:func:`is_gzip`)."""
+    return gzip.open(path, "rb") if is_gzip(path) else open(path, "rb")
 
 
 def load_config(path, need_groups=True):
@@ -123,7 +132,7 @@ def primary_pair(config):
 
 
 def save_inputs(path, captured, config, release, version, background_fasta=None,
-                decoys=None, max_window_records=None):
+                decoys=None, max_window_records=None, annotation_source=None):
     """Write the sequence an ``identifiability`` run used, so it can be repeated offline.
 
     ``captured`` is what :func:`isoform_dominance.identifiability.analyze` put in
@@ -154,6 +163,12 @@ def save_inputs(path, captured, config, release, version, background_fasta=None,
     ``gene_id`` is the Ensembl gene the gene background was fetched as -- or, when none was
     fetched, the config's ``gene_id`` -- so that a rerun can be refused a config of another
     gene of the same name.
+
+    A run on local files (``identifiability --gtf --transcripts-fasta``) records them as
+    ``annotation_source`` -- names, sizes, SHA-256 and what the GTF's header says -- and
+    ``release`` is theirs; each sequence's source is ``"file:<release>"``.  ``versions``
+    gives each sequence's versioned id where the run knew it, so that a rerun can still
+    say when ``--background-fasta`` holds a configured transcript at another version.
     """
     def _file(p):
         return p and {"path": str(p), "bytes": os.path.getsize(p), "sha256": file_sha256(p)}
@@ -169,6 +184,10 @@ def save_inputs(path, captured, config, release, version, background_fasta=None,
                                                               captured["background_sequences"]))),
            "background_fasta": fasta,
            "decoys": _file(decoys) or None,
+           "annotation_source": annotation_source,
+           # which version of each sequence, where known: a rerun can still tell an index
+           # of another release
+           "versions": captured.get("versions") or {},
            "sequence_sources": captured.get("sequence_sources"),
            "sequences": captured["sequences"],
            "background_sequences": captured["background_sequences"]}
@@ -233,6 +252,19 @@ def load_inputs(path):
         raise InputError("saved inputs %s: sequence_sources is %r, expected null or an object "
                          "of transcript id to \"supplied\" or \"fetched:<release>\""
                          % (path, sources))
+    src = doc.get("annotation_source")
+    if src is not None and not (
+            isinstance(src, dict) and isinstance(src.get("kind"), str)
+            and isinstance(src.get("transcripts_fasta"), dict)
+            and isinstance(src["transcripts_fasta"].get("file"), str)
+            and isinstance(src.get("gtf"), (dict, type(None)))):
+        raise InputError("saved inputs %s: annotation_source is %r, expected null or the "
+                         "files a run read (kind, gtf, transcripts_fasta)" % (path, src))
+    versions = doc.get("versions")
+    if versions is not None and not (isinstance(versions, dict) and all(
+            isinstance(k, str) and isinstance(v, str) for k, v in versions.items())):
+        raise InputError("saved inputs %s: versions is %r, expected null or an object of "
+                         "transcript id to versioned id" % (path, versions))
     for key in ("background_fasta", "decoys"):
         rec = doc.get(key)
         if rec is not None and not (isinstance(rec, dict)
