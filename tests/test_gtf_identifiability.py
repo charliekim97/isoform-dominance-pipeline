@@ -93,9 +93,13 @@ def _cfg(gene="LEPR", **kw):
 
 
 def _without_provenance(res):
-    """A report less what says where its sequence came from, as JSON: a figure that is
-    not a number (NaN) is equal to itself there."""
-    return json.dumps(dict(res, annotation=None), sort_keys=True, default=str)
+    """A report less what says where its sequence came from, and less what only a GTF can
+    say -- where a same-name gene of the index lies -- as JSON: a figure that is not a
+    number (NaN) is equal to itself there."""
+    bg = dict(res["background"], same_name_copies=[
+        {k: c[k] for k in ("gene_id", "gene_name", "transcripts")}
+        for c in res["background"]["same_name_copies"]])
+    return json.dumps(dict(res, annotation=None, background=bg), sort_keys=True, default=str)
 
 
 # --------------------------------------------------------------------------- #
@@ -463,3 +467,71 @@ def test_saved_inputs_record_the_files_release_and_a_rerun_is_the_file_run(
     assert rc2 == rc
     assert again["annotation"]["inputs_release"] == 116
     assert _without_provenance(again) == _without_provenance(by_files)
+
+
+# --------------------------------------------------------------------------- #
+# index scope: what a same-name gene in the index is, by the GTF
+# --------------------------------------------------------------------------- #
+HERC3_OLD, HERC3_NEW = "ENSG00000138641", "ENSG00000287542"
+
+
+def _herc3(tmp_path, capsys, *argv):
+    """HERC3's older gene, against the mini FASTA as the index, which holds the newer gene's
+    transcript too: a same-name gene that a GENCODE header does not place."""
+    return _cli(tmp_path, capsys, "--background-fasta", FASTA, "--keep-duplicates", *argv,
+                cfg=_cfg("HERC3", gene_id=HERC3_OLD))
+
+
+def test_without_a_gtf_a_same_name_gene_may_be_a_copy(tmp_path, capsys, offline):
+    rc, res, err = _herc3(tmp_path, capsys, "--transcripts-fasta", FASTA,
+                          "--no-gene-background")
+    assert [c["gene_id"] for c in res["background"]["same_name_copies"]] == [HERC3_NEW]
+    assert "kind" not in res["background"]["same_name_copies"][0]
+    assert "WARNING" in err and "may be copies" in err
+
+
+def test_with_the_gtf_a_same_name_reference_gene_is_named_and_not_warned_of(
+        tmp_path, capsys, offline):
+    rc, res, err = _herc3(tmp_path, capsys, "--gtf", GTF, "--transcripts-fasta", FASTA)
+    copy, = res["background"]["same_name_copies"]
+    assert (copy["gene_id"], copy["region"], copy["kind"]) == (HERC3_NEW, "4",
+                                                               "reference_gene")
+    assert "WARNING" not in err
+
+
+def _scaffold_copy(tmp_path):
+    """The mini FASTA with a LEPR transcript under a gene id the GTF does not hold, as a
+    copy on a scaffold, patch or alternate locus is in GENCODE 48 and later."""
+    t = sorted(_lepr_ids())[0]
+    head, seq = next((h, s) for h, s in RECORDS if h.startswith(t + "."))
+    f = head.split("|")
+    f[0], f[1] = "ENST00000999901.1", "ENSG00000999901.1"
+    return _write_fasta(tmp_path / "scaffold.fa", RECORDS + [("|".join(f), seq[:-40] + "A" * 40)])
+
+
+def test_with_the_gtf_a_gene_it_does_not_hold_is_a_copy_or_another_release(
+        tmp_path, capsys, offline):
+    index = _scaffold_copy(tmp_path)
+    rc, res, err = _cli(tmp_path, capsys, "--gtf", GTF, "--transcripts-fasta", FASTA,
+                        "--background-fasta", index)
+    copy, = res["background"]["same_name_copies"]
+    assert (copy["gene_id"], copy["region"], copy["kind"]) == ("ENSG00000999901", None,
+                                                               "not_in_gtf")
+    assert "WARNING" in err and "may be copies" not in err
+    assert "that --gtf %s does not hold" % GTF in err
+    assert "or genes of another release" in err
+
+
+def test_a_gtf_with_the_scaffolds_places_the_copy(tmp_path, capsys, offline):
+    """GENCODE's chr_patch_hapl_scaff GTF holds the genes off the reference chromosomes:
+    the copy is then placed, as an Ensembl header places it."""
+    index = _scaffold_copy(tmp_path)
+    extra = ('KI270713.1\tHAVANA\tgene\t100\t900\t.\t+\t.\tgene_id "ENSG00000999901.1"; '
+             'gene_type "protein_coding"; gene_name "LEPR";\n')
+    every = tmp_path / "all.gtf"
+    every.write_text(gzip.decompress(pathlib.Path(GTF).read_bytes()).decode() + extra)
+    rc, res, err = _cli(tmp_path, capsys, "--gtf", str(every), "--transcripts-fasta", FASTA,
+                        "--background-fasta", index)
+    copy, = res["background"]["same_name_copies"]
+    assert (copy["region"], copy["kind"]) == ("KI270713.1", "off_reference")
+    assert "on non-reference regions" in err

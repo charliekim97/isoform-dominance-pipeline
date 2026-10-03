@@ -206,8 +206,10 @@ def scan(path, symbol=None, gene_id=None, transcript_ids=(), block=BLOCK, info=N
     _refuse_basic(path, stats)
     info["case_insensitive"] = False
     if symbol and not gene_id and not any(g["display_name"] == symbol for g in genes):
-        pat = re.compile(re.escape(('gene_name "%s";' % symbol).encode()), re.I)
-        loose = _records(_matching_lines(path, pat.search, block,
+        # bytes.lower() and a plain search: re.IGNORECASE over every block took three times
+        # as long as the first read on a file of GENCODE 50's size
+        low = ('gene_name "%s";' % symbol).lower().encode()
+        loose = _records(_matching_lines(path, lambda text: low in text.lower(), block,
                                          {"lines": 0, "transcripts": 0, "basic": 0}),
                          lambda a: (a.get("gene_name") or "").upper() == symbol.upper())
         if loose:

@@ -454,7 +454,8 @@ def _report(a, res):
     # read the configured transcripts would get: the NOTEs below, not this warning
     warning = index_scope.copy_warning(
         index_scope.without_identical(bg["same_name_copies"], dict(same, **twins)),
-        "--background-fasta %s" % a.background_fasta)
+        "--background-fasta %s" % a.background_fasta,
+        gtf="--gtf %s" % a.gtf if a.gtf else None)
     if warning:
         print("  " + warning, file=sys.stderr)
 

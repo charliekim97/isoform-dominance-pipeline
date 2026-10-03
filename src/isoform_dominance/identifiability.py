@@ -1136,13 +1136,14 @@ def _from_files(config, needed, gtf, fasta, supplied, gene_background, species, 
         return {"sequences": {t: got[t][1] for t in needed}, "background": {},
                 "gene_id": None, "gene_background": False, "versions":
                 {t: got[t][0] for t in needed}, "release": release, "source": source,
+                "same_name": None,
                 "label": "file:%s" % release if release is not None else "file"}
     named = source["gtf"]["ensembl_release"]
     if named is not None and release is not None and int(release) != named:
         raise ValueError("%s is Ensembl release %d (\"%s\"); --ensembl-release %d contradicts "
                          "it" % (gtf, named, source["gtf"]["description"], release))
     release = named if named is not None else release
-    gene = _gtf_gene(config, needed, gtf, species)
+    gene, same_name = _gtf_gene(config, needed, gtf, species)
     have = {t["id"] for t in gene["Transcript"]}
     absent = [t for t in needed if t not in have]
     if absent:
@@ -1154,37 +1155,47 @@ def _from_files(config, needed, gtf, fasta, supplied, gene_background, species, 
     return {"sequences": {t: every[t] for t in needed},
             "background": {t: s for t, s in every.items() if t not in set(needed)},
             "gene_id": gene["id"], "gene_background": gene_background, "versions": versions,
-            "release": release, "source": source,
+            "release": release, "source": source, "same_name": same_name,
             "label": "file:%s" % release if release is not None else "file"}
 
 
 def _gtf_gene(config, needed, gtf, species):
-    """The GTF record of the config's gene: by ``gene_id``; else the one gene that holds
-    every configured transcript; else the symbol's, by ``annotate``'s rule."""
+    """The GTF record of the config's gene -- by ``gene_id``; else the one gene that holds
+    every configured transcript; else the symbol's, by ``annotate``'s rule -- and
+    ``{gene id: region}`` of the GTF's other genes of its name, which place a same-name
+    gene of the index (:func:`isoform_dominance.index_scope.placed_by_gtf`)."""
     gene_id, symbol = config.get("gene_id"), config.get("gene")
+    recs = [g for g in af.scan(gtf, symbol=symbol or None, gene_id=gene_id or None,
+                               transcript_ids=() if gene_id else needed)
+            if not g["_par_y"]]
     if gene_id:
-        recs = [g for g in af.scan(gtf, gene_id=gene_id) if not g["_par_y"]]
-        if not recs:
+        g = next((r for r in recs if r["id"] == gene_id.split(".")[0]), None)
+        if g is None:
             raise ValueError("%s has no gene %s, which the config's gene_id names"
                              % (gtf, gene_id.split(".")[0]))
-        return recs[0]
-    recs = [g for g in af.scan(gtf, symbol=symbol or None, transcript_ids=needed)
-            if not g["_par_y"]]
-    want = set(needed)
-    holders = [g for g in recs if want and want <= {t["id"] for t in g["Transcript"]}]
-    if len(holders) == 1:
-        g = holders[0]
-        if g["display_name"] != symbol:
-            # found by its transcripts' lines alone: read the whole gene
-            g = next(r for r in af.scan(gtf, gene_id=g["id"]) if not r["_par_y"])
-        return g
-    named = [g for g in recs if symbol and g["display_name"] == symbol] or [
-        g for g in recs if symbol and (g["display_name"] or "").upper() == symbol.upper()]
-    if not named:
-        raise ValueError("%s has no gene named %s, and no one gene of it holds every "
-                         "transcript the config names; set the config's \"gene_id\""
-                         % (gtf, symbol))
-    return annotate.choose_among(symbol, named, species)[0]
+    else:
+        want = set(needed)
+        holders = [r for r in recs if want and want <= {t["id"] for t in r["Transcript"]}]
+        if len(holders) == 1:
+            g = holders[0]
+        else:
+            named = [r for r in recs if symbol and r["display_name"] == symbol] or [
+                r for r in recs
+                if symbol and (r["display_name"] or "").upper() == symbol.upper()]
+            if not named:
+                raise ValueError("%s has no gene named %s, and no one gene of it holds every "
+                                 "transcript the config names; set the config's \"gene_id\""
+                                 % (gtf, symbol))
+            g = annotate.choose_among(symbol, named, species)[0]
+    if g["display_name"] != symbol:
+        # found by its id or its transcripts' lines, not by the name it has: read the
+        # whole gene, and the genes of that name
+        recs = [r for r in af.scan(gtf, symbol=g["display_name"], gene_id=g["id"])
+                if not r["_par_y"]]
+        g = next(r for r in recs if r["id"] == g["id"])
+    same = {r["id"]: r["seq_region_name"] for r in recs
+            if r["display_name"] == g["display_name"] and r["id"] != g["id"]}
+    return g, same
 
 
 def analyze(config, k=DEFAULT_K, sequences=None, *,
@@ -1334,7 +1345,9 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         ``identical_to_background``, the background sequences left out as copies, each
         mapped to the transcript it equals, and ``identical_source``, where each came
         from: ``"gene"``, ``"sequences"`` or ``"fasta"`` -- all three None with
-        ``keep_duplicates``; ``fasta_other_versions``, the configured transcripts the FASTA
+        ``keep_duplicates``; ``same_name_copies``, the FASTA's genes of the configured
+        gene's name under another gene id, each with its ``kind`` when ``gtf`` places it
+        (:func:`isoform_dominance.index_scope.placed_by_gtf`); ``fasta_other_versions``, the configured transcripts the FASTA
         holds at another version than the sequence used here, ``{id: {"used", "fasta"}}``,
         None without a FASTA), ``annotation`` (the config's
         ``ensembl_release``, and ``fetched_release``, the release any sequence was
@@ -1558,6 +1571,9 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         copies = index_scope.fasta_copies(background_fasta, needed,
                                           [config.get("gene")] if config.get("gene") else (),
                                           versions=in_fasta)
+        if files is not None and files["same_name"] is not None:
+            # what a GENCODE header does not say, the GTF does: where a same-name gene lies
+            copies = index_scope.placed_by_gtf(copies, files["same_name"])
         # a configured transcript the index holds at another version than the sequence
         # used here: the index was built from another release
         other_versions = {}

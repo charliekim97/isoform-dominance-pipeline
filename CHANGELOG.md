@@ -74,6 +74,23 @@ versioning.
   `background.fasta_other_versions` (`{id: {"used", "fasta"}}`). The version used is the
   file's, REST's (`ensembl.fetch_cdna_batch(..., versions=)`), or the one a config or
   `--sequences` id carries.
+- **With `--gtf`, a same-name gene of the index is placed** (`index_scope.placed_by_gtf`). A
+  GENCODE header does not say where a gene lies, so through 2.5.0 a gene of the configured
+  gene's name under another id was reported as one that "may be" a copy on a scaffold,
+  patch or alternate locus. With the GTF each gains `kind` in `same_name_copies`:
+  `reference_gene`, a gene on a reference chromosome -- the chrY copy of a pseudoautosomal
+  gene, or HERC3's second gene -- which an index of the reference chromosomes keeps, and
+  which is no longer warned of; `off_reference`, placed by a GTF that holds the scaffolds
+  and patches; or `not_in_gtf`, which the warning calls a copy off the reference
+  chromosomes or a gene of another release.
+- **A weekly job holds the GENCODE 50 extract to live REST 116** (`gtf-parity` in
+  `ensembl-nightly.yml`): `annotate` for LEPR, CD99 and FOXO1, `identifiability` for LEPR and
+  CD99, and whether REST gives the version of the cDNA it serves. An outage is skipped, a
+  retired archive and a moved answer warned of; the step is tested against an offline fake.
+- **`scripts/parity/`**: `record_rest.py` records REST's answers for a gene list at one
+  release, `compare.py` compares them with a GTF and transcript FASTA of that release,
+  config by config and cDNA by MD5, and `timing.py` times the file mode. On the extract in
+  `tests/data/gencode_mini`: 6/6 configs equal, 217/217 cDNA byte-identical.
 - `annotation_files`, which reads a GTF and a transcript FASTA with the standard library
   alone; `io.is_gzip` and `io.open_bytes`.
 
