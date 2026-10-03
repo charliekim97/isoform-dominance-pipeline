@@ -73,7 +73,7 @@ DEFAULT_SEED = 0
 #: it can return given the cohorts' sizes, so a combination that sits at its floor shows it.
 DEFAULT_COMBINATION = "stouffer"
 
-#: Below this many finite fold ratios the reported interval is the sample's range: the
+#: At this many finite fold ratios or fewer the reported interval is the sample's range: the
 #: 95% bootstrap percentile interval of a median of five or fewer values is its minimum
 #: and maximum, because the bootstrap median equals the minimum with probability 0.25,
 #: 7/27, 13/256 and 181/3125 at n = 2 to 5, each above 0.025 (0.0087 at n = 6).

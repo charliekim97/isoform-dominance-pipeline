@@ -4,7 +4,8 @@
 Python's ``json`` writes those tokens by default and reads them back, but RFC 8259 has no
 such values and a standard parser (``jq``, JavaScript's ``JSON.parse``, R's ``jsonlite``)
 refuses the whole document.  Through 2.6.0 the identifiability report of NTRK2 at release
-116 carried nine ``Infinity``, and ``stats --json`` a ``NaN`` in every run.  A number that
+116 carried nine ``Infinity`` (by the audit of 2.5.0), and ``stats --json`` a ``NaN`` in
+every run.  A number that
 is not finite is now written as ``null``, and the field beside it that says why --
 ``estimable``, ``finite_se``, ``defined``, ``fold_ci_method`` -- is checked here.
 

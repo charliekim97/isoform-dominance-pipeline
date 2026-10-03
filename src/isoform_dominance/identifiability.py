@@ -868,6 +868,10 @@ reach, which is the only thing being claimed.
 def min_resolvable_log2fc(relative_se, n_donors=1):
     """Smallest |log2 fold change| a 95% interval excludes zero for, at this design.
 
+    That is 1.96 standard errors of the log2 ratio, the size at which the estimate's
+    interval just excludes zero: a true effect of this size is detected about half the time
+    (about 50% power), and 80% power needs about 2.8 standard errors, 1.43 times as much.
+
     The companion to :func:`counting_noise_floor`, which answers the same question for an
     estimator that counts only unambiguously assignable reads.  This one is for the
     estimator that inverts the whole system, which is what ``conditioning_factor``

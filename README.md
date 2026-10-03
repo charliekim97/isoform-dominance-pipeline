@@ -72,6 +72,26 @@ five transcripts to the 896 aa class. When a proposal is decided by such a tie, 
 says so on stderr and lists the tied clusters in the config under `_proposal.tied_with`;
 at release 116, 39 of the survey's 100 proposals were ties.
 
+The rule, and what it leans on: the canonical class is the cluster that holds Ensembl's
+canonical transcript (failing one, the longest representative protein), and the alternative
+the non-canonical cluster with the most transcripts, a tie going to the longer
+representative protein and then to the lower acceptor coordinate (recorded in every config
+as `_proposal.alternative_rule`). A transcript count is a count of annotation, not of
+use. Since release 115 nearly every
+transcript GENCODE added to the survey's genes comes from TAGENE, its pipeline for
+long-read data — all 1,122 that release 115 added and 1,128 of the 1,211 that 116 added —
+so a cluster's count can grow with the long-read evidence for it, with no change in what the
+class is, and the proposed alternative moves with it. The rule is kept as it is, because
+changing it would change the survey's 30 of 84 above; take the proposal as a starting point
+and check that the alternative class is the one you mean to compare.
+
+Clusters are keyed on the exact acceptor coordinate, so a transcript whose annotated
+acceptor is a base off its class's is a cluster of its own. `--acceptor-tolerance N` makes
+one class of the acceptors within N bp of a cluster's first (lowest) one, with no chaining,
+and lists what it merged under `_clusters` (`merged_acceptors`, `acceptor_span`). The
+default is 0, the exact coordinate, so every config and figure quoted here is unchanged;
+whether a tolerance should be the default is left to a replay of the release series.
+
 A symbol can name more than one gene on the reference chromosomes, and Ensembl's
 `lookup/symbol` returns one of them without saying so: for pseudoautosomal genes such as
 CD99 and SHOX the chrY copy, for HERC3 the newer of two genes of that name. `annotate` looks
@@ -135,7 +155,9 @@ not resolved at the stated design · **2** precondition failure: a transcript sh
 `--window` has no windows, so the gene total itself is not estimable · **1** config or
 network error. The structural verdict is never the exit status: it changes with the
 annotation release the transcripts came from, so it is reported in the output and in the
-`--json` report (`verdict`, with `gene_total` and `effect_resolvable` beside it).
+`--json` report (`verdict`, with `gene_total` and `effect_resolvable` beside it). Every
+`--json` is standard JSON: a figure that is not finite is `null`, never `NaN` or `Infinity`,
+and `estimable` or `finite_se` beside it says why.
 
 > **Why not just count unique k-mers?** Because that proxy — used by this package up to
 > v2.1.1 — is wrong in both directions. A class whose only unique sequence is the ~30 k-mers
@@ -280,8 +302,11 @@ annotation release the transcripts came from, so it is reported in the output an
 | Read model | `informative_fraction`, `expected_informative_reads`, counting-noise floor on log2 ratio | informativeness is scored on the **sequenced ends**, not the fragment: a unique region mid-fragment is never observed |
 | Estimability | row-space residual, rank, and `min_resolvable_log2fc` from the Poisson-weighted GLS covariance, for each class total **and** their contrast; the structural conditioning factor as a diagnostic | a full-rank system with a near-degenerate contrast passes a rank test and still yields nothing |
 
-The headline figure is `min_resolvable_log2fc`: the smallest |log2 fold change| a 95% interval
-excludes zero for at the stated design, under Poisson counting error only.
+The headline figure is `min_resolvable_log2fc`: 1.96 standard errors of the log2 class ratio
+at the stated design, under Poisson counting error only — the |log2 fold change| whose
+estimate has a 95% interval that just excludes zero. A true effect of that size is detected
+about half the time, about 50% power; for 80% power it has to be about 2.8 standard errors,
+1.43 times the figure.
 
 **It bounds spread, not accuracy.** The figure is built from the delta-method standard error
 of the log class ratio, so it describes replicate scatter under uniform coverage and a
@@ -464,11 +489,15 @@ truncations and the FLT1 soluble-decoy receptor), and an [API reference](docs/ap
   (`wilcoxon_method`) — at n = 14 with one tie the approximation can sit well above the
   exact figure.
 - **Small-n floor is computed, not just documented.** `signed_rank_resolution_floor(n)`
-  returns `2^(1-n)` — under the sign-permutation null exactly one assignment puts every
-  difference on the same side. At n = 5 that is 0.0625, so no arrangement of five donors
-  reaches 0.05. Ties among the absolute differences do **not** raise it. Each per-cohort test
-  and the donor-pooled one is reported with its floor and flagged when the floor exceeds
-  0.05; the Stouffer and stratified rows of the stats table carry none yet.
+  returns `2^(1-n)` for n pairs with a non-zero difference — under the sign-permutation null
+  exactly one assignment puts every difference on the same side, and a zero difference has no
+  sign to flip under any zero method. At n = 5 that is 0.0625, so no arrangement of five
+  donors reaches 0.05. Ties among the absolute differences do **not** raise it. Every test is
+  reported with its floor and flagged when the floor exceeds 0.05: each cohort's, the
+  donor-pooled one, Stouffer's (every cohort at its floor in one direction) and the
+  stratified one (`2^(1-N)` over the pairs of all strata). A P from a normal approximation
+  that lies below its floor is marked `approximation below the attainable exact minimum`. In
+  the self-test both cohorts sit at their floors, so the Stouffer P of 0.0044 is its floor.
 - **Cohorts are combined three ways**, all reported: donor-**pooled** (what v2.1 reported alone),
   a weighted **Stouffer** combination of the per-cohort *exact* tests, and a weighted
   **stratified signed-rank** combination. The latter borrows van Elteren's design-free
@@ -477,9 +506,16 @@ truncations and the FLT1 soluble-decoy receptor), and an [API reference](docs/ap
   default, because at these sample sizes each stratum's exact p-value is trustworthy and the
   normal approximation behind a combined rank statistic is not. Pooling donors from independent studies ranks one cohort's differences
   against another's and lets depth or tissue handling drive the result — quote the stratified
-  figures when the cohorts are genuinely independent.
+  figures when the cohorts are genuinely independent. A cohort enters Stouffer signed by the
+  direction of the signed-rank statistic that produced its p (`W+ − W−`), not by its count
+  of positive pairs, and weighted by the square root of the pairs that test ranked, so a
+  pair with no difference adds no weight; the stratified statistic uses the tie-corrected
+  null variance.
 - Effect size = median fold-change **with a donor-bootstrap 95% interval** (seeded, so it
-  reproduces).
+  reproduces). From five donors or fewer that interval is the donors' range — the bootstrap
+  median then equals the lowest ratio, and the highest, more than 2.5% of the time — so it is
+  computed and labelled as the range (`fold_CI_method`): GSE228458's (4.93, 32.76) is the
+  lowest and highest of its five donors' ratios.
 
 ## Layout
 
