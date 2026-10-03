@@ -22,11 +22,13 @@ with ``--min-log2fc``:
 ===== ==============================================================
 """
 import argparse
+import gzip
 import http.client
 import json
 import math
 import os
 import sys
+import zlib
 
 from . import (__version__, annotate, contamination, ensembl, extract, identifiability,
                index_scope, io, stats)
@@ -259,8 +261,11 @@ def _load_saved_inputs(a, cfg):
     rest = {t: s for t, s in pool.items() if t not in needed}
     # a file written before 2.4.1 does not say; a background it saved is the evidence
     had = inputs["analysis"].get("gene_background", bool(inputs["background_sequences"]))
+    # each sequence under its versioned id where the file knows it, as the run had it
+    versions = {t: v for t, v in (inputs.get("versions") or {}).items()
+                if v.split(".")[0] == t}
     return dict(inputs,
-                sequences={t: pool[t] for t in sorted(needed)},
+                sequences={versions.get(t, t): pool[t] for t in sorted(needed)},
                 background_sequences=rest, gene_background=had,
                 left_out=[] if had else sorted(rest))
 
@@ -962,6 +967,10 @@ def main(argv=None):
         return args.func(args) or 0
     except io.InputError as e:              # a file named on the command line is unusable
         print("error: %s" % e, file=sys.stderr)
+        return 1
+    except (EOFError, zlib.error, gzip.BadGzipFile) as e:    # ... or a cut-short download
+        print("error: an input file is a truncated or corrupt gzip file (%s); download it "
+              "again" % e, file=sys.stderr)
         return 1
     except OSError as e:                    # ... or cannot be opened: one line, not a trace
         if e.filename is None:

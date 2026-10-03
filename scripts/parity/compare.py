@@ -7,8 +7,8 @@
 ``--rest`` is what record_rest.py records (or ``tests/data/gencode_mini/rest116_mini.json.gz``):
 REST's answers at one release.  For each gene, ``annotate.build_config`` answered from it
 is compared with ``annotate.build_config_from_gtf`` on ``--gtf``, ``annotation_source``
-aside; and the cDNA of every transcript of the gene the GTF chose, from ``--fasta``, with
-REST's by MD5.  The GTF and the FASTA must be the release ``--rest`` was recorded at
+aside; the transcripts of every biotype the two give the gene the GTF chose; and the cDNA
+of every one of them, from ``--fasta``, with REST's by MD5.  The GTF and the FASTA must be the release ``--rest`` was recorded at
 (GENCODE 44, 48 and 50 are Ensembl 110, 114 and 116).
 
 The lines of the genes asked about, and their FASTA records, are first cut from the files
@@ -94,7 +94,9 @@ def cut(gtf, fasta, symbols, gene_ids, where):
 
 
 def compare(gene, gtf, fasta, rest):
-    """One gene: whether the configs are equal, and the cDNA compared and differing."""
+    """One gene: whether the configs are equal, whether the GTF and REST give the gene the
+    same transcripts -- of every biotype, the gene background -- and the cDNA compared and
+    differing."""
     row = {"gene": gene}
     try:
         want = annotate.build_config(gene)
@@ -116,6 +118,12 @@ def compare(gene, gtf, fasta, rest):
     row["cdna_compared"], row["cdna_differ"] = 0, []
     if isinstance(got, dict):
         rec = next(g for g in af.scan(gtf, gene_id=got["gene_id"]) if not g["_par_y"])
+        mine = {t["id"] for t in rec["Transcript"]}
+        theirs = {t["id"].split(".")[0]
+                  for t in rest["lookups"].get(got["gene_id"], {}).get("Transcript", [])}
+        if mine != theirs:
+            row["transcripts_differ"] = {"rest_only": sorted(theirs - mine),
+                                         "gtf_only": sorted(mine - theirs)}
         try:
             seqs = af.sequences_for(rec, fasta)
         except af.AnnotationFileError as e:
@@ -156,24 +164,30 @@ def main(argv=None):
         cut_s = time.perf_counter() - t0
         rows = [compare(g, gtf, fasta, rest) for g in genes]
     for r in rows:
-        print("%-10s config %s  cDNA %d compared%s%s"
+        moved = r.get("transcripts_differ")
+        print("%-10s config %s  %scDNA %d compared%s%s"
               % (r["gene"], "equal" if r["config_equal"] else "DIFFERS %s" % r["differ"],
+                 "transcripts DIFFER: %s  " % "; ".join(
+                     "%s only %s" % (side, ", ".join(moved[key]))
+                     for side, key in (("REST", "rest_only"), ("GTF", "gtf_only"))
+                     if moved[key]) if moved else "",
                  r["cdna_compared"],
                  ", %d DIFFER: %s" % (len(r["cdna_differ"]), ", ".join(r["cdna_differ"]))
                  if r["cdna_differ"] else "", "; %s" % r["cdna_error"]
                  if r.get("cdna_error") else ""))
     n_eq = sum(r["config_equal"] for r in rows)
+    n_tx = sum("transcripts_differ" not in r for r in rows)
     n_seq = sum(r["cdna_compared"] for r in rows)
     n_bad = sum(len(r["cdna_differ"]) for r in rows)
-    print("release %s: configs equal %d/%d (annotation_source aside); cDNA byte-identical "
-          "%d/%d; %s %.1f s" % (rest["release"], n_eq, len(rows), n_seq - n_bad, n_seq,
-                                "reading the whole files" if a.whole else "cutting the files",
-                                cut_s))
+    print("release %s: configs equal %d/%d (annotation_source aside); transcript sets equal "
+          "%d/%d; cDNA byte-identical %d/%d; %s %.1f s"
+          % (rest["release"], n_eq, len(rows), n_tx, len(rows), n_seq - n_bad, n_seq,
+             "reading the whole files" if a.whole else "cutting the files", cut_s))
     if a.json:
         with open(a.json, "w") as fh:
             json.dump({"release": rest["release"], "rows": rows}, fh, indent=1)
-    return 0 if n_eq == len(rows) and not n_bad and not any(r.get("cdna_error")
-                                                             for r in rows) else 1
+    return 0 if n_eq == n_tx == len(rows) and not n_bad and not any(
+        r.get("cdna_error") for r in rows) else 1
 
 
 if __name__ == "__main__":

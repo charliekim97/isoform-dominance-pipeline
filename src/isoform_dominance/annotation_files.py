@@ -141,12 +141,12 @@ def _blocks(path, block=BLOCK):
 
 def _matching_lines(path, found, block, stats):
     """Decoded lines of ``path`` for which ``found(bytes)`` is true, and in ``stats`` the
-    count of feature lines below the gene -- a gene line is never tagged ``basic`` -- and of
-    those tagged ``basic``.  ``found`` is first asked of a whole block, and a block it does
-    not match is not split into lines."""
+    count of lines below the gene -- those with a ``transcript_id``; a gene line is never
+    tagged ``basic``, and a blank or comment line has none -- and of those tagged ``basic``.
+    ``found`` is first asked of a whole block, and a block it does not match is not split
+    into lines."""
     for body in _blocks(path, block):
-        n = body.count(b"\n") - body.count(b"\n#") - (1 if body.startswith(b"#") else 0)
-        stats["lines"] += n - body.count(b"\tgene\t")
+        stats["lines"] += body.count(b'transcript_id "')
         stats["transcripts"] += body.count(b"\ttranscript\t")
         stats["basic"] += body.count(_BASIC)
         if found(body):

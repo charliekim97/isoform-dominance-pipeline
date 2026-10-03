@@ -27,6 +27,7 @@ GTF = str(DATA / "gencode.v50.mini.gtf.gz")
 FASTA = str(DATA / "gencode.v50.mini.transcripts.fa.gz")
 REST = json.loads(gzip.decompress((DATA / "rest116_mini.json.gz").read_bytes()))
 RETIRED_PAGE = "https://www.ensembl.org/help/articles/archives"
+RENAMED = "ENST00009999999"
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="runs a POSIX shim on PATH")
 
@@ -59,12 +60,16 @@ class LiveRest:
     """rest.ensembl.org serving release 116 for the extract's genes; ``e116``'s alias
     answers 503, as it did live.  ``down``: every host answers 503.  ``retired``: the
     alias redirects to Ensembl's page on archives.  ``moved``: LEPR's lookup has lost a
-    protein-coding transcript.  ``unversioned``: cDNA comes without its version."""
+    protein-coding transcript.  ``renamed``: LepRb has another id, which no GTF holds.
+    ``unversioned``: cDNA comes without its version.  ``cdna_down``: cDNA answers 503."""
 
-    def __init__(self, down=False, retired=False, moved=False, unversioned=False):
+    def __init__(self, down=False, retired=False, moved=False, unversioned=False,
+                 renamed=False, cdna_down=False):
         self.down, self.retired, self.moved = down, retired, moved
-        self.unversioned = unversioned
+        self.unversioned, self.renamed, self.cdna_down = unversioned, renamed, cdna_down
         self.seqs = _fasta()
+        if renamed:
+            self.seqs[RENAMED] = ("%s.1" % RENAMED, self.seqs["ENST00000349533"][1])
 
     def _lookup(self, gid):
         g = REST["lookups"][gid]
@@ -72,6 +77,10 @@ class LiveRest:
             drop = next(t["id"] for t in g["Transcript"] if t["biotype"] == "protein_coding"
                         and t["id"] != "ENST00000349533")
             g = dict(g, Transcript=[t for t in g["Transcript"] if t["id"] != drop])
+        if self.renamed and g["display_name"] == "LEPR":
+            g = dict(g, canonical_transcript="%s.1" % RENAMED, Transcript=[
+                dict(t, id=RENAMED, version=1) if t["id"] == "ENST00000349533" else t
+                for t in g["Transcript"]])
         return g
 
     def __call__(self, req, timeout=None, **_):
@@ -104,6 +113,8 @@ class LiveRest:
             return _Resp(json.dumps({i: self._lookup(i) for i in body["ids"]
                                      if i in REST["lookups"]}), url)
         if method == "POST" and path.startswith("/sequence/id"):
+            if self.cdna_down:
+                raise HTTPError(url, 503, "status 503", email.message.Message(), io.BytesIO())
             return _Resp(json.dumps([
                 dict({"query": i, "seq": self.seqs[i][1]},
                      **({"id": i} if self.unversioned else
@@ -174,3 +185,20 @@ def test_a_failure_of_the_files_side_fails(tmp_path):
     env = dict(_env(tmp_path), GTF=str(tmp_path / "gone.gtf.gz"))
     r = _run(tmp_path, env=env)
     assert r.returncode == 1 and "gone.gtf.gz" in r.stdout + r.stderr
+
+
+def test_an_id_no_gtf_holds_is_a_moved_answer_not_a_failure(tmp_path):
+    """The files' side runs on the config the GTF gives, never on REST's: an id REST
+    names that the GTF does not is a moved answer."""
+    r = _run(tmp_path, renamed=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    warning = next(x for x in r.stdout.splitlines() if x.startswith("::warning::"))
+    assert "annotate LEPR (" in warning and "identifiability LEPR" in warning
+
+
+def test_an_outage_after_a_moved_answer_still_says_what_moved(tmp_path):
+    r = _run(tmp_path, moved=True, cdna_down=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "::warning::REST 116 and the GENCODE 50 files no longer agree: annotate LEPR (" \
+        in r.stdout
+    assert "::notice::identifiability could not reach Ensembl" in r.stdout

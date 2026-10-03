@@ -50,8 +50,8 @@ def test_the_extract_holds_rest_116(compare, capsys, whole):
                  + (["--whole"] if whole else []))
     out = capsys.readouterr().out
     assert rc == 0, out
-    assert "release 116: configs equal 6/6 (annotation_source aside); cDNA byte-identical " \
-           "217/217" in out
+    assert "release 116: configs equal 6/6 (annotation_source aside); transcript sets " \
+           "equal 6/6; cDNA byte-identical 217/217" in out
 
 
 def test_a_config_that_differs_is_named_and_exits_1(compare, capsys, tmp_path):
@@ -94,3 +94,16 @@ def test_record_rest_writes_what_compare_reads(compare, capsys, tmp_path, monkey
     capsys.readouterr()
     rc = compare(["--gtf", GTF, "--fasta", FASTA, "--rest", str(out)])
     assert rc == 0 and "configs equal 3/3" in capsys.readouterr().out
+
+
+def test_a_transcript_the_gtf_lacks_is_a_difference(compare, capsys, tmp_path):
+    """The cDNA comparison sees only the transcripts both sides hold: the transcript sets
+    are compared too, or a GTF short of one passes."""
+    with gzip.open(GTF, "rt") as fh:
+        lines = [x for x in fh if 'transcript_id "ENST00001037957.' not in x]
+    short = tmp_path / "short.gtf"
+    short.write_text("".join(lines))
+    rc = compare(["--gtf", str(short), "--fasta", FASTA, "--rest", str(REST)])
+    out = capsys.readouterr().out
+    assert rc == 1, out
+    assert "LEPR       config equal  transcripts DIFFER: REST only ENST00001037957" in out

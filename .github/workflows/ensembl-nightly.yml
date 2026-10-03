@@ -272,20 +272,32 @@ jobs:
           GTF, FASTA, OUT = os.environ["GTF"], os.environ["FASTA"], "/tmp/parity"
           os.makedirs(OUT, exist_ok=True)
 
+          moved = []
+
           def cli(*argv):
               return subprocess.run(["isoform-dominance", *argv], capture_output=True,
                                     text=True)
 
+          def say_moved():
+              if moved:
+                  print("::warning::REST 116 and the GENCODE 50 files no longer agree: %s. "
+                        "Release 116 is frozen, so Ensembl altered it or the answers "
+                        "recorded in tests/data/gencode_mini are stale: record them again and "
+                        "see whether the GTF rules still hold." % "; ".join(moved))
+
           def rest(*argv):
-              """A run against REST 116: an outage skips, a retirement warns."""
+              """A run against REST 116: an outage skips, a retirement warns; what moved
+              before either is said first."""
               r = cli(*argv, "--ensembl-release", "116")
               blob = r.stdout + r.stderr
               if r.returncode == 1 and RETIRED in blob:   # before NET, which matches it
+                  say_moved()
                   print("::warning::the REST archive for release 116 is retired: REST can "
                         "no longer be compared with the GENCODE 50 files. The offline tests "
                         "keep the recorded answers (tests/data/gencode_mini).")
                   print(blob[-800:]); sys.exit(0)
               if r.returncode == 1 and any(k in blob for k in NET):
+                  say_moved()
                   print("::notice::%s could not reach Ensembl; this check skipped." % argv[0])
                   print(blob[-800:]); sys.exit(0)
               if r.returncode == 1:
@@ -308,7 +320,6 @@ jobs:
               return res, json.dumps(dict(res, annotation=None, background=bg),
                                      sort_keys=True)
 
-          moved = []
           for gene in ("LEPR", "CD99", "FOXO1"):
               a, b = "%s/%s.rest.json" % (OUT, gene), "%s/%s.gtf.json" % (OUT, gene)
               rest("annotate", "--gene", gene, "--out", a, "--json")
@@ -322,11 +333,13 @@ jobs:
                   moved.append("annotate %s (%s)" % (gene, ", ".join(sorted(
                       k for k in set(x) | set(y) if x.get(k) != y.get(k)))))
 
+          # each side on its own config: the files' never fails on what REST names, and a
+          # config that moved shows here too
           for gene in ("LEPR", "CD99"):
-              run = ["identifiability", "--config", "%s/%s.rest.json" % (OUT, gene),
-                     "--background-fasta", FASTA, "--min-log2fc", "1.0", "--json"]
-              r = rest(*run)
-              f = files(*run, "--gtf", GTF, "--transcripts-fasta", FASTA)
+              run = ["--background-fasta", FASTA, "--min-log2fc", "1.0", "--json"]
+              r = rest("identifiability", "--config", "%s/%s.rest.json" % (OUT, gene), *run)
+              f = files("identifiability", "--config", "%s/%s.gtf.json" % (OUT, gene), *run,
+                        "--gtf", GTF, "--transcripts-fasta", FASTA)
               (x, xs), (y, ys) = report(r.stdout), report(f.stdout)
               assert x["annotation"]["fetched_release"] == 116, x["annotation"]
               assert y["annotation"]["file_release"] == 116, y["annotation"]
@@ -349,11 +362,7 @@ jobs:
           if t not in json.loads(r.stdout)["background"]["fasta_other_versions"]:
               moved.append("REST gave no version for %s's sequence" % t)
 
-          if moved:
-              print("::warning::REST 116 and the GENCODE 50 files no longer agree: %s. "
-                    "Release 116 is frozen, so Ensembl altered it or the answers recorded "
-                    "in tests/data/gencode_mini are stale: record them again and see "
-                    "whether the GTF rules still hold." % "; ".join(moved))
-          else:
+          say_moved()
+          if not moved:
               print("ok: REST 116 and the GENCODE 50 files agree for LEPR, CD99 and FOXO1")
           PY

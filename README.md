@@ -247,11 +247,12 @@ annotation release the transcripts came from, so it is reported in the output an
 >
 > Neither makes a request. `annotate --gtf` writes the config REST gives at that release,
 > with the release the GTF's header names and an `annotation_source` block naming the file by
-> SHA-256: on the 109-gene survey panel, configs read from GENCODE 44, 48 and 50 matched
-> REST's at releases 110, 114 and 116 for every gene, and the cDNA of the transcript FASTA
-> matched REST's byte for byte (2,005, 2,066 and 4,396 transcripts). `scripts/parity/`
-> repeats that comparison; the tests hold it on a seven-gene extract, and a weekly job holds
-> the extract to live REST 116. `identifiability --gtf --transcripts-fasta` takes the gene's
+> SHA-256. The rules it reads the GTF by were measured on the 109-gene survey panel with a
+> prototype of this reader: configs read from GENCODE 44, 48 and 50 matched REST's at
+> releases 110, 114 and 116 for every gene, and the cDNA of the transcript FASTA matched
+> REST's byte for byte (2,005, 2,066 and 4,396 transcripts). `scripts/parity/` repeats that
+> comparison, transcript sets included, for this code; the tests hold it on a seven-gene
+> extract, and a weekly job holds the extract to live REST 116. `identifiability --gtf --transcripts-fasta` takes the gene's
 > transcripts from the GTF and their sequence from the FASTA, and the gene background goes
 > the way a fetched one does, so a background the two give alike gives one report. A
 > basic GTF is refused, as is a FASTA that lacks a transcript of the gene or holds one at
@@ -259,7 +260,12 @@ annotation release the transcripts came from, so it is reported in the output an
 > REST: a symbol is matched exactly first, and only then ignoring case, with a NOTE (REST
 > always ignores case); a symbol whose every gene lies off the reference chromosomes is not
 > in the comprehensive GTF, which holds those chromosomes only, and is refused (REST finds it
-> and refuses it too, naming where it lies). With `--background-fasta`, `--gtf` also says
+> and refuses it too, naming where it lies); a GTF that tags none of the gene's transcripts
+> `Ensembl_canonical` is said in a NOTE, as the canonical class then falls back to the
+> longest protein. For a config with no `gene_id`, `identifiability` takes the one GTF gene
+> that holds every configured transcript, where REST takes the symbol's gene; every
+> configured transcript must be in the gene, where REST needs one; and a transcript of the
+> gene the FASTA lacks stops the run, where REST would leave a transcript with no cDNA out. With `--background-fasta`, `--gtf` also says
 > what a gene of the same name in the index is -- a reference-chromosome gene such as the
 > chrY copy of CD99, which is no index-scope problem, or one the GTF does not hold, a copy
 > off the reference chromosomes or of another release -- where a GENCODE header alone

@@ -414,3 +414,25 @@ def test_the_notes_reach_stderr(tmp_path, capsys):
                              _ensembl_format(tmp_path, header=""))
     assert rc == 0 and cfg["ensembl_release"] is None
     assert "names no Ensembl release in its header; no release is recorded" in err
+
+
+def test_a_gtf_that_tags_no_canonical_transcript_is_said(tmp_path):
+    """REST always names a canonical transcript; a GTF that tags none of the gene's leaves
+    the canonical class to the fallback by content, which can be another class."""
+    with gzip.open(GTF, "rt") as fh:
+        text = fh.read().replace(' tag "Ensembl_canonical";', "")
+    untagged = _write(tmp_path, "untagged.gtf", text)
+    notes = []
+    _cfg("LEPR", untagged, notes=notes)
+    assert any("tags none of LEPR's transcripts Ensembl_canonical" in n for n in notes), notes
+    notes = []
+    _cfg("LEPR", notes=notes)
+    assert notes == []
+
+
+def test_a_blank_line_does_not_hide_a_basic_gtf(tmp_path):
+    basic = gzip.decompress(pathlib.Path(_basic(tmp_path)).read_bytes()).decode()
+    for i, tail in enumerate(("\n", "\n\n", "\n\n\n", "\r\n\r\n")):
+        p = _write(tmp_path, "b%d.gtf" % i, basic.rstrip("\n") + tail)
+        with pytest.raises(af.BasicGTF):
+            af.scan(p, symbol="LEPR")

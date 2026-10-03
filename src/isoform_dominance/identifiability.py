@@ -1312,7 +1312,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         transcripts), ``background_sequences`` (the gene background, after the configured
         transcripts are removed from it), ``gene_background`` (whether this run had one, fetched
         or supplied), ``fetched_release``, ``file_release`` and ``annotation_source``
-        (``gtf`` and ``transcripts_fasta``'s, None without them), ``sequence_sources``
+        (``gtf`` and ``transcripts_fasta``'s, None without them), ``versions`` (the
+        versioned id of each sequence, where known), ``sequence_sources``
         (each id's ``"supplied"``, ``"fetched:<release>"`` or ``"file:<release>"``), and
         the ``k``, ``window`` and ``canonical`` the system was built at -- none of which
         is in the config.
@@ -1478,10 +1479,13 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
                    "(`annotate` records it), or pass --no-gene-background."))
         # all or nothing: this used to swallow any error part-way through and carry
         # on with whatever had arrived, which is a different answer, silently
+        fetched = {}
         bg_seqs.update(ensembl.fetch_cdna_batch(
-            [t for t in all_ids if t not in needed], **net))
+            [t for t in all_ids if t not in needed], versions=fetched, **net))
+        used.update(fetched)
     bg_seqs = {t: s for t, s in bg_seqs.items() if t not in needed}
-    if files is not None:
+    if files is not None and files["gene_background"]:
+        # the gene the background is, as a fetched one names it: none without one
         bg_gene_id = files["gene_id"]
     if inputs_out is not None:
         inputs_out.update(sequences={t: seqs[t] for t in needed},
@@ -1497,6 +1501,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
                           fetched_release=fetched_release,
                           file_release=files["release"] if files else None,
                           annotation_source=files["source"] if files else None,
+                          versions={t: used[t] for t in sorted(set(needed) | set(bg_seqs))
+                                    if t in used},
                           sequence_sources={
                               t: files["label"] if files else "supplied" if t in supplied
                               else "fetched:%s" % fetched_release

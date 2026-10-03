@@ -166,7 +166,9 @@ def save_inputs(path, captured, config, release, version, background_fasta=None,
 
     A run on local files (``identifiability --gtf --transcripts-fasta``) records them as
     ``annotation_source`` -- names, sizes, SHA-256 and what the GTF's header says -- and
-    ``release`` is theirs; each sequence's source is ``"file:<release>"``.
+    ``release`` is theirs; each sequence's source is ``"file:<release>"``.  ``versions``
+    gives each sequence's versioned id where the run knew it, so that a rerun can still
+    say when ``--background-fasta`` holds a configured transcript at another version.
     """
     def _file(p):
         return p and {"path": str(p), "bytes": os.path.getsize(p), "sha256": file_sha256(p)}
@@ -183,6 +185,9 @@ def save_inputs(path, captured, config, release, version, background_fasta=None,
            "background_fasta": fasta,
            "decoys": _file(decoys) or None,
            "annotation_source": annotation_source,
+           # which version of each sequence, where known: a rerun can still tell an index
+           # of another release
+           "versions": captured.get("versions") or {},
            "sequence_sources": captured.get("sequence_sources"),
            "sequences": captured["sequences"],
            "background_sequences": captured["background_sequences"]}
@@ -247,9 +252,19 @@ def load_inputs(path):
         raise InputError("saved inputs %s: sequence_sources is %r, expected null or an object "
                          "of transcript id to \"supplied\" or \"fetched:<release>\""
                          % (path, sources))
-    if not isinstance(doc.get("annotation_source"), (dict, type(None))):
-        raise InputError("saved inputs %s: annotation_source is %r, expected null or an object"
-                         % (path, doc["annotation_source"]))
+    src = doc.get("annotation_source")
+    if src is not None and not (
+            isinstance(src, dict) and isinstance(src.get("kind"), str)
+            and isinstance(src.get("transcripts_fasta"), dict)
+            and isinstance(src["transcripts_fasta"].get("file"), str)
+            and isinstance(src.get("gtf"), (dict, type(None)))):
+        raise InputError("saved inputs %s: annotation_source is %r, expected null or the "
+                         "files a run read (kind, gtf, transcripts_fasta)" % (path, src))
+    versions = doc.get("versions")
+    if versions is not None and not (isinstance(versions, dict) and all(
+            isinstance(k, str) and isinstance(v, str) for k, v in versions.items())):
+        raise InputError("saved inputs %s: versions is %r, expected null or an object of "
+                         "transcript id to versioned id" % (path, versions))
     for key in ("background_fasta", "decoys"):
         rec = doc.get(key)
         if rec is not None and not (isinstance(rec, dict)

@@ -10,7 +10,7 @@ every path as an argument and are not run in CI.
 | script | what it does | network |
 |---|---|---|
 | `record_rest.py` | records what REST answers for a list of genes at one release: `lookup/symbol`, `xrefs/symbol`, `lookup/id?expand=1` of every gene they name, and the MD5 of every transcript's cDNA, in the format of `tests/data/gencode_mini/rest116_mini.json.gz` | yes |
-| `compare.py` | compares, gene by gene, the config `annotate` writes from those answers with the one `annotate --gtf` writes from the GTF (`annotation_source` aside), and every transcript of the gene the GTF chose, from the FASTA, with REST's cDNA by MD5; exit 0 when all are equal | no |
+| `compare.py` | compares, gene by gene, the config `annotate` writes from those answers with the one `annotate --gtf` writes from the GTF (`annotation_source` aside); the transcripts, of every biotype, the two give the gene the GTF chose -- the gene background; and every one of them, from the FASTA, with REST's cDNA by MD5; exit 0 when all are equal | no |
 | `timing.py` | times `annotate --gtf` (exact name, then the name in lower case) and `identifiability --gtf --transcripts-fasta` through the command line | no |
 
 ## The full comparison
@@ -47,7 +47,8 @@ On the extract (`tests/test_parity_scripts.py` runs this):
 python scripts/parity/compare.py --gtf tests/data/gencode_mini/gencode.v50.mini.gtf.gz \
     --fasta tests/data/gencode_mini/gencode.v50.mini.transcripts.fa.gz \
     --rest tests/data/gencode_mini/rest116_mini.json.gz
-# release 116: configs equal 6/6 (annotation_source aside); cDNA byte-identical 217/217; ...
+# release 116: configs equal 6/6 (annotation_source aside); transcript sets equal 6/6;
+#   cDNA byte-identical 217/217; ...
 ```
 
 HERC3, the seventh gene of the extract, has no recorded REST answer: its two genes stop

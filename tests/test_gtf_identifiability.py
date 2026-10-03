@@ -363,11 +363,10 @@ def test_the_fasta_alone_serves_a_run_without_the_gene_background(tmp_path, caps
     assert rc == 0
     want = I.analyze(_cfg(), transcripts_fasta=FASTA, background_gene_transcripts=False)
     assert _without_provenance(want) == _without_provenance(res)
-    # the answer the GTF gives without its background: only the gene is not named
+    # the answer the GTF gives without its background: the same, with no gene named
     with_gtf = I.analyze(_cfg(), gtf=GTF, transcripts_fasta=FASTA,
                          background_gene_transcripts=False)
-    assert with_gtf["background"]["gene_id"] == LEPR and res["background"]["gene_id"] is None
-    res["background"]["gene_id"] = LEPR
+    assert with_gtf["background"]["gene_id"] is None is res["background"]["gene_id"]
     assert _without_provenance(with_gtf) == _without_provenance(res)
     assert res["annotation"]["source"]["kind"] == "fasta"
     assert res["annotation"]["source"]["gtf"] is None
@@ -535,3 +534,56 @@ def test_a_gtf_with_the_scaffolds_places_the_copy(tmp_path, capsys, offline):
     copy, = res["background"]["same_name_copies"]
     assert (copy["region"], copy["kind"]) == ("KI270713.1", "off_reference")
     assert "on non-reference regions" in err
+
+
+# --------------------------------------------------------------------------- #
+# what the independent reading of this mode found
+# --------------------------------------------------------------------------- #
+def test_without_the_gene_background_no_gene_is_named_in_either_mode(rest):
+    """The gene background is what background.gene_id names: without one, neither mode
+    names a gene, so the two reports, and a rerun of either, are one."""
+    by_rest = I.analyze(_cfg(), background_gene_transcripts=False)
+    by_files = I.analyze(_cfg(), gtf=GTF, transcripts_fasta=FASTA,
+                         background_gene_transcripts=False)
+    assert by_files["background"]["gene_id"] is None
+    assert _without_provenance(by_files) == _without_provenance(by_rest)
+
+
+@pytest.mark.parametrize("mode", ["files", "rest"])
+def test_a_rerun_from_saved_inputs_still_says_the_index_is_of_another_release(
+        tmp_path, capsys, monkeypatch, mode):
+    monkeypatch.setattr(urllib.request, "urlopen", Rest116())
+    index, t, vid, new = _bumped_index(tmp_path)
+    saved = tmp_path / "in.json"
+    files = ["--gtf", GTF, "--transcripts-fasta", FASTA] if mode == "files" else []
+    rc, live, err = _cli(tmp_path, capsys, *files, "--background-fasta", index,
+                         "--save-inputs", str(saved))
+    assert live["background"]["fasta_other_versions"] == {t: {"used": vid, "fasta": [new]}}
+    rc, again, err = _cli(tmp_path, capsys, "--inputs", str(saved), "--background-fasta",
+                          index)
+    assert again["background"]["fasta_other_versions"] \
+        == live["background"]["fasta_other_versions"]
+    assert "the index was built from another release" in err
+
+
+def test_a_saved_annotation_source_that_is_not_one_is_refused(tmp_path, capsys, offline):
+    saved = tmp_path / "in.json"
+    _cli(tmp_path, capsys, "--gtf", GTF, "--transcripts-fasta", FASTA, "--save-inputs",
+         str(saved))
+    doc = json.loads(saved.read_text())
+    doc["annotation_source"] = {"kind": "gtf"}
+    saved.write_text(json.dumps(doc))
+    with pytest.raises(io.InputError, match="annotation_source"):
+        io.load_inputs(str(saved))
+    rc, res, err = _cli(tmp_path, capsys, "--inputs", str(saved), "--save-inputs",
+                        str(tmp_path / "again.json"))
+    assert rc == 1 and len(err.strip().splitlines()) == 1 and "annotation_source" in err
+
+
+def test_a_truncated_gzip_index_is_one_line(tmp_path, capsys, offline):
+    cut = tmp_path / "index.fa.gz"
+    cut.write_bytes(pathlib.Path(FASTA).read_bytes()[:30000])
+    rc, res, err = _cli(tmp_path, capsys, "--gtf", GTF, "--transcripts-fasta", FASTA,
+                        "--background-fasta", str(cut))
+    assert rc == 1 and len(err.strip().splitlines()) == 1, err
+    assert "truncated or corrupt" in err

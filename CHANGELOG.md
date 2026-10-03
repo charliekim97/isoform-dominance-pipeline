@@ -26,10 +26,11 @@ versioning.
   with no network (issue #13). Ensembl 116 is the last release of the legacy platform, and
   its REST API is kept for 116 only, so an index built from GENCODE 51 or later can be
   matched only by its own files. The config is the one `annotate` writes from REST at the
-  release the file is of, `annotation_source` aside: on the 109-gene survey panel, configs
-  read from GENCODE 44, 48 and 50 matched REST's at releases 110, 114 and 116 for every gene
-  once the reader followed three rules (`scripts/parity/` repeats the comparison; the
-  tests hold it on a GENCODE 50 extract of seven genes). A protein's length is
+  release the file is of, `annotation_source` aside: on the 109-gene survey panel, a
+  prototype of this reader that followed three rules read configs from GENCODE 44, 48 and 50
+  that matched REST's at releases 110, 114 and 116 for every gene (`scripts/parity/` repeats
+  the comparison for this code; the tests hold it on a GENCODE 50 extract of seven genes).
+  A protein's length is
   `(sum of CDS nt + (3 - frame of the 5'-most CDS) % 3) // 3`, which pads a CDS that starts
   mid-codon as Ensembl does (`sum // 3` is wrong for 7,412 transcripts of GENCODE 50); the
   canonical transcript is the one tagged exactly `Ensembl_canonical` (not GENCODE 50's
@@ -45,8 +46,9 @@ versioning.
   line below a gene tagged `basic`, in a file of at least 100 transcripts -- is refused: it
   leaves out transcripts the index holds, and at release 110 it changed 51 of 109
   proposals. A symbol no gene has exactly is looked for again ignoring case, as REST does,
-  with a NOTE. The file is read in 16 MiB blocks and only a block that holds the gene is
-  split into lines.
+  with a NOTE; a gene none of whose transcripts the GTF tags `Ensembl_canonical` is said in
+  a NOTE too, as its canonical class falls back to the longest protein. The file is read in
+  16 MiB blocks and only a block that holds the gene is split into lines.
 - **`identifiability --gtf FILE --transcripts-fasta FILE`** (`analyze(..., gtf=,
   transcripts_fasta=)`): the gene's transcripts from the GTF and their sequence from the
   transcript FASTA of the same release, with no network (issue #13). The gene is the config's
@@ -66,14 +68,16 @@ versioning.
   and `--background-sequences`; `--ensembl-release` must be the GTF's release. The report
   gains `annotation.file_release` and `annotation.source` (the files' names, sizes and
   SHA-256, and what the GTF's header says; None for both from REST), and
-  `background.gene_id` is the GTF's gene. `--save-inputs` records the files' release and
-  `annotation_source`, and `--inputs` repeats the run. A NOTE says when the config was
+  `background.gene_id` is the GTF's gene when it is the background. `--save-inputs`
+  records the files' release and `annotation_source`, and `--inputs` repeats the run. A NOTE says when the config was
   annotated against another release, or proposed from another GTF (by SHA-256).
 - **A NOTE when the index is of another release, in both modes**: `--background-fasta`
   holding a configured transcript at another version than the sequence used here, listed in
   `background.fasta_other_versions` (`{id: {"used", "fasta"}}`). The version used is the
   file's, REST's (`ensembl.fetch_cdna_batch(..., versions=)`), or the one a config or
-  `--sequences` id carries.
+  `--sequences` id carries; saved inputs record it (`versions`), so a rerun says it too.
+- A truncated or corrupt gzip input -- a GTF, a FASTA, a `--background-fasta` -- is one line
+  and exit 1, not a traceback.
 - **With `--gtf`, a same-name gene of the index is placed** (`index_scope.placed_by_gtf`). A
   GENCODE header does not say where a gene lies, so through 2.5.0 a gene of the configured
   gene's name under another id was reported as one that "may be" a copy on a scaffold,
@@ -89,8 +93,9 @@ versioning.
   retired archive and a moved answer warned of; the step is tested against an offline fake.
 - **`scripts/parity/`**: `record_rest.py` records REST's answers for a gene list at one
   release, `compare.py` compares them with a GTF and transcript FASTA of that release,
-  config by config and cDNA by MD5, and `timing.py` times the file mode. On the extract in
-  `tests/data/gencode_mini`: 6/6 configs equal, 217/217 cDNA byte-identical.
+  config by config, each gene's transcript set, and cDNA by MD5, and `timing.py` times the
+  file mode. On the extract in `tests/data/gencode_mini`: 6/6 configs and transcript sets
+  equal, 217/217 cDNA byte-identical.
 - `annotation_files`, which reads a GTF and a transcript FASTA with the standard library
   alone; `io.is_gzip` and `io.open_bytes`.
 

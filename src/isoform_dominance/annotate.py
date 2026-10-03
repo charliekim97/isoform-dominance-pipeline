@@ -371,7 +371,8 @@ def build_config_from_gtf(gene, gtf, species="homo_sapiens", gene_id=None, relea
     (Ensembl 116)``); ``release``, when given, must be the same.  A header that names none
     -- an Ensembl GTF, or a GENCODE release whose header has not been seen -- is accepted,
     and ``release`` is recorded as the file's.  What a REST run cannot see is appended to
-    ``notes``: a header with no release, and a symbol found only ignoring case.
+    ``notes``: a header with no release, a symbol found only ignoring case, and a gene none
+    of whose transcripts the GTF tags ``Ensembl_canonical`` (REST always names one).
     """
     af = annotation_files
     notes = [] if notes is None else notes
@@ -405,6 +406,11 @@ def build_config_from_gtf(gene, gtf, species="homo_sapiens", gene_id=None, relea
                              gtf, gene, ", ".join(sorted({g["display_name"] for g in named}))))
         # every GTF record names its region, so a gene is chosen or NotOnReference raised
         g, choice = choose_among(gene, named, species)
+    if not any(t["is_canonical"] for t in g["Transcript"]):
+        notes.append("%s tags none of %s's transcripts Ensembl_canonical, so the canonical "
+                     "class is the cluster with the longest representative protein; REST, "
+                     "which names a canonical transcript, can propose another. Review the "
+                     "groups." % (gtf, g.get("display_name") or gene))
     info = transcripts_of(g, gene, species)
     cfg = _config(gene, species, hdr["ensembl_release"] if hdr["ensembl_release"] is not None
                   else release, info, choice)
