@@ -1,0 +1,31 @@
+{
+ "format": "isoform-dominance/index/1",
+ "donors": {
+  "ctrl1": null,
+  "ctrl2": null,
+  "ctrl3": null,
+  "ctrl4": null,
+  "ctrl5": null,
+  "ctrl6": null
+ },
+ "index_seq_hashes": [],
+ "index_decoy_seq_hashes": [],
+ "mixed": false,
+ "missing_meta_info": [
+  "ctrl1",
+  "ctrl2",
+  "ctrl3",
+  "ctrl4",
+  "ctrl5",
+  "ctrl6"
+ ],
+ "unreadable_meta_info": {},
+ "cohort": "GSE137619",
+ "missing_transcripts": {
+  "n_configured": 3,
+  "n_missing": 0,
+  "ids": [],
+  "warning": null
+ },
+ "same_name_copies": []
+}

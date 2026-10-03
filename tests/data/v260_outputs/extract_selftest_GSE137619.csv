@@ -1,0 +1,7 @@
+cohort,donor,condition,short_TPM,long_TPM,short_fraction
+GSE137619,ctrl1,control,19.0292,0.3518,0.9818
+GSE137619,ctrl2,control,11.8253,0.2168,0.9820
+GSE137619,ctrl3,control,27.8344,1.0331,0.9642
+GSE137619,ctrl4,control,4.8648,0.1435,0.9713
+GSE137619,ctrl5,control,6.5787,0.2039,0.9699
+GSE137619,ctrl6,control,6.9197,0.1669,0.9764
