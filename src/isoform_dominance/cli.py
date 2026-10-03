@@ -2,7 +2,9 @@
 
 Every subcommand accepts ``--json``, which writes the full result object to stdout
 instead of the human summary, so the tool composes inside a workflow manager without
-anyone having to parse its printed text.
+anyone having to parse its printed text.  It is standard JSON (RFC 8259): a number that
+is not finite is written as null, never as ``NaN`` or ``Infinity``, which a standard
+parser refuses, and a field beside it says why (``estimable``, ``finite_se``).
 
 ``identifiability`` does not put its structural verdict in the exit status. The verdict
 moves with the annotation release the transcripts come from, so it is reported as a
@@ -89,7 +91,9 @@ def _kv(items):
 
 
 def _emit(payload):
-    json.dump(payload, sys.stdout, indent=2, default=str)
+    """``--json``: standard JSON on stdout, a number that is not finite as null
+    (:func:`isoform_dominance.io.finite_json`)."""
+    json.dump(io.finite_json(payload), sys.stdout, indent=2, default=str, allow_nan=False)
     sys.stdout.write("\n")
 
 

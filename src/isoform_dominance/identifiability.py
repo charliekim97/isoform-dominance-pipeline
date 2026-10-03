@@ -736,15 +736,18 @@ def counting_noise_floor(n_informative_a, n_informative_b, n_donors=1):
     Poisson counting error alone; biological and technical variation add on top, so
     this is a floor on the achievable precision, never an estimate of it.  Returned
     as NaN when either class has no informative reads, because the ratio is then
-    undefined rather than merely imprecise.
+    undefined rather than merely imprecise; ``defined`` says which, and ``--json`` writes
+    the NaN as null.
     """
     if n_informative_a <= 0 or n_informative_b <= 0:
-        return {"log2_ratio_se": float("nan"), "min_resolvable_log2fc": float("nan")}
+        return {"log2_ratio_se": float("nan"), "min_resolvable_log2fc": float("nan"),
+                "defined": False}
     se = math.sqrt(1.0 / n_informative_a + 1.0 / n_informative_b) / math.log(2.0)
     n_donors = max(1, int(n_donors))
     return {
         "log2_ratio_se": se,
         "min_resolvable_log2fc": 1.96 * se / math.sqrt(n_donors),
+        "defined": True,
     }
 
 
@@ -1690,6 +1693,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         class_indicator[g] = c
         rse = gls_relative_se(cov, c, theta) if report[g]["estimable"] else float("inf")
         report[g]["gls_relative_se"] = rse
+        report[g]["finite_se"] = math.isfinite(rse)
         report[g]["min_resolvable_log2fc"] = min_resolvable_log2fc(rse, n_donors)
         report[g]["beyond_linear"] = rse > LINEARISATION_LIMIT
         report[g]["verdict"], report[g]["reasons"] = _verdict(
@@ -1714,6 +1718,9 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             svd=svd)["estimable"]:
         raw = log_ratio_se(cov, class_indicator[pc[0]], class_indicator[pc[1]], theta)
     contrast["gls_relative_se"] = raw
+    # estimable and still no finite figure: the class totals are not, or are zero.  With
+    # --json the inf is written as null, so this is what says the figure does not exist
+    contrast["finite_se"] = math.isfinite(raw)
     contrast["min_resolvable_log2fc"] = min_resolvable_log2fc(raw, n_donors)
     contrast["beyond_linear"] = raw > LINEARISATION_LIMIT
     contrast["verdict"], contrast["reasons"] = _verdict(

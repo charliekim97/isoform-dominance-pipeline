@@ -123,4 +123,5 @@ def test_the_golden_files_are_the_ones_the_readme_lists():
     assert names == sorted(["annotate_rest_%s.json" % g for g in GENES]
                            + ["annotate_gtf_%s.json" % g for g in GENES]
                            + ["extract_selftest_%s.csv%s" % (c, x) for c in _selftest.DATA
-                              for x in ("", ".index.json")])
+                              for x in ("", ".index.json")]
+                           + ["identifiability_inputs_GENEX.json"])

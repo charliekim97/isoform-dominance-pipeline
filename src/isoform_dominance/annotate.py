@@ -13,10 +13,9 @@ CD99, CRLF2, CSF2RA, IL3RA and SHOX the chrY copy, for HERC3 and DUSP13B the new
 genes of that name.  :func:`build_config` looks for the others and chooses by
 :data:`GENE_RULE`, or stops.
 """
-import json
 import urllib.parse
 
-from . import annotation_files, ensembl
+from . import annotation_files, ensembl, io
 from .ensembl import DEFAULT_RETRIES, DEFAULT_RETRY_WAIT
 from .index_scope import REFERENCE_REGIONS
 
@@ -429,6 +428,5 @@ def run(gene, out, species="homo_sapiens", release=None, gene_id=None, gtf=None,
                                     notes=notes)
     else:
         cfg = build_config(gene, species, release=release, gene_id=gene_id, **retry)
-    with open(out, "w") as f:
-        json.dump(cfg, f, indent=2)
+    io.dump_json(cfg, out, indent=2)
     return cfg

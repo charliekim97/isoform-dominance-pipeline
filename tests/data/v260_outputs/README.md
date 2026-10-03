@@ -10,6 +10,7 @@ string differs.
 | `annotate_rest_<GENE>.json` | `annotate.run(gene, out)`, with the REST calls answered from `../gencode_mini/rest116_mini.json.gz` as `tests/test_gtf_parity.py` answers them |
 | `annotate_gtf_<GENE>.json` | `annotate.run(gene, out, gtf="tests/data/gencode_mini/gencode.v50.mini.gtf.gz")` |
 | `extract_selftest_<COHORT>.csv`, `.csv.index.json` | `extract.run(_selftest.CONFIG, ...)` on the self-test's synthetic quant.sf files (`_selftest.generate`) |
+| `identifiability_inputs_GENEX.json` | the 2.6.0 release itself (a worktree at 691962e): `identifiability --config cfg.json --sequences s.json --background-sequences b.json --save-inputs ... --min-log2fc 0.5` on two synthetic transcripts and one background transcript (random sequence, seed 20261003); the config is the one `tests/test_strict_json.py` writes. Its report read `verdict` identifiable and a contrast `min_resolvable_log2fc` of 0.48081641836346 |
 
 The genes are LEPR, FOXO1, STK11, AXIN1, GSK3B and CD99 (the chrX gene, by the pseudoautosomal
 rule). The JSON files end without a newline, as `json.dump` leaves them.

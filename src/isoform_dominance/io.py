@@ -4,6 +4,8 @@ import datetime
 import gzip
 import hashlib
 import json
+import math
+import numbers
 import os
 
 #: The ``format`` field of a file written by :func:`save_inputs`.
@@ -25,6 +27,31 @@ def load_json(path, what):
         except UnicodeDecodeError as e:
             raise InputError("%s %s is not UTF-8 text (byte 0x%02x at offset %d)"
                              % (what, path, e.object[e.start], e.start)) from e
+
+
+def finite_json(obj):
+    """``obj`` with every number that is not finite -- NaN, inf, -inf -- replaced by None,
+    through dicts, lists and tuples (a tuple becomes a list, as JSON has it).
+
+    RFC 8259 has no such values.  Python's ``json`` writes them as ``NaN`` and
+    ``Infinity`` and reads them back, but a standard parser refuses the whole document,
+    so everything this package writes goes through here and :func:`dump_json` or
+    ``allow_nan=False``.  Where a null needs a reason, the report carries a field beside
+    it that says it (``estimable``, ``finite_se``, ``defined``, ``fold_ci_method``)."""
+    if isinstance(obj, dict):
+        return {k: finite_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [finite_json(v) for v in obj]
+    if isinstance(obj, numbers.Real) and not isinstance(obj, numbers.Integral):
+        return float(obj) if math.isfinite(obj) else None
+    return obj
+
+
+def dump_json(obj, path, **kw):
+    """Write ``obj`` to ``path`` as standard JSON: a number that is not finite raises
+    ``ValueError`` rather than being written as a token no standard parser reads."""
+    with open(path, "w") as f:
+        json.dump(obj, f, allow_nan=False, **kw)
 
 
 def is_gzip(path):
@@ -197,8 +224,7 @@ def save_inputs(path, captured, config, release, version, background_fasta=None,
         # without a background there was no copy to count or not, and a rerun with one
         # must not be told that the setting changed
         doc["analysis"]["keep_duplicates"] = bool(captured.get("keep_duplicates"))
-    with open(path, "w") as f:
-        json.dump(doc, f)
+    dump_json(doc, path)
     return doc
 
 
