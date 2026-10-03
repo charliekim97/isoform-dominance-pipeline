@@ -208,7 +208,7 @@ def choose_among(gene, named, species=REFERENCE_SPECIES):
             for c in choice["candidates"])))
 
 
-def cluster_by_terminal_exon(info):
+def cluster_by_terminal_exon(info, tolerance=0):
     """Group transcripts by 3' terminal-exon acceptor coordinate.
 
     Clusters are listed by content -- most transcripts first, then the longer
@@ -216,16 +216,42 @@ def cluster_by_terminal_exon(info):
     ``_clusters`` and ``_proposal.tied_with``.  Through 2.5 clusters with as many
     transcripts kept the order in which the source listed the transcripts, and REST at
     release 116 and the GENCODE 50 GTF list them in different orders for 104 of 109 survey
-    genes."""
-    clusters = {}
+    genes.
+
+    ``tolerance`` (``annotate --acceptor-tolerance``, issue #4) is in bp.  At 0, the
+    default, a cluster is one exact coordinate, so a transcript whose annotated acceptor
+    is one base off its class's is a cluster of its own.  Above 0 the acceptors are taken
+    in ascending order and a cluster takes every acceptor within ``tolerance`` bp of its
+    first (lowest) one, and no further: nothing chains, so no cluster spans more than
+    ``tolerance``.  Its ``acceptor`` is that first coordinate, and a cluster of more than
+    one acceptor also has ``members`` (``[{acceptor, offset, ids}]``, ``offset`` from the
+    first) and ``span``.  The rule is a function of the coordinates alone, so REST and a
+    GTF, which give them alike, cluster alike at every tolerance.
+    """
+    if tolerance < 0:
+        raise ValueError("acceptor tolerance must be 0 or more bp, not %r" % (tolerance,))
+    by_acc = {}
     for t in info["transcripts"]:
-        clusters.setdefault(t["terminal_acceptor"], []).append(t)
+        by_acc.setdefault(t["terminal_acceptor"], []).append(t)
+    runs = [[a] for a in by_acc]
+    if tolerance:
+        runs, rest = [], sorted(by_acc)
+        while rest:
+            take = [a for a in rest if a - rest[0] <= tolerance]
+            runs.append(take)
+            rest = rest[len(take):]
     out = []
-    for acc, txs in clusters.items():
+    for accs in runs:
+        txs = [x for a in accs for x in by_acc[a]]
         lens = sorted(x["protein_aa"] for x in txs)
-        out.append({"acceptor": acc, "rep_aa": lens[len(lens) // 2], "n": len(txs),
-                    "canonical": any(x["is_canonical"] for x in txs),
-                    "ids": sorted(x["id"] for x in txs)})
+        c = {"acceptor": accs[0], "rep_aa": lens[len(lens) // 2], "n": len(txs),
+             "canonical": any(x["is_canonical"] for x in txs),
+             "ids": sorted(x["id"] for x in txs)}
+        if len(accs) > 1:
+            c["members"] = [{"acceptor": a, "offset": a - accs[0],
+                             "ids": sorted(x["id"] for x in by_acc[a])} for a in accs]
+            c["span"] = accs[-1] - accs[0]
+        out.append(c)
     return sorted(out, key=lambda c: (-c["n"], -c["rep_aa"], c["acceptor"]))
 
 
@@ -257,7 +283,7 @@ def alternative_ties(clusters, groups, primary):
             if set(c["ids"]) not in (alt_ids, canon_ids) and c["n"] == alt["n"]]
 
 
-def propose_groups(info):
+def propose_groups(info, tolerance=0):
     """The canonical cluster, the alternative (:data:`ALTERNATIVE_RULE`) and all clusters.
 
     Every tie is broken by content, down to the acceptor coordinate, so the proposal is a
@@ -265,8 +291,9 @@ def propose_groups(info):
     protein length fell to the order in which the server listed the transcripts, which
     nothing guarantees: 249 of the 14,054 two-class genes of GENCODE 50 (1.8%) are such
     ties, and for FOXO1 and STK11 the REST order and the GTF order pick differently.
+    ``tolerance`` is :func:`cluster_by_terminal_exon`'s.
     """
-    clusters = cluster_by_terminal_exon(info)
+    clusters = cluster_by_terminal_exon(info, tolerance)
     canon = (next((c for c in clusters if c["canonical"]), None)
              or max(clusters, key=lambda c: (c["rep_aa"], -c["acceptor"])))
     others = sorted([c for c in clusters if c is not canon],
@@ -299,7 +326,8 @@ def _given(g, gene, gene_id, species):
     return choice
 
 
-def build_config(gene, species="homo_sapiens", release=None, gene_id=None, **retry):
+def build_config(gene, species="homo_sapiens", release=None, gene_id=None,
+                 acceptor_tolerance=0, **retry):
     """Build a reviewable config.json dict for `gene` from Ensembl annotation.
 
     ``release`` is the Ensembl release to propose the groups from; None means the one
@@ -313,6 +341,11 @@ def build_config(gene, species="homo_sapiens", release=None, gene_id=None, **ret
     :func:`choose_gene`); it must be a gene of that name.  ``gene_id`` in the config is the
     gene the groups were proposed from, and ``_gene_choice`` records how it was chosen
     when there was a choice.
+
+    ``acceptor_tolerance`` is :func:`cluster_by_terminal_exon`'s ``tolerance``; at 0 the
+    config is the one 2.6.0 wrote.  Above 0 it is recorded as
+    ``_proposal.acceptor_tolerance``, and a cluster of more than one acceptor lists them in
+    ``_clusters`` (``merged_acceptors``, ``acceptor_span``).
     """
     server = ensembl.resolve_server(release, **retry)
     net = dict(retry, server=server)
@@ -324,12 +357,25 @@ def build_config(gene, species="homo_sapiens", release=None, gene_id=None, **ret
         g, choice = choose_gene(gene, species, g, **net)
     info = transcripts_of(g, gene, species)
     release = ensembl.release_number(_get("/info/data", **net))
-    return _config(gene, species, release, info, choice)
+    return _config(gene, species, release, info, choice, acceptor_tolerance)
 
 
-def _config(gene, species, release, info, choice):
+def _cluster_entry(c):
+    """A cluster as ``_clusters`` lists it."""
+    entry = {"terminal_acceptor": c["acceptor"], "rep_protein_aa": c["rep_aa"],
+             "n_transcripts": c["n"], "contains_canonical": c["canonical"],
+             "transcripts": c["ids"]}
+    if "members" in c:
+        entry["merged_acceptors"] = [{"terminal_acceptor": m["acceptor"],
+                                      "offset": m["offset"], "transcripts": m["ids"]}
+                                     for m in c["members"]]
+        entry["acceptor_span"] = c["span"]
+    return entry
+
+
+def _config(gene, species, release, info, choice, acceptor_tolerance=0):
     """The config both sources write, from :func:`transcripts_of`'s ``info``."""
-    groups, primary, clusters = propose_groups(info)
+    groups, primary, clusters = propose_groups(info, acceptor_tolerance)
     ties = alternative_ties(clusters, groups, primary)
     cfg = {
         "gene": gene, "gene_id": info["gene_id"], "species": species,
@@ -344,17 +390,22 @@ def _config(gene, species, release, info, choice):
                       "transcripts sharing a 3' terminal-exon splice acceptor (isoform-defining "
                       "alternative last exon). REVIEW and rename to functional names "
                       "(e.g. short/long) before use; smaller clusters are listed under _clusters."),
-        "_clusters": [{"terminal_acceptor": c["acceptor"], "rep_protein_aa": c["rep_aa"],
-                       "n_transcripts": c["n"], "contains_canonical": c["canonical"],
-                       "transcripts": c["ids"]} for c in clusters],
+        "_clusters": [_cluster_entry(c) for c in clusters],
     }
+    if acceptor_tolerance:
+        cfg["_proposal"]["acceptor_tolerance"] = acceptor_tolerance
+        cfg["_proposed"] = cfg["_proposed"].replace(
+            "sharing a 3' terminal-exon splice acceptor",
+            "whose 3' terminal-exon splice acceptors lie within %d bp of their cluster's "
+            "first (lowest) one (--acceptor-tolerance %d)"
+            % (acceptor_tolerance, acceptor_tolerance), 1)
     if choice:
         cfg["_gene_choice"] = choice
     return cfg
 
 
 def build_config_from_gtf(gene, gtf, species="homo_sapiens", gene_id=None, release=None,
-                          notes=None, block=annotation_files.BLOCK):
+                          notes=None, block=annotation_files.BLOCK, acceptor_tolerance=0):
     """:func:`build_config` from a local GTF, with no network.
 
     ``gtf`` is GENCODE's comprehensive ``gencode.vN.annotation.gtf.gz`` (or an Ensembl
@@ -372,6 +423,7 @@ def build_config_from_gtf(gene, gtf, species="homo_sapiens", gene_id=None, relea
     and ``release`` is recorded as the file's.  What a REST run cannot see is appended to
     ``notes``: a header with no release, a symbol found only ignoring case, and a gene none
     of whose transcripts the GTF tags ``Ensembl_canonical`` (REST always names one).
+    ``acceptor_tolerance`` is :func:`build_config`'s, through the same function.
     """
     af = annotation_files
     notes = [] if notes is None else notes
@@ -412,7 +464,7 @@ def build_config_from_gtf(gene, gtf, species="homo_sapiens", gene_id=None, relea
                      "groups." % (gtf, g.get("display_name") or gene))
     info = transcripts_of(g, gene, species)
     cfg = _config(gene, species, hdr["ensembl_release"] if hdr["ensembl_release"] is not None
-                  else release, info, choice)
+                  else release, info, choice, acceptor_tolerance)
     cfg["annotation_source"] = dict(
         kind="gtf", **af.provenance(gtf),
         **{k: hdr[k] for k in ("provider", "gencode_release", "ensembl_release", "date",
@@ -422,11 +474,12 @@ def build_config_from_gtf(gene, gtf, species="homo_sapiens", gene_id=None, relea
 
 
 def run(gene, out, species="homo_sapiens", release=None, gene_id=None, gtf=None, notes=None,
-        **retry):
+        acceptor_tolerance=0, **retry):
     if gtf:
         cfg = build_config_from_gtf(gene, gtf, species, gene_id=gene_id, release=release,
-                                    notes=notes)
+                                    notes=notes, acceptor_tolerance=acceptor_tolerance)
     else:
-        cfg = build_config(gene, species, release=release, gene_id=gene_id, **retry)
+        cfg = build_config(gene, species, release=release, gene_id=gene_id,
+                           acceptor_tolerance=acceptor_tolerance, **retry)
     io.dump_json(cfg, out, indent=2)
     return cfg

@@ -68,7 +68,7 @@ def _release(value):
 
 
 def _count(value):
-    """argparse type for --max-window-records: an integer >= 0."""
+    """argparse type for --max-window-records and --acceptor-tolerance: an integer >= 0."""
     try:
         n = int(value)
     except ValueError:
@@ -118,7 +118,8 @@ def cmd_annotate(a):
     notes = []
     try:
         cfg = annotate.run(a.gene, a.out, species=a.species, release=a.ensembl_release,
-                           gene_id=a.gene_id, gtf=a.gtf, notes=notes, retries=a.retries,
+                           gene_id=a.gene_id, gtf=a.gtf, notes=notes,
+                           acceptor_tolerance=a.acceptor_tolerance, retries=a.retries,
                            retry_wait=a.retry_wait)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
@@ -855,6 +856,10 @@ def build_parser():
                         "comprehensive gencode.vN.annotation.gtf.gz (not basic) of the release "
                         "the index was built from. The release recorded is the one its header "
                         "names; --ensembl-release, when given, must be the same")
+    s.add_argument("--acceptor-tolerance", type=_count, default=0, metavar="N",
+                   help="cluster terminal-exon acceptors within N bp of a cluster's first "
+                        "(lowest) one, with no chaining; the config lists what was merged "
+                        "under _clusters. 0, the default, is the exact coordinate")
     s.add_argument("--out", required=True); s.set_defaults(func=cmd_annotate)
 
     s = _net(_json(sub.add_parser(
