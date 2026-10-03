@@ -247,12 +247,13 @@ annotation release the transcripts came from, so it is reported in the output an
 >
 > Neither makes a request. `annotate --gtf` writes the config REST gives at that release,
 > with the release the GTF's header names and an `annotation_source` block naming the file by
-> SHA-256. The rules it reads the GTF by were measured on the 109-gene survey panel with a
-> prototype of this reader: configs read from GENCODE 44, 48 and 50 matched REST's at
-> releases 110, 114 and 116 for every gene, and the cDNA of the transcript FASTA matched
-> REST's byte for byte (2,005, 2,066 and 4,396 transcripts). `scripts/parity/` repeats that
-> comparison, transcript sets included, for this code; the tests hold it on a seven-gene
-> extract, and a weekly job holds the extract to live REST 116. `identifiability --gtf --transcripts-fasta` takes the gene's
+> SHA-256. On the 109-gene survey panel the configs this reads from GENCODE 44, 48 and 50
+> equal the ones it writes from REST at releases 110, 114 and 116 for every gene, and the
+> sequence it reads from the transcript FASTA is REST's cDNA byte for byte (2,005, 2,066 and
+> 4,396 transcripts); for LEPR, CD99, NTRK2, NTRK3, FLT1, SMN1 and HLA-A the
+> `identifiability` reports from the files and from REST's sequence (release 116) are the
+> same but for where the sequence came from. `scripts/parity/` repeats the comparison, the
+> tests hold it on a seven-gene extract, and a weekly job holds the extract to live REST 116. `identifiability --gtf --transcripts-fasta` takes the gene's
 > transcripts from the GTF and their sequence from the FASTA, and the gene background goes
 > the way a fetched one does, so a background the two give alike gives one report. A
 > basic GTF is refused, as is a FASTA that lacks a transcript of the gene or holds one at

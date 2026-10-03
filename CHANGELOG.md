@@ -26,10 +26,11 @@ versioning.
   with no network (issue #13). Ensembl 116 is the last release of the legacy platform, and
   its REST API is kept for 116 only, so an index built from GENCODE 51 or later can be
   matched only by its own files. The config is the one `annotate` writes from REST at the
-  release the file is of, `annotation_source` aside: on the 109-gene survey panel, a
-  prototype of this reader that followed three rules read configs from GENCODE 44, 48 and 50
-  that matched REST's at releases 110, 114 and 116 for every gene (`scripts/parity/` repeats
-  the comparison for this code; the tests hold it on a GENCODE 50 extract of seven genes).
+  release the file is of, `annotation_source` aside: on the 109-gene survey panel the
+  configs read from GENCODE 44, 48 and 50 equal the ones written from REST at releases 110,
+  114 and 116 for every gene, and the sequences read from the transcript FASTA equal REST's
+  cDNA byte for byte (2,005, 2,066 and 4,396 transcripts); `scripts/parity/` repeats the
+  comparison, and the tests hold it on a GENCODE 50 extract of seven genes.
   A protein's length is
   `(sum of CDS nt + (3 - frame of the 5'-most CDS) % 3) // 3`, which pads a CDS that starts
   mid-codon as Ensembl does (`sum // 3` is wrong for 7,412 transcripts of GENCODE 50); the

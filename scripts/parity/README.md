@@ -36,9 +36,9 @@ genes asked about from the GTF, and their records from the FASTA, in one pass ea
 extract in `tests/data/gencode_mini` was cut); `--whole` reads the whole files for every
 gene instead.
 
-What the design study measured, with the prototype of this reader: every one of the 109
-configs equal at each release, and the cDNA byte-identical for 2005, 2066 and 4396
-transcripts at 110, 114 and 116. `compare.py` counts every transcript of each gene the GTF
+Measured for 2.6.0 on the 109-gene survey panel, with REST's answers recorded for releases
+110, 114 and 116 in September 2026: every one of the 109 configs equal at each release,
+and the cDNA byte-identical for 2005, 2066 and 4396 transcripts. `compare.py` counts every transcript of each gene the GTF
 chose that REST's answers hold, so its count is that of the genes recorded.
 
 On the extract (`tests/test_parity_scripts.py` runs this):
