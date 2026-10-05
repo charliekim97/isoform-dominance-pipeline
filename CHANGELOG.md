@@ -100,7 +100,11 @@ the tests hold all three to files the 2.6.0 code wrote (`tests/data/v260_outputs
   and says so in `_proposed`, only when N > 0. REST and `--gtf` go through the one
   function: on the GENCODE 50 extract of the tests they propose alike at N = 3, 6, 10 and
   20, and at N = 6 CD99's canonical class gains one transcript whose acceptor is 5 bp off.
-  The default is 0, the exact coordinate. Comparing the terminal exons' overlap instead of
+  The default is 0, the exact coordinate: replayed on the release series' 654 proposals (109
+  genes at releases 110 and 112 to 116), N = 0 writes 2.6.0's config for every one, byte for
+  byte, while N = 3 changes 24 proposals in six genes (TSC1 among them, which this
+  documentation cites) and N = 6, 10 and 20 change 46, 55 and 77. Comparing the terminal
+  exons' overlap instead of
   their acceptors is left for later.
 
 ### Documented

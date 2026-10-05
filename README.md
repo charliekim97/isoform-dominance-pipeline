@@ -89,8 +89,10 @@ Clusters are keyed on the exact acceptor coordinate, so a transcript whose annot
 acceptor is a base off its class's is a cluster of its own. `--acceptor-tolerance N` makes
 one class of the acceptors within N bp of a cluster's first (lowest) one, with no chaining,
 and lists what it merged under `_clusters` (`merged_acceptors`, `acceptor_span`). The
-default is 0, the exact coordinate, so every config and figure quoted here is unchanged;
-whether a tolerance should be the default is left to a replay of the release series.
+default is 0, the exact coordinate, so every config and figure quoted here is unchanged.
+Replayed on the release series' 654 proposals (109 genes at releases 110 and 112 to 116),
+N = 3 changes 24 of them in six genes, TSC1 among them, and N = 6, 10 and 20 change 46, 55
+and 77, so a tolerance stays something to ask for.
 
 A symbol can name more than one gene on the reference chromosomes, and Ensembl's
 `lookup/symbol` returns one of them without saying so: for pseudoautosomal genes such as
