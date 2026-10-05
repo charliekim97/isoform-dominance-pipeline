@@ -34,10 +34,10 @@ transcripts on their 3' terminal-exon splice acceptor.
 **`annotate.fetch_transcripts(gene, species="homo_sapiens", server=None) -> dict`**
 Query Ensembl for the gene `lookup/symbol` gives and return `{gene, gene_id, species, strand, transcripts: [{id, protein_aa, terminal_acceptor, is_canonical}]}` (`annotate.transcripts_of(record, gene)` does the same for an expanded lookup record). Raises `ValueError` if no protein-coding transcripts with a translation are found. `server` is a base URL from `ensembl.resolve_server`; None is the current release. Network access required.
 
-**`annotate.cluster_by_terminal_exon(info) -> list`**
-Group the transcripts from `fetch_transcripts` by terminal-exon acceptor coordinate; returns clusters, each `{acceptor, rep_aa, n, canonical, ids}`, listed by content: most transcripts first, then the longer representative protein, then the lower acceptor coordinate. So are a config's `_clusters` and `_proposal.tied_with`; through 2.5.0 clusters with as many transcripts were listed in the order the source gave the transcripts, which REST and a GTF give differently.
+**`annotate.cluster_by_terminal_exon(info, tolerance=0) -> list`**
+Group the transcripts from `fetch_transcripts` by terminal-exon acceptor coordinate; returns clusters, each `{acceptor, rep_aa, n, canonical, ids}`, listed by content: most transcripts first, then the longer representative protein, then the lower acceptor coordinate. So are a config's `_clusters` and `_proposal.tied_with`; through 2.5.0 clusters with as many transcripts were listed in the order the source gave the transcripts, which REST and a GTF give differently. `tolerance` (bp; `annotate --acceptor-tolerance`, issue #4): at 0, the default, a cluster is one exact coordinate. Above 0 the acceptors are taken in ascending order and a cluster takes every acceptor within `tolerance` bp of its first (lowest) one and no further -- nothing chains, so no cluster spans more than `tolerance` -- and its `acceptor` is that first coordinate; a cluster of more than one acceptor also has `members` (`[{acceptor, offset, ids}]`) and `span`. A negative tolerance is a `ValueError`.
 
-**`annotate.propose_groups(info) -> (groups, primary, clusters)`**
+**`annotate.propose_groups(info, tolerance=0) -> (groups, primary, clusters)`**
 Choose the canonical cluster and the largest alternative cluster, returning `groups` ({label: [ids]}, labels like `iso_896aa`), the `primary_comparison` list (alternative first), and all clusters. The rule is `annotate.ALTERNATIVE_RULE`: the non-canonical cluster with the most transcripts, a tie going to the longer representative protein, and a tie on both to the lower terminal-acceptor coordinate, so the proposal is a function of the annotation alone.
 
 **`annotate.alternative_ties(clusters, groups, primary) -> list`**
@@ -51,14 +51,14 @@ The rule both sources follow, `choose_gene` from REST and `build_config_from_gtf
 
 `annotate.NotOnReference` (a `ValueError`) is raised for a human symbol none of whose genes lies on a reference chromosome (1-22, X, Y, MT); the message lists each gene with its region, and `gene_id=` takes one of them anyway. The region and chrX/chrY rules apply to `homo_sapiens` only (`annotate.REFERENCE_SPECIES`); for any other species two genes of the name are `AmbiguousGene`.
 
-**`annotate.build_config(gene, species="homo_sapiens", release=None, gene_id=None) -> dict`**
-Convenience wrapper returning a complete, reviewable config dict (including `gene_id`, the Ensembl gene the groups were proposed from, `ensembl_release`, `_proposed` notes, `_clusters`, and `_proposal`: `alternative_rule` and `tied_with`, the clusters from `alternative_ties`, and `_gene_choice` from `choose_gene` when there was a choice). `gene_id` names the gene outright, by `lookup/id`, and must be a gene of the symbol; it is `--gene-id`. `release` is the Ensembl release to propose the groups from; None is the one `rest.ensembl.org` currently serves, and an earlier one is read from Ensembl's REST archive (see `ensembl.resolve_server`). `ensembl_release` records the release the server reported.
+**`annotate.build_config(gene, species="homo_sapiens", release=None, gene_id=None, acceptor_tolerance=0) -> dict`**
+Convenience wrapper returning a complete, reviewable config dict (including `gene_id`, the Ensembl gene the groups were proposed from, `ensembl_release`, `_proposed` notes, `_clusters`, and `_proposal`: `alternative_rule` and `tied_with`, the clusters from `alternative_ties`, and `_gene_choice` from `choose_gene` when there was a choice). `acceptor_tolerance` is `cluster_by_terminal_exon`'s `tolerance`; at 0 the config is the one 2.6.0 wrote, byte for byte. Above 0 the config records `_proposal.acceptor_tolerance` and says it in `_proposed`, and a cluster of more than one acceptor gains `merged_acceptors` (`[{terminal_acceptor, offset, transcripts}]`) and `acceptor_span` in `_clusters`. `gene_id` names the gene outright, by `lookup/id`, and must be a gene of the symbol; it is `--gene-id`. `release` is the Ensembl release to propose the groups from; None is the one `rest.ensembl.org` currently serves, and an earlier one is read from Ensembl's REST archive (see `ensembl.resolve_server`). `ensembl_release` records the release the server reported.
 
-**`annotate.build_config_from_gtf(gene, gtf, species="homo_sapiens", gene_id=None, release=None, notes=None, block=annotation_files.BLOCK) -> dict`**
-`build_config` from a local GTF -- GENCODE's comprehensive `gencode.vN.annotation.gtf.gz`, or an Ensembl GTF -- with no network (issue #13). The GTF is read by `annotation_files.scan` as REST-shaped records and the gene chosen by `choose_among`, so the config is the one `build_config` writes from the release the file is of, but for `annotation_source`: `{kind: "gtf", file, bytes, sha256, provider, gencode_release, ensembl_release, date, description, n_transcripts}`, `n_transcripts` the gene's transcripts of every biotype. `ensembl_release` is the release the header's `##description` names (`... version 50 (Ensembl 116)`); `release`, when given, must be the same, or `ValueError`, and is recorded as the file's when the header names none. `gene_id` must be a gene of the GTF named `gene`. A symbol no gene has exactly is looked for again ignoring case. A GENCODE basic GTF raises `annotation_files.BasicGTF`. `notes`, a list, receives what a REST run cannot see: a header with no release, a symbol found only ignoring case, a gene none of whose transcripts the GTF tags `Ensembl_canonical` (its canonical class then falls back to the longest protein). `block` is the size of the pieces the file is read in.
+**`annotate.build_config_from_gtf(gene, gtf, species="homo_sapiens", gene_id=None, release=None, notes=None, block=annotation_files.BLOCK, acceptor_tolerance=0) -> dict`**
+`build_config` from a local GTF -- GENCODE's comprehensive `gencode.vN.annotation.gtf.gz`, or an Ensembl GTF -- with no network (issue #13). The GTF is read by `annotation_files.scan` as REST-shaped records and the gene chosen by `choose_among`, so the config is the one `build_config` writes from the release the file is of, but for `annotation_source`: `{kind: "gtf", file, bytes, sha256, provider, gencode_release, ensembl_release, date, description, n_transcripts}`, `n_transcripts` the gene's transcripts of every biotype. `ensembl_release` is the release the header's `##description` names (`... version 50 (Ensembl 116)`); `release`, when given, must be the same, or `ValueError`, and is recorded as the file's when the header names none. `gene_id` must be a gene of the GTF named `gene`. A symbol no gene has exactly is looked for again ignoring case. A GENCODE basic GTF raises `annotation_files.BasicGTF`. `notes`, a list, receives what a REST run cannot see: a header with no release, a symbol found only ignoring case, a gene none of whose transcripts the GTF tags `Ensembl_canonical` (its canonical class then falls back to the longest protein). `block` is the size of the pieces the file is read in. `acceptor_tolerance` is `build_config`'s, through the same function, so the two sources propose alike at every tolerance.
 
-**`annotate.run(gene, out, species="homo_sapiens", release=None, gene_id=None, gtf=None, notes=None) -> dict`**
-As `build_config`, or `build_config_from_gtf` when `gtf` is given, but also writes the config JSON to `out`. Backs the `annotate` CLI subcommand; `release` is `--ensembl-release`, `gene_id` is `--gene-id`, `gtf` is `--gtf`.
+**`annotate.run(gene, out, species="homo_sapiens", release=None, gene_id=None, gtf=None, notes=None, acceptor_tolerance=0) -> dict`**
+As `build_config`, or `build_config_from_gtf` when `gtf` is given, but also writes the config JSON to `out` (standard JSON, `io.dump_json`). Backs the `annotate` CLI subcommand; `release` is `--ensembl-release`, `gene_id` is `--gene-id`, `gtf` is `--gtf`, `acceptor_tolerance` is `--acceptor-tolerance`.
 
 ```python
 cfg = annotate.build_config("FLT1")
@@ -151,12 +151,25 @@ writes to a file. Returns a dict with `k`, `window`, `canonical`; `annotation`
 (`ensembl_release`, `fetched_release`, and `file_release` and `source`, the local files', None without them); `background` (with `gene_id`, the gene the background was fetched as: by the config's `gene_id` when it has one, else by symbol, and a symbol whose gene holds none of the configured transcripts raises `ValueError`; `gene_transcripts` and `n_background_transcripts`, the gene background's columns of the compatibility system; `fasta` and `fasta_sha256`; `fasta_competitors`, the `background_fasta` records that are columns too, each with the number of distinct configured windows it holds, and `n_fasta_competitors`; `max_window_records`; `fasta_left_out`, the records that hold a window of the system and were left out; `windows_dropped`, the distinct windows dropped (`total`, `configured` of `configured_of`, and `columns`, per column id); `sequence_from_fasta`, the gene-background transcripts the FASTA holds with other sequence, whose column is the FASTA's; `decoys`, `decoys_sha256`, `decoys_listed`, `decoys_skipped` and `decoys_absent` (the listed names the FASTA does not hold), all None without `decoys`; `fasta_long_records`, the records read that are longer than `LONG_RECORD` (1 Mb), as id -> length; `same_name_copies`, from `index_scope.fasta_copies`, when `background_fasta` is given, each placed by `index_scope.placed_by_gtf` when `gtf` is; `fasta_other_versions`, the configured transcripts `background_fasta` holds at another version than the sequence used, as `{id: {"used", "fasta"}}` (None without a FASTA); `keep_duplicates`; `identical_to_configured` and `identical_to_background`, the background sequences -- the gene's, `background_sequences`' or FASTA records -- left out because their sequence is a configured transcript's or an earlier background sequence's, as id -> that transcript, since Salmon's default index keeps one of identical sequences, and `identical_source`, `"gene"`, `"sequences"` or `"fasta"` for each -- all three None when `keep_duplicates=True`, which counts every copy); `design`; `groups` (per group:
 `verdict`, `reasons`, `n_unique_kmers`, `unique_length`, `n_blocks`,
 `expected_informative_reads`, `estimable`, `conditioning_factor`, `gls_relative_se`,
-`min_resolvable_log2fc`, `coherence`, ...); `contrast` (the same estimability fields for
-the class contrast, plus the effective-length and distinguishing-window summaries);
-`counting_noise`; `gene_total`; `effect_resolvable` (None when no `min_log2fc` was
-given); `n_compatibility_classes`; `verdict` and `reasons`. The docstring defines each.
+`finite_se`, `min_resolvable_log2fc`, `coherence`, ...); `contrast` (the same estimability
+fields for the class contrast, plus the effective-length and distinguishing-window
+summaries); `counting_noise` (`log2_ratio_se`, `min_resolvable_log2fc`, and `defined`,
+false when either class has no informative read and both figures are NaN); `gene_total`;
+`effect_resolvable` (None when no `min_log2fc` was given); `n_compatibility_classes`;
+`verdict` and `reasons`. The docstring defines each.
 
-A `background_fasta` record with the id of a gene-background transcript is that transcript; every other record that is no copy is an outside record. An outside record that holds a configured window found in at most `max_window_records` outside records (each counted once; default `identifiability.DEFAULT_MAX_WINDOW_RECORDS = 20`) is a column, unless it is longer than `LONG_RECORD`; every window of a column that an outside record left out holds is dropped from every layer -- the unique windows, the read model and the system -- in two passes over the FASTA (the columns' windows, then the added records'). `compatibility_matrix(tracks, ids, drop=)` leaves those windows out and keeps each column's window count as its denominator, so the system is the one with every outside record a column, less the rows that touch a left-out record: what is estimable here is estimable there, with a GLS standard error no smaller. `gene_total` leaves out a column whose every window was dropped and lists it as `transcripts_all_windows_dropped`; `transcripts_without_windows` lists only the transcripts shorter than the window, and it alone sets the CLI's exit 2 (`cli._identifiability_exit`): with windows dropped a column sums to less than one, and the gene total can leave the row space with no transcript windowless. The contrast's `gls_relative_se` is the delta-method SE of log(A/B) only when its gradient `c_a/a - c_b/b` is estimable, and infinite otherwise.
+`min_resolvable_log2fc` is `1.96 * SE / sqrt(n_donors)` on the log2 scale: the |log2 fold
+change| whose estimate's 95% interval just excludes zero. A true effect of exactly that
+size is detected about half the time -- about 50% power; for 80% power the effect has to
+be about `2.8 * SE / sqrt(n_donors)`, 1.43 times the figure. No option computes that.
+
+A figure that is not finite is infinite in the returned dict and null in `--json`, which is
+standard JSON (`io.finite_json`). `estimable` false says why a `conditioning_factor` is;
+`finite_se` false says why `gls_relative_se` and `min_resolvable_log2fc` are, including for
+a contrast that is estimable while its class totals are not, which `estimable` cannot say;
+`counting_noise.defined` says it for the counting-noise floor.
+
+A `background_fasta` record with the id of a gene-background transcript is that transcript; every other record that is no copy is an outside record. An outside record that holds a configured window found in at most `max_window_records` outside records (each counted once; default `identifiability.DEFAULT_MAX_WINDOW_RECORDS = 20`) is a column, unless it is longer than `LONG_RECORD`; every window of a column that an outside record left out holds is dropped from every layer -- the unique windows, the read model and the system -- in two passes over the FASTA (the columns' windows, then the added records'). `compatibility_matrix(tracks, ids, drop=)` leaves those windows out and keeps each column's window count as its denominator, so the system is the one with every outside record a column, less the rows that touch a left-out record: what is estimable here is estimable there, with a GLS standard error no smaller. `gene_total` leaves out a column whose every window was dropped and lists it as `transcripts_all_windows_dropped`; `transcripts_without_windows` lists only the transcripts shorter than the window, and it alone sets the CLI's exit 2 (`cli._identifiability_exit`): with windows dropped a column sums to less than one, and the gene total can leave the row space with no transcript windowless. The contrast's `gls_relative_se` is the delta-method SE of log(A/B) only when its gradient `c_a/a - c_b/b` is estimable, and infinite otherwise (`finite_se` false; null in `--json`).
 
 `gtf` and `transcripts_fasta` take the gene's transcripts and their sequence from local files instead of REST, `sequences` and `background_sequences` (`ValueError` with either; on the CLI `--gtf` and `--transcripts-fasta`): GENCODE's comprehensive GTF and the `gencode.vN.transcripts.fa.gz` of the same release, or Ensembl's GTF and cDNA FASTA. The gene is the config's `gene_id`; without one, the one GTF gene that holds every configured transcript; failing that, the symbol's by `annotate.choose_among`. It must hold every configured transcript, and every transcript of it must be in the FASTA at the GTF's version (`annotation_files.AnnotationFileError` otherwise, naming what is missing or which versions differ). The gene background is every other transcript of the gene -- and `background.gene_id` the gene, as for a fetched background -- and goes the way a fetched one does: the identical-copy rule, the id merge with `background_fasta`, `max_window_records` and `decoys`. `transcripts_fasta` alone serves a run with `background_gene_transcripts=False`; it may be the `background_fasta` too. `ensembl_release`, given with `gtf`, must be the release the GTF's header names. Nothing is fetched.
 
@@ -309,12 +322,61 @@ normal approximation above; `paired_stat_detail` names which in `wilcoxon_method
 median fold-change. Handles edge cases: empty input → NaNs; all-tied pairs → P is
 NaN (test undefined); non-finite ratios are dropped from the fold-change.
 
-**`stats.run(config, condition, cohorts, out) -> dict`**
+**`stats.paired_stat_detail(A, B, n_boot=10000, seed=0, zero_method="wilcox", ci=0.95) -> dict`**
+The same test with what a reader needs beside it: `n`, `n_greater`, `p`, `wilcoxon_method`
+(the computation that produced `p`: `exact`, `permutation`, `asymptotic`, or `unresolved`),
+`median_fold`; `n_ties` (zero differences), `n_effective` (the pairs the test ranks: the
+non-zero ones under `wilcox`, all under `pratt` and `zsplit`), `n_nonzero`; `direction`
+(`signed_rank_direction`); `p_floor`, `2^(1 - n_nonzero)` under every zero method (a zero
+has no sign to flip, so `pratt` and `zsplit`, which rank zeros, reach no lower: through
+2.6.0 their floor counted every pair), `underpowered` (floor > 0.05) and
+`approximation_below_floor` (`p` below the floor, which only a normal approximation can
+give); `fold_ci` and `fold_ci_method`: the donor-bootstrap 95% percentile interval of the
+median ratio (`"bootstrap"`), or, from five finite ratios or fewer, their minimum and
+maximum (`"range (n<=5)"`) -- which is what the bootstrap interval of such a median is,
+since the bootstrap median equals the minimum (and the maximum) with probability 0.25,
+7/27, 13/256 and 181/3125 at n = 2 to 5, each above 0.025, and 0.0087 at n = 6
+(`stats.RANGE_MAX_N`). With `n_boot=0` there is no interval and
+`fold_ci_method` is None.
+
+**`stats.signed_rank_direction(d, zero_method="wilcox") -> float`**
++1.0, -1.0 or 0.0: the sign of `W+ - W-` with the ranks the test uses (non-zero differences
+under `wilcox`; all under `pratt` and `zsplit`), that is the side of its null centre the
+statistic that produced the p-value fell on. `d = [1, 1, -5, -6]` is -1.0 (median -2, `W+`
+3 of 10), where the count of positive pairs is a tie.
+
+**`stats.stouffer(per_cohort) -> dict`**
+`per_cohort` is `(name, n, direction, p)` or `(name, n, direction, p, p_floor)` per cohort.
+Each two-sided p becomes `direction * norm.isf(p / 2)` -- `p / 2` held at the smallest
+normal double, so a p of 0 gives z = 37.5, not inf -- weighted by `sqrt(n)`; `run` passes
+`n_effective` and `direction`. Returns `{z, p, k, p_floor, underpowered,
+approximation_below_floor}`: `p_floor` is every cohort at its floor in one direction,
+`2 sf(sum(w_i z_i) / sqrt(sum(w_i^2)))` with `z_i` each floor's z, and NaN unless every
+cohort's floor is given. Through 2.6.0 `run` signed a cohort by its count of positive pairs
+(ties to +) and weighted it by `sqrt(n)` of every donor.
+
+**`stats.stratified_signed_rank(strata) -> dict`**
+Within each stratum of paired differences, `W+` over the non-zero pairs with average ranks,
+centred by `n(n+1)/4` and scaled by the tie-corrected null variance
+`n(n+1)(2n+1)/24 - sum(t^3 - t)/48` (through 2.6.0 without the tie term); strata weighted
+`1/(n+1)` and combined by the normal approximation. Returns `{z, p, k, p_floor,
+underpowered, approximation_below_floor, note}`: `p_floor` is `2^(1 - N)`, `N` the
+non-zero pairs of all strata, and `note` is `stats.BELOW_FLOOR_NOTE` ("approximation below
+the attainable exact minimum") when `p` lies below it -- one stratum `d = 1..5` gives
+0.0431 against 0.0625.
+
+**`stats.run(config, condition, cohorts, out, n_boot=10000, seed=0, zero_method="wilcox") -> dict`**
 `cohorts` is `{name: perdonor.csv}`. Writes `<out>.{png,pdf,svg}` and
 `<out>_stats.csv`, and returns `{"per_cohort": [...], "combined": (n, n_gt, P, fold),
 "detail": [per-cohort paired_stat_detail], "pooled": paired_stat_detail of all donors,
 "combination": {"stouffer", "stratified_signed_rank", "pooled"}, "headline_combination":
-"stouffer"}`.
+"stouffer"}`; each combination carries `p_floor`, `underpowered` and
+`approximation_below_floor`, and `pooled`'s `z` is NaN (null in `--json`), as it is no
+z-combination. The table has one row per cohort, `COMBINED_POOLED`,
+`COMBINED_STOUFFER` and `COMBINED_STRATIFIED_SIGNED_RANK`, with the columns `cohort, n,
+A>B, median_fold, fold_CI_low, fold_CI_high, paired_wilcoxon_P, resolution_floor_P,
+underpowered, wilcoxon_method, fold_CI_method, note`; every row has its floor, and the last
+two columns are new in 2.7.0, after the old ones.
 
 ---
 
@@ -329,6 +391,13 @@ TPM, per cohort (a control for whether a dominance signal is a cell-type artefac
 ---
 
 ## `io`
+
+Every JSON the package writes -- each `--json`, the `--save-inputs` file and the config
+`annotate` writes -- is standard JSON (RFC 8259): **`io.finite_json(obj)`** returns `obj` with
+every number that is not finite as None, through dicts, lists and tuples, and
+**`io.dump_json(obj, path, **kw)`** writes with `allow_nan=False`, so a NaN or infinity that
+reaches a writer is a `ValueError`, not a `NaN` or `Infinity` token a standard parser
+refuses. Reading is lenient: `io.load_json` reads those tokens as Python does.
 
 **`io.load_config(path, need_groups=True) -> dict`** — load a config JSON; `io.InputError` (a `ValueError`) if it is not JSON, not an object, or, unless `need_groups` is false, has no `groups` object.
 **`io.load_json(path, what) -> object`** — parse a JSON file; `io.InputError` naming `what` and the file if it is not JSON.

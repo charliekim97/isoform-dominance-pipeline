@@ -18,6 +18,108 @@ versioning.
 > decoys and one without as two, and writes the rows in 2.1.1's order again (2.4.0 sorted
 > them by donor name).
 
+## [Unreleased]
+
+A minor version: `stats` reports different Stouffer and stratified P values for some
+inputs, and `--json` writes `null` where it wrote `NaN` or `Infinity`. The self-test's
+reference numbers do not move: donor-pooled P 9.766e-4 and Stouffer P 0.004419, as both
+cohorts are unanimous with no zero difference. `extract` is not changed, and `annotate`
+at the default writes the config 2.6.0 wrote, byte for byte, from REST and from a GTF;
+the tests hold all three to files the 2.6.0 code wrote (`tests/data/v260_outputs`).
+
+### Changed
+- **Stouffer signs each cohort by the direction of its signed-rank statistic** (issue #20):
+  the sign of `W+ - W-` with the ranks the test used (`stats.signed_rank_direction`, and
+  `direction` in `paired_stat_detail`), 0 when the statistic sits on its null centre.
+  Through 2.6.0 it was the count of positive pairs, ties going to +, which the docstring
+  called the direction of the median difference: `d = [1, 1, -5, -6]` (median -2, `W+` 3 of
+  10) entered as +. A cohort of three pairs up by 1 and three down by 20 beside a 6/6
+  cohort read P 0.0283 and now reads 0.393; one of two pairs up and three with no
+  difference entered as - and now enters as +.
+- **Stouffer weighs each cohort by `sqrt(n_effective)`**, the pairs its test ranked (the
+  non-zero ones under `zero_method="wilcox"`, all of them under `pratt`), not by `sqrt` of
+  every donor: two pairs up and eight with no difference beside a 6/6 cohort weighed as ten
+  and read 0.064; they now read 0.0276.
+- **A p-value of 0 gives a finite z** (37.5): `p / 2` is held at the smallest normal double.
+  Through 2.6.0 it gave `norm.isf(0) = inf`, which swamped every other cohort and turned
+  two opposed cohorts into NaN. SciPy's exact signed-rank p is 0.0 from 55 untied pairs
+  (54 on SciPy 1.17).
+- **The floor counts the pairs whose sign can flip, under every zero method**: `p_floor` is
+  `2^(1 - n_nonzero)`. Under `pratt` it counted every pair, and at n = 6 with one zero
+  read 0.03125 where the 32 sign patterns reach no lower than 0.0625; the tests hold the
+  floor to an enumeration of every sign pattern at n <= 10 for `wilcox`, `pratt` and
+  `zsplit`. `paired_stat_detail` gains `n_nonzero`.
+- **The stratified signed-rank statistic uses the tie-corrected null variance**,
+  `n(n+1)(2n+1)/24 - sum(t^3 - t)/48`: five equal |d| had 13.75 where the variance is
+  11.25, which understated |z| whenever a stratum had ties. With one stratum the P is now
+  SciPy's asymptotic one without continuity correction.
+- **From five finite ratios or fewer the fold interval is their range**, labelled so: the
+  95% bootstrap percentile interval of such a median is its minimum and maximum (the
+  bootstrap median equals the minimum with probability 0.25, 7/27, 13/256 and 181/3125 at
+  n = 2 to 5, each above 0.025), so the bundled GSE228458 interval (4.93, 32.76) was the
+  lowest and highest of its five donors' ratios presented as a bootstrap interval. The
+  numbers are unchanged; `paired_stat_detail` gains `fold_ci_method` (`"bootstrap"`,
+  `"range (n<=5)"`, or None with no interval).
+- **For consumers of `--json`: standard JSON** (issue #20). Every `--json`, the
+  `--save-inputs` file and `annotate`'s config are written with `allow_nan=False`, a number
+  that is not finite as `null` (`io.finite_json`, `io.dump_json`). Through 2.6.0 Python's
+  `NaN` and `Infinity` tokens went out as they were -- `Infinity` for the conditioning
+  factor, `gls_relative_se` and `min_resolvable_log2fc` of an estimand outside the row
+  space (nine in NTRK2's report at release 116, by the audit of 2.5.0; nine and two `NaN`
+  in the offline case the tests build), `NaN` for an undefined counting-noise floor, for
+  `combination.pooled.z` in every `stats --json` and for every interval at `--n-boot 0` --
+  and a standard parser (`jq`, `JSON.parse`, `jsonlite`) refuses the whole document. A
+  consumer that read `Infinity` as "no finite figure" reads `null`, and a field says why:
+  `estimable` for a conditioning factor, the new `finite_se` on each class and the contrast
+  (a contrast can be estimable while its class totals are not, and then has no finite
+  figure, which `estimable` cannot say), the new `counting_noise.defined`, and
+  `fold_ci_method`. Reading is unchanged: a file holding those tokens is still read, and a
+  `--save-inputs` file written by 2.6.0 reruns to its recorded figure.
+
+### Added
+- **Every row of the stats table carries its floor** (issue #20): `COMBINED_STOUFFER` and
+  `COMBINED_STRATIFIED_SIGNED_RANK` had an empty `resolution_floor_P` and `underpowered`.
+  Stouffer's floor is every cohort at its floor in one direction, `2 sf(sum(w_i z_i) /
+  sqrt(sum(w_i^2)))`; in the self-test both cohorts sit at their floors, so the Stouffer P
+  0.004419 is its floor. The stratified floor is `2^(1 - N)` over the non-zero pairs of all
+  strata. Each combination in `stats.run`'s result has `p_floor`, `underpowered` and
+  `approximation_below_floor`, and the `stats` command and the self-test print the floors.
+- **A P from a normal approximation below its floor is marked** "approximation below the
+  attainable exact minimum" (`stats.BELOW_FLOOR_NOTE`), in a new `note` column and as
+  `approximation_below_floor`: one stratum of `d = 1..5` gives 0.0431 against a floor of
+  0.0625, and `pratt` at n = 14 with ten zeros 0.0464 against 0.125.
+- The stats table gains `fold_CI_method` and `note`, after the 2.6 columns, whose order is
+  unchanged.
+- **`annotate --acceptor-tolerance N`** (issue #4; `cluster_by_terminal_exon(info,
+  tolerance)`, `build_config(..., acceptor_tolerance=)`, `build_config_from_gtf(...,
+  acceptor_tolerance=)`): the acceptors in ascending order, a cluster takes every one within
+  N bp of its first (lowest) one and no further, so nothing chains and no cluster spans more
+  than N; its `terminal_acceptor` is that first coordinate. A merged cluster lists its
+  acceptors in `_clusters` (`merged_acceptors`: `terminal_acceptor`, `offset`,
+  `transcripts`; `acceptor_span`), and the config records `_proposal.acceptor_tolerance`
+  and says so in `_proposed`, only when N > 0. REST and `--gtf` go through the one
+  function: on the GENCODE 50 extract of the tests they propose alike at N = 3, 6, 10 and
+  20, and at N = 6 CD99's canonical class gains one transcript whose acceptor is 5 bp off.
+  The default is 0, the exact coordinate: replayed on the release series' 654 proposals (109
+  genes at releases 110 and 112 to 116), N = 0 writes 2.6.0's config for every one, byte for
+  byte, while N = 3 changes 24 proposals in six genes (TSC1 among them, which this
+  documentation cites) and N = 6, 10 and 20 change 46, 55 and 77. Comparing the terminal
+  exons' overlap instead of
+  their acceptors is left for later.
+
+### Documented
+- `min_resolvable_log2fc` is 1.96 standard errors: a true effect of that size is detected
+  about half the time, about 50% power; 80% needs about 2.8 standard errors (README, API
+  reference). No option computes it.
+- **The proposal rule is kept, and its limit stated** (README): the alternative class is
+  the non-canonical cluster with the most transcripts, and since release 115 nearly every
+  transcript GENCODE added to the survey's genes comes from TAGENE's long-read models, so a
+  count can grow with no change in what the class is. Changing the rule would move the
+  survey's "30 of 84".
+- The `stats` docstrings no longer call Stouffer "never anti-conservative" or say a
+  combination "inherits" a cohort's floor, and `run()` no longer claims a `p_floor` key it
+  did not return.
+
 ## [2.6.0] - 2026-10-02
 
 ### Added

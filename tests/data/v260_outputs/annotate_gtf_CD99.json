@@ -1,0 +1,179 @@
+{
+  "gene": "CD99",
+  "gene_id": "ENSG00000002586",
+  "species": "homo_sapiens",
+  "ensembl_release": 116,
+  "groups": {
+    "iso_168aa": [
+      "ENST00000381187",
+      "ENST00000381192",
+      "ENST00000611428",
+      "ENST00000624481",
+      "ENST00000863832",
+      "ENST00000863833",
+      "ENST00000863834",
+      "ENST00000863835",
+      "ENST00000863836",
+      "ENST00000863837",
+      "ENST00000863838",
+      "ENST00000863839",
+      "ENST00000863840",
+      "ENST00000863841",
+      "ENST00000863842",
+      "ENST00000863843",
+      "ENST00000863844",
+      "ENST00000863845",
+      "ENST00000863846",
+      "ENST00000928650",
+      "ENST00000928653",
+      "ENST00000928655",
+      "ENST00000928657",
+      "ENST00000928659",
+      "ENST00000928660",
+      "ENST00000928661",
+      "ENST00000928662",
+      "ENST00000957177",
+      "ENST00000957178",
+      "ENST00000975773",
+      "ENST00000975774",
+      "ENST00000975779",
+      "ENST00000975781",
+      "ENST00001037646",
+      "ENST00001136515"
+    ],
+    "iso_173aa": [
+      "ENST00000381184",
+      "ENST00000482405",
+      "ENST00000975785",
+      "ENST00001093056",
+      "ENST00001093057",
+      "ENST00001120848",
+      "ENST00001123956"
+    ]
+  },
+  "primary_comparison": [
+    "iso_173aa",
+    "iso_168aa"
+  ],
+  "_proposal": {
+    "alternative_rule": "the non-canonical cluster with the most transcripts; a tie goes to the longer representative protein, and a tie on both to the lower terminal-acceptor coordinate",
+    "tied_with": []
+  },
+  "_proposed": "Auto-proposed by `isoform-dominance annotate`. Groups = protein-coding transcripts sharing a 3' terminal-exon splice acceptor (isoform-defining alternative last exon). REVIEW and rename to functional names (e.g. short/long) before use; smaller clusters are listed under _clusters.",
+  "_clusters": [
+    {
+      "terminal_acceptor": 2740779,
+      "rep_protein_aa": 168,
+      "n_transcripts": 35,
+      "contains_canonical": true,
+      "transcripts": [
+        "ENST00000381187",
+        "ENST00000381192",
+        "ENST00000611428",
+        "ENST00000624481",
+        "ENST00000863832",
+        "ENST00000863833",
+        "ENST00000863834",
+        "ENST00000863835",
+        "ENST00000863836",
+        "ENST00000863837",
+        "ENST00000863838",
+        "ENST00000863839",
+        "ENST00000863840",
+        "ENST00000863841",
+        "ENST00000863842",
+        "ENST00000863843",
+        "ENST00000863844",
+        "ENST00000863845",
+        "ENST00000863846",
+        "ENST00000928650",
+        "ENST00000928653",
+        "ENST00000928655",
+        "ENST00000928657",
+        "ENST00000928659",
+        "ENST00000928660",
+        "ENST00000928661",
+        "ENST00000928662",
+        "ENST00000957177",
+        "ENST00000957178",
+        "ENST00000975773",
+        "ENST00000975774",
+        "ENST00000975779",
+        "ENST00000975781",
+        "ENST00001037646",
+        "ENST00001136515"
+      ]
+    },
+    {
+      "terminal_acceptor": 2733357,
+      "rep_protein_aa": 173,
+      "n_transcripts": 7,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00000381184",
+        "ENST00000482405",
+        "ENST00000975785",
+        "ENST00001093056",
+        "ENST00001093057",
+        "ENST00001120848",
+        "ENST00001123956"
+      ]
+    },
+    {
+      "terminal_acceptor": 2740784,
+      "rep_protein_aa": 198,
+      "n_transcripts": 1,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00001093055"
+      ]
+    },
+    {
+      "terminal_acceptor": 2720356,
+      "rep_protein_aa": 91,
+      "n_transcripts": 1,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00001113730"
+      ]
+    },
+    {
+      "terminal_acceptor": 2691788,
+      "rep_protein_aa": 76,
+      "n_transcripts": 1,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00000381180"
+      ]
+    }
+  ],
+  "_gene_choice": {
+    "rule": "the gene on the reference chromosomes (1-22, X, Y, MT) whose name is the symbol; of a chrX/chrY pair -- a pseudoautosomal gene -- the chrX one, the copy a Salmon index built from GENCODE keeps; any other choice is --gene-id's",
+    "candidates": [
+      {
+        "gene_id": "ENSG00000002586",
+        "location": "X:2690988-2741312",
+        "n_transcripts": 66
+      },
+      {
+        "gene_id": "ENSG00000292348",
+        "location": "Y:2690988-2741312",
+        "n_transcripts": 66
+      }
+    ],
+    "chosen": "ENSG00000002586",
+    "reason": "CD99 is a pseudoautosomal gene: ENSG00000002586 on chrX and ENSG00000292348 on chrY, one sequence. Salmon keeps only the first of identical sequences -- the chrX copy in a GENCODE FASTA, the chrY copy in Ensembl's cDNA FASTA, which lists chrY first -- so the chrX gene is used; for an index built from Ensembl cDNA, use --gene-id ENSG00000292348"
+  },
+  "annotation_source": {
+    "kind": "gtf",
+    "file": "gencode.v50.mini.gtf.gz",
+    "bytes": 65476,
+    "sha256": "0797a95dbf00ccd0a511804937ef632cc03e09cd4a898eb603ab29fe40d76e60",
+    "provider": "GENCODE",
+    "gencode_release": 50,
+    "ensembl_release": 116,
+    "date": "2026-04-08",
+    "description": "evidence-based annotation of the human genome (GRCh38), version 50 (Ensembl 116)",
+    "n_transcripts": 66
+  }
+}

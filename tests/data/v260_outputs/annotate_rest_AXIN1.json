@@ -1,0 +1,96 @@
+{
+  "gene": "AXIN1",
+  "gene_id": "ENSG00000103126",
+  "species": "homo_sapiens",
+  "ensembl_release": 116,
+  "groups": {
+    "iso_831aa": [
+      "ENST00000262320",
+      "ENST00000354866",
+      "ENST00000911683",
+      "ENST00000911684",
+      "ENST00000911685",
+      "ENST00000911686",
+      "ENST00000957925",
+      "ENST00000957926",
+      "ENST00000957927",
+      "ENST00001133507"
+    ],
+    "iso_340aa": [
+      "ENST00001109156"
+    ]
+  },
+  "primary_comparison": [
+    "iso_340aa",
+    "iso_831aa"
+  ],
+  "_proposal": {
+    "alternative_rule": "the non-canonical cluster with the most transcripts; a tie goes to the longer representative protein, and a tie on both to the lower terminal-acceptor coordinate",
+    "tied_with": [
+      {
+        "terminal_acceptor": 319976,
+        "rep_protein_aa": 312,
+        "n_transcripts": 1,
+        "transcripts": [
+          "ENST00001088741"
+        ]
+      },
+      {
+        "terminal_acceptor": 288306,
+        "rep_protein_aa": 102,
+        "n_transcripts": 1,
+        "transcripts": [
+          "ENST00000457798"
+        ]
+      }
+    ]
+  },
+  "_proposed": "Auto-proposed by `isoform-dominance annotate`. Groups = protein-coding transcripts sharing a 3' terminal-exon splice acceptor (isoform-defining alternative last exon). REVIEW and rename to functional names (e.g. short/long) before use; smaller clusters are listed under _clusters.",
+  "_clusters": [
+    {
+      "terminal_acceptor": 288248,
+      "rep_protein_aa": 831,
+      "n_transcripts": 10,
+      "contains_canonical": true,
+      "transcripts": [
+        "ENST00000262320",
+        "ENST00000354866",
+        "ENST00000911683",
+        "ENST00000911684",
+        "ENST00000911685",
+        "ENST00000911686",
+        "ENST00000957925",
+        "ENST00000957926",
+        "ENST00000957927",
+        "ENST00001133507"
+      ]
+    },
+    {
+      "terminal_acceptor": 314683,
+      "rep_protein_aa": 340,
+      "n_transcripts": 1,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00001109156"
+      ]
+    },
+    {
+      "terminal_acceptor": 319976,
+      "rep_protein_aa": 312,
+      "n_transcripts": 1,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00001088741"
+      ]
+    },
+    {
+      "terminal_acceptor": 288306,
+      "rep_protein_aa": 102,
+      "n_transcripts": 1,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00000457798"
+      ]
+    }
+  ]
+}

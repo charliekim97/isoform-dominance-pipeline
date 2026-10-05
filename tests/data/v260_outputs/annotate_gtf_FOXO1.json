@@ -1,0 +1,111 @@
+{
+  "gene": "FOXO1",
+  "gene_id": "ENSG00000150907",
+  "species": "homo_sapiens",
+  "ensembl_release": 116,
+  "groups": {
+    "iso_655aa": [
+      "ENST00000379561",
+      "ENST00000973655",
+      "ENST00001132211"
+    ],
+    "iso_655aa_alt": [
+      "ENST00000962362"
+    ]
+  },
+  "primary_comparison": [
+    "iso_655aa_alt",
+    "iso_655aa"
+  ],
+  "_proposal": {
+    "alternative_rule": "the non-canonical cluster with the most transcripts; a tie goes to the longer representative protein, and a tie on both to the lower terminal-acceptor coordinate",
+    "tied_with": [
+      {
+        "terminal_acceptor": 40560860,
+        "rep_protein_aa": 655,
+        "n_transcripts": 1,
+        "transcripts": [
+          "ENST00000909775"
+        ]
+      },
+      {
+        "terminal_acceptor": 40664478,
+        "rep_protein_aa": 351,
+        "n_transcripts": 1,
+        "transcripts": [
+          "ENST00001127635"
+        ]
+      },
+      {
+        "terminal_acceptor": 40627829,
+        "rep_protein_aa": 282,
+        "n_transcripts": 1,
+        "transcripts": [
+          "ENST00001127634"
+        ]
+      }
+    ]
+  },
+  "_proposed": "Auto-proposed by `isoform-dominance annotate`. Groups = protein-coding transcripts sharing a 3' terminal-exon splice acceptor (isoform-defining alternative last exon). REVIEW and rename to functional names (e.g. short/long) before use; smaller clusters are listed under _clusters.",
+  "_clusters": [
+    {
+      "terminal_acceptor": 40559034,
+      "rep_protein_aa": 655,
+      "n_transcripts": 3,
+      "contains_canonical": true,
+      "transcripts": [
+        "ENST00000379561",
+        "ENST00000973655",
+        "ENST00001132211"
+      ]
+    },
+    {
+      "terminal_acceptor": 40558509,
+      "rep_protein_aa": 655,
+      "n_transcripts": 1,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00000962362"
+      ]
+    },
+    {
+      "terminal_acceptor": 40560860,
+      "rep_protein_aa": 655,
+      "n_transcripts": 1,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00000909775"
+      ]
+    },
+    {
+      "terminal_acceptor": 40664478,
+      "rep_protein_aa": 351,
+      "n_transcripts": 1,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00001127635"
+      ]
+    },
+    {
+      "terminal_acceptor": 40627829,
+      "rep_protein_aa": 282,
+      "n_transcripts": 1,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00001127634"
+      ]
+    }
+  ],
+  "annotation_source": {
+    "kind": "gtf",
+    "file": "gencode.v50.mini.gtf.gz",
+    "bytes": 65476,
+    "sha256": "0797a95dbf00ccd0a511804937ef632cc03e09cd4a898eb603ab29fe40d76e60",
+    "provider": "GENCODE",
+    "gencode_release": 50,
+    "ensembl_release": 116,
+    "date": "2026-04-08",
+    "description": "evidence-based annotation of the human genome (GRCh38), version 50 (Ensembl 116)",
+    "n_transcripts": 10
+  }
+}

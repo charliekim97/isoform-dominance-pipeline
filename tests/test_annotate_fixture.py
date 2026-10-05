@@ -194,23 +194,55 @@ def test_duplicate_labels_are_disambiguated(monkeypatch):
     assert len(set(groups)) == 2
 
 
-def test_clustering_is_brittle_to_a_shifted_acceptor(monkeypatch):
-    """Known limitation, pinned so a fix is a visible behaviour change.
-
-    Clusters are keyed on the exact terminal-exon acceptor coordinate, so two
-    transcripts of the same functional class whose annotated acceptor differs by even
-    one base land in different clusters.  Annotation sets do contain such shifts, and
-    the effect is a silently mis-specified group rather than an error.  An acceptor
-    tolerance is the intended fix; until then this test documents the behaviour.
-    """
+def _shifted_by_one():
+    """LEPR_LIKE with one short-class transcript's acceptor a base off the other two."""
     payload = json.loads(json.dumps(LEPR_LIKE))
     for t in payload["Transcript"]:
         if t["id"] == "ENST00000616738":
             t["Exon"][0]["end"] = 65_571_199          # one base off
-    monkeypatch.setattr(annotate, "_get", lambda path, **kw: payload)
-    clusters = annotate.cluster_by_terminal_exon(annotate.fetch_transcripts("LEPR"))
+    return payload
+
+
+def test_at_the_default_tolerance_a_shifted_acceptor_is_its_own_cluster(monkeypatch):
+    """Known limitation at the default, pinned so a change of default is visible.
+
+    Clusters are keyed on the exact terminal-exon acceptor coordinate, so two
+    transcripts of the same functional class whose annotated acceptor differs by even
+    one base land in different clusters.  Annotation sets do contain such shifts, and
+    the effect is a silently mis-specified group rather than an error.  The default
+    tolerance stays 0 (issue #4): a tolerance changes proposals the documentation cites.
+    """
+    monkeypatch.setattr(annotate, "_get", serving(_shifted_by_one()))
+    info = annotate.fetch_transcripts("LEPR")
+    for clusters in (annotate.cluster_by_terminal_exon(info),
+                     annotate.cluster_by_terminal_exon(info, tolerance=0)):
+        accs = sorted(c["acceptor"] for c in clusters)
+        assert 65_571_199 in accs and 65_571_200 in accs   # split, not merged
+    cfg = annotate.build_config("LEPR")
+    assert "acceptor_tolerance" not in cfg["_proposal"]
+    assert not any("merged_acceptors" in c for c in cfg["_clusters"])
+
+
+def test_a_tolerance_of_the_shift_merges_the_class_and_the_config_says_so(monkeypatch):
+    monkeypatch.setattr(annotate, "_get", serving(_shifted_by_one()))
+    clusters = annotate.cluster_by_terminal_exon(annotate.fetch_transcripts("LEPR"),
+                                                 tolerance=1)
     accs = sorted(c["acceptor"] for c in clusters)
-    assert 65_571_199 in accs and 65_571_200 in accs   # split, not merged
+    assert 65_571_199 in accs and 65_571_200 not in accs   # one cluster, at the first
+    cfg = annotate.build_config("LEPR", acceptor_tolerance=1)
+    assert cfg["_proposal"]["acceptor_tolerance"] == 1
+    short = next(c for c in cfg["_clusters"] if c["terminal_acceptor"] == 65_571_199)
+    assert short["transcripts"] == ["ENST00000371058", "ENST00000371060", "ENST00000616738"]
+    assert short["acceptor_span"] == 1
+    assert short["merged_acceptors"] == [
+        {"terminal_acceptor": 65_571_199, "offset": 0, "transcripts": ["ENST00000616738"]},
+        {"terminal_acceptor": 65_571_200, "offset": 1,
+         "transcripts": ["ENST00000371058", "ENST00000371060"]}]
+    # the proposal is the class the exact coordinate split
+    assert set(cfg["groups"][cfg["primary_comparison"][0]]) == {
+        "ENST00000371058", "ENST00000371060", "ENST00000616738"}
+    unmerged = [c for c in cfg["_clusters"] if c["terminal_acceptor"] != 65_571_199]
+    assert unmerged and not any("merged_acceptors" in c for c in unmerged)
 
 
 # --------------------------------------------------------------------------- #
