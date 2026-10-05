@@ -18,7 +18,7 @@ versioning.
 > decoys and one without as two, and writes the rows in 2.1.1's order again (2.4.0 sorted
 > them by donor name).
 
-## [Unreleased]
+## [2.7.0] - 2026-10-04
 
 A minor version: `stats` reports different Stouffer and stratified P values for some
 inputs, and `--json` writes `null` where it wrote `NaN` or `Infinity`. The self-test's
