@@ -54,7 +54,6 @@ versioning.
   above 10, 31 (0.190), not clearly worse at uniform coverage and with a smaller worst bias
   under skew (2.01 against 2.70 log2, Mann-Whitney p 0.12). Failed and estimable, 2 (CD44,
   ESR1; 0.267). Failed and not estimable, none. Passed and not estimable, 8 (0.163).
-
 - **The self-test runs `identifiability`** on the study's LEPR classes from the GENCODE 44
   (Ensembl 110) inputs, the study's index release, saved with the package
   (`isoform_dominance/data/`, byte for byte `example/saved/`'s, in the wheel), through the
@@ -62,6 +61,7 @@ versioning.
   checks the verdict, `identifiable`, and the contrast's min |log2FC|, 0.1290 within 0.0005
   (0.12896 at conditioning 2.747). One more line in the output and one more check in
   `selftest --json`; the other checks and the reference P values do not move.
+- CI tests Python 3.14 too.
 
 ### Changed
 - **The "counting-noise floor" is renamed the unique-read counting SE (best transcript per
@@ -74,6 +74,10 @@ versioning.
   until 3.0, when it and the old function go. The CLI line reads "unique-read counting SE
   (best transcript per class) on log2 ratio"; its figures do not move. The README's layer
   table, the API reference and the two places `paper.md` used the term follow.
+- **The license is an SPDX expression**: `license = "MIT"` with `license-files = ["LICENSE"]`,
+  and no License classifier, which setuptools deprecates; the build needs setuptools >= 77.
+  `python -m build` writes no license warning, and the wheel's metadata says
+  `License-Expression: MIT`.
 
 ### Documented
 - **The README's identifiability example runs from inputs in the repository**: the LEPR
