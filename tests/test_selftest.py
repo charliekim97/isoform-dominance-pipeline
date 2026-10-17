@@ -2,6 +2,7 @@
 import json
 import pathlib
 import re
+import shutil
 from importlib import resources
 from types import SimpleNamespace
 
@@ -118,8 +119,22 @@ PACKAGED = ROOT / "src" / "isoform_dominance" / "data"
 SAVED = ROOT / "example" / "saved"
 
 
+def _listing(folder):
+    """The names of the files in ``folder``, sorted; a hidden one (``.DS_Store``) is none."""
+    return sorted(p.name for p in folder.iterdir() if not p.name.startswith("."))
+
+
+def test_a_hidden_file_is_not_in_the_listing(tmp_path):
+    """A Finder's .DS_Store in the folder is no file of the package's."""
+    copy = tmp_path / "data"
+    shutil.copytree(PACKAGED, copy)
+    (copy / ".DS_Store").write_bytes(b"\0\0\0\1Bud1")
+    assert _listing(copy) == _listing(PACKAGED) == [
+        "LEPR.gencode44.inputs.json", "LEPR.gencode44.study.config.json"]
+
+
 def test_the_packaged_inputs_are_the_saved_ones_byte_for_byte():
-    names = sorted(p.name for p in PACKAGED.iterdir())
+    names = _listing(PACKAGED)
     assert names == ["LEPR.gencode44.inputs.json", "LEPR.gencode44.study.config.json"]
     for name in names:
         assert (PACKAGED / name).read_bytes() == (SAVED / name).read_bytes(), name

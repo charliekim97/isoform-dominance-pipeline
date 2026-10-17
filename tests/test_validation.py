@@ -51,17 +51,37 @@ GENCODE = {"gencode.v44.annotation.gtf.gz", "gencode.v44.transcripts.fa.gz",
            "gencode.v50.annotation.gtf.gz", "gencode.v50.transcripts.fa.gz"}
 
 
+def stored_files(base):
+    """Every file under ``base`` but its README, as paths relative to it: the files the
+    README's table must name.  A hidden one (``.DS_Store``, ``._name``) is none."""
+    return {p.relative_to(base).as_posix() for p in base.rglob("*")
+            if p.is_file() and p.name != "README.md"
+            and not any(part.startswith(".") for part in p.relative_to(base).parts)}
+
+
 @pytest.mark.parametrize("folder", ["example/saved", "validation/data"])
 def test_every_file_a_readme_names_is_that_file_and_none_is_unnamed(folder):
     base = ROOT / folder
     table = {k: v for k, v in summarize.sha256_table(base / "README.md").items()
              if k not in GENCODE}
     assert len(table) == 17
-    present = {p.relative_to(base).as_posix() for p in base.rglob("*")
-               if p.is_file() and p.name != "README.md"}
+    present = stored_files(base)
     assert set(table) == present
     for name, sha in sorted(table.items()):
         assert summarize.file_sha256(base / name) == sha, name
+
+
+@pytest.mark.parametrize("folder", ["example/saved", "validation/data"])
+def test_a_hidden_file_is_not_a_stored_file(folder, tmp_path):
+    """A Finder's .DS_Store, or the ._ file it writes beside a file on a foreign volume,
+    is not a file the README must name."""
+    copy = tmp_path / "copy"
+    shutil.copytree(ROOT / folder, copy)
+    for d in [copy] + [p for p in copy.iterdir() if p.is_dir()]:
+        (d / ".DS_Store").write_bytes(b"\0\0\0\1Bud1")
+    (copy / "._README.md").write_bytes(b"\0\5\26\7")
+    assert stored_files(copy) == stored_files(ROOT / folder)
+    assert len(stored_files(copy)) == 17
 
 
 def test_a_changed_stored_file_stops_the_summary(tmp_path):

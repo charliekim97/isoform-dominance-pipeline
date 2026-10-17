@@ -9,6 +9,7 @@ import gzip
 import json
 import os
 import pathlib
+import shutil
 
 import pytest
 
@@ -118,8 +119,23 @@ def _config_file(tmp_path):
     return str(path)
 
 
+def _golden_names(folder):
+    """The names of the files in ``folder`` but its README, sorted; a hidden one
+    (``.DS_Store``) is none."""
+    return sorted(p.name for p in folder.iterdir()
+                  if p.name != "README.md" and not p.name.startswith("."))
+
+
+def test_a_hidden_file_is_not_a_golden_file(tmp_path):
+    """A Finder's .DS_Store in the folder is no golden file."""
+    copy = tmp_path / "v260_outputs"
+    shutil.copytree(GOLDEN, copy)
+    (copy / ".DS_Store").write_bytes(b"\0\0\0\1Bud1")
+    assert _golden_names(copy) == _golden_names(GOLDEN)
+
+
 def test_the_golden_files_are_the_ones_the_readme_lists():
-    names = sorted(p.name for p in GOLDEN.iterdir() if p.name != "README.md")
+    names = _golden_names(GOLDEN)
     assert names == sorted(["annotate_rest_%s.json" % g for g in GENES]
                            + ["annotate_gtf_%s.json" % g for g in GENES]
                            + ["extract_selftest_%s.csv%s" % (c, x) for c in _selftest.DATA

@@ -105,6 +105,11 @@ versioning.
   failed, with the cause in its message and in an `error` field (its `verdict`,
   `min_resolvable_log2fc` and `conditioning_factor` null); the other checks, the cohort
   combinations and `--json` are printed as before, and the exit status is 1, as it was.
+- **The tests that list a folder leave out hidden files**: the listings of
+  `src/isoform_dominance/data`, `example/saved`, `validation/data` and
+  `tests/data/v260_outputs` skip a name beginning with `.` (a Finder's `.DS_Store`, the `._`
+  file beside a file on a foreign volume), at any depth in the folders listed recursively.
+  Every other comparison is as it was.
 - **`extract`'s `<out>.index.json` is standard JSON whatever `meta_info.json` holds.** It was
   written with `json.dump` alone, so a hand-edited or damaged `aux_info/meta_info.json` with
   `NaN` or `Infinity` in a count (`num_valid_targets`, `num_decoy_targets`), which Python's
