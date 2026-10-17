@@ -667,18 +667,21 @@ def class_efflen_ratio(lengths_a, lengths_b, frag_mean=DEFAULT_FRAG_MEAN):
     The mean is the plain mean over each class's transcripts of
     :func:`effective_length`.  ``None`` for all three when either class is empty.
 
-    In a 49-gene simulation (Salmon, monotone positional coverage skew) the quantifier
-    split the ambiguous mass between the classes by effective length, so this ratio
-    tracked the size of the error and, with the direction of the skew, its sign: a
-    5'-skewed library tended to inflate the shorter class, a 3'-skewed one the longer.
-    No other quantifier, panel or form of skew was tested.  The tendency assumes the
-    classes are ambiguous where the skew concentrates reads; a shorter class distinguished
-    at that end is an untested interaction under which it can reverse -- LEPR, shorter
-    class distinguished at its 5' end, ran against it under 5 of 6 skews.  The mechanism
-    is about each transcript's effective length, so the transcript count must not enter.
-    Five summaries were scored against realised bias on that simulation (Spearman at the
-    two extreme skews, and how often the 5' sign came out right among genes whose ratio
-    exceeds 1.23x):
+    In a 49-gene simulation (monotone positional coverage skew) Salmon split the
+    ambiguous mass between the classes by effective length, so this ratio tracked the size
+    of the error and, with the direction of the skew, its sign: a 5'-skewed library tended
+    to inflate the shorter class, a 3'-skewed one the longer -- for 35-36 and 30-32 of the
+    39 genes whose ratio exceeds 1.23x, against 19 and 20 of 39 at uniform coverage.
+    kallisto, on the same reads, gave 34-36 and 29-33, but it has no bias model and
+    leaned to the longer class at uniform coverage too (32 of 39), so only its 5' figures
+    are evidence of the skew.  No other quantifier, panel or form of skew was tested.  The
+    tendency assumes the classes are ambiguous where the skew concentrates reads; a
+    shorter class distinguished at that end is an untested interaction under which it can
+    reverse -- LEPR, shorter class distinguished at its 5' end, ran against it under 5 of
+    6 skews with Salmon.  The mechanism is about each transcript's effective length, so
+    the transcript count must not enter.  Five summaries were scored against Salmon's
+    realised bias on that simulation (Spearman at the two extreme skews, and how often the
+    5' sign came out right among genes whose ratio exceeds 1.23x):
 
     ===================  ==========  ==========  =====
     summary              b = +2.0    b = -2.0    sign

@@ -90,7 +90,7 @@ def test_a_class_with_no_distinguishing_window_reports_none():
 # --------------------------------------------------------------------------- #
 # the CLI: ratio and positions always, direction only inside the measured band
 # --------------------------------------------------------------------------- #
-EVIDENCE = "in a 49-gene simulation (Salmon, one quantifier, monotone positional skew)"
+EVIDENCE = "in a 49-gene simulation with monotone positional skew"
 
 
 def _run(tmp_path, capsys, len_a, len_b, primary=("A", "B"), json_out=False):
@@ -119,8 +119,12 @@ def test_at_the_band_edge_the_direction_is_printed_with_its_evidence(tmp_path, c
     assert "log2 ratio -0.31" in out.out
     assert EVIDENCE in out.err
     assert "shorter class (A)" in out.err and "longer (B)" in out.err
-    assert "35-36 of the 39 genes with a ratio above 1.23x" in out.err
-    assert "30-32" in out.err
+    assert "Salmon's error took the 5' direction for 35-36 of the 39 genes with a ratio " \
+        "above 1.23x" in out.err
+    assert "the 3' direction for 30-32 of them" in out.err
+    # kallisto leans to the longer class without any skew: its 3' figures prove nothing
+    assert "kallisto, on the same reads, took the 5' direction for 34-36" in out.err
+    assert "so only its 5' figures are evidence of the skew" in out.err
     # the rule assumes ambiguity where the skew piles reads up; LEPR breaks it, so say so
     assert ("When the shorter class is itself distinguished at that end -- see its "
             "distinguishing-window position above -- the direction can reverse; the "

@@ -147,10 +147,14 @@ effective length under skew, so the class effective-length ratio tracked the siz
 and, with the direction of the skew, its sign. Positions are fractions of each transcript's own length, 0 at
 the 5' end, because skew acts on each molecule in its own coordinates. When the classes differ
 at least 1.23-fold (|log2 ratio| >= 0.3) the command says on stderr which class each direction
-of skew tends to inflate, with the evidence: in a 49-gene simulation (Salmon, one quantifier,
-monotone positional skew) the 5' direction held for 35–36 of the 39 genes above that ratio, the
-3' direction for 30–32, against 20 of 39 at uniform coverage. No other quantifier, gene panel
-or form of skew was tested, and below that ratio nothing was measured, so nothing is said.
+of skew tends to inflate, with the evidence: in a 49-gene simulation (monotone positional skew)
+Salmon's error took the 5' direction for 35–36 of the 39 genes above that ratio and the 3'
+direction for 30–32, where at uniform coverage the 5' direction held for 19 of 39 and the 3' for
+20. kallisto, on the same reads, took the 5' direction for 34–36 and the 3' for 29–33, but it has
+no bias model and leaned to the longer class at uniform coverage too, 32 of 39 (the 5' direction
+7): its 3' figures are no evidence of the skew, and only the 5' ones turn toward it. No other
+quantifier, gene panel or form of skew was tested, and below that ratio nothing was measured, so
+nothing is said.
 
 Exit codes: **0** no `--min-log2fc` given, or it is resolved · **3** `--min-log2fc` given and
 not resolved at the stated design · **2** precondition failure: a transcript shorter than
@@ -322,7 +326,15 @@ below the predicted SE in 34–37 of 39, as it did in 35 of 39 at uniform covera
 scatter gives no sign of the bias. NTRK3 holds a replicate SD of 0.016–0.025 while its bias
 runs from 0.002 to 2.82 log2. **Replicate agreement does not detect this failure.**
 Measure your own libraries' gene-body coverage (RSeQC `geneBody_coverage.py`) before reading
-the figure as an error bar.
+the figure as an error bar. Set against the unique-k-mer gate of v2.1.1, on the 47 genes with
+a row in every design, the conditioning factor did not sort genes by error: the 31 estimable
+genes above 10 had a median RMSE at uniform coverage of 0.190 against 0.173 for the 6 at or
+below it, and a smaller worst bias under skew, 2.01 against 2.70 log2. The gate failed two
+genes the structure calls estimable (CD44, ESR1) and passed all 8 it calls not estimable, whose
+uniform RMSE (median 0.163) was no worse than the estimable genes'; they are also the deepest
+genes of the simulation (`validation/README.md` has the table and that confound). Every
+simulation figure this README quotes is recomputed from the stored outputs in `validation/` by
+`validation/summarize.py`, and a test fails when one no longer agrees.
 
 The conditioning factor is kept as a **diagnostic**, not a headline — a **geometry proxy, not a standard
 error** — it assumes `Var(y) = sigma^2 I`, which a quantifier does not satisfy, and it moves by

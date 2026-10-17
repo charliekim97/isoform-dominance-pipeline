@@ -23,8 +23,8 @@ the wrong class shows it as bias rather than only as spread.
 **Known design confound, deliberately left in place (2026-09-13).**  TPM is flat *per
 transcript*, so a gene's total fragment count is proportional to how many transcripts it
 has.  Annotation depth is also what produces a class-crossing null direction, so the
-`not_identifiable` group is 4-8x deeper than the estimable one by construction (smaller
-class 2611 vs 343 fragments; counting floor differs at Mann-Whitney p = 0.0013).  Every
+`not_identifiable` group is 3.9x deeper than the estimable one by construction (smaller
+class 2611 vs 298 fragments, 8.8x; counting floor differs at Mann-Whitney p = 0.0013).  Every
 group comparison between the two is confounded by that, and validation/README.md says so
 where it matters.  A future sweep should hold the *gene* total fixed across genes instead.
 

@@ -29,6 +29,45 @@ versioning.
   relative 1e-9, and exit status 0, apart from keys this release adds. The tolerance is for
   the BLAS build: under two other OpenBLAS kernels every file differs byte for byte, the
   residuals of about 1e-16 by up to 7e-16 and every other number by at most 1e-13 relative.
+- **The simulation figures are recomputed from stored outputs, and tested** (issue #2):
+  `validation/summarize.py` reads the stored Salmon and kallisto outputs and inputs of
+  `validation/data` and the installed package, checks every file against the SHA-256 its
+  README names, and recomputes every simulation figure the README, the CLI, the docstrings and
+  the harness quote, with the four-row comparison of issue #2 against the v2.1.1
+  unique-k-mer gate (`validation/summary.json`, and the generated block of
+  `validation/README.md`). Every figure is over one panel, the 47 genes with a row in all seven
+  Salmon designs (PFKL and EPOR are left out). It also checks that the package still predicts
+  for each gene what every one of the 720 stored rows recorded; when it does not, the stored
+  comparison no longer describes the code that ships. `tests/test_validation.py` holds the
+  files, that check, the summary and every quoted figure to it; CI runs no quantifier.
+- **The four-row table** (`validation/README.md`): the gate passes 45 of the 47 panel genes.
+  Passed and estimable at conditioning <= 10, 6 genes (median RMSE at uniform coverage 0.173);
+  above 10, 31 (0.190), not clearly worse at uniform coverage and with a smaller worst bias
+  under skew (2.01 against 2.70 log2, Mann-Whitney p 0.12). Failed and estimable, 2 (CD44,
+  ESR1; 0.267). Failed and not estimable, none. Passed and not estimable, 8 (0.163).
+
+### Documented
+- **A second quantifier was run, and the documentation said none was.** The README, the
+  NOTE `identify` prints on the skew direction and `class_efflen_ratio`'s docstring called
+  the simulation "Salmon, one quantifier" and said no other quantifier was tested; kallisto
+  0.52 had quantified the same reads (`validation/data/sim/k1_*.json`). They now give its
+  figures: the 5' direction for 34–36 of the 39 genes and the 3' for 29–33, with its uniform
+  baseline, 32 of 39 leaning to the longer class without any skew (the 5' direction 7), so
+  only its 5' figures are evidence of the skew. Salmon's uniform baseline is given for both
+  directions, 19 (5') and 20 (3') of 39, where "20 of 39" alone was the 3' one.
+- `simulate_reads.py`'s docstring gives the confound on the panel: the not-estimable genes'
+  median gene is 3.9-fold deeper (49,980 against 12,966 fragments) and their smaller class
+  8.8-fold (2,611 against 298), where it said 4-8x and 343.
+
+### Corrections to earlier entries
+- 2.3.0's Spearman of the conditioning factor against realised error (+0.197 and −0.119,
+  n = 40) and its Mann-Whitney p = 0.08–0.96 for the not-identifiable genes were each
+  computed on the genes that had a row in that design, a different set per design. On the
+  panel of 47 (the 39 estimable genes with a finite predicted SE, and 8 not estimable): the
+  conditioning factor against the excess over the counting floor reads +0.207 at uniform
+  coverage and −0.121 at `bias_5p` +2.0, the predicted SE against RMSE +0.726 and −0.058,
+  and the Mann-Whitney of |bias|, not estimable against estimable, p 0.91, 0.95, 0.50, 0.29,
+  0.08, 0.28 and 0.52 from `bias_5p` −2.0 to +2.0.
 
 ## [2.7.0] - 2026-10-04
 
