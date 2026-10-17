@@ -1,19 +1,19 @@
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "isoform-dominance"
-version = "2.7.0"
+version = "2.8.0.dev0"
 description = "Is this functional isoform-class comparison measurable by short reads? Group-level identifiability, quantification and testing from bulk RNA-seq"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Sangeon Kim" }]
 keywords = ["RNA-seq", "alternative splicing", "isoform quantification", "Salmon", "reproducible pipeline"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
@@ -31,6 +31,10 @@ isoform-dominance = "isoform_dominance.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# the saved inputs the self-test's identifiability check runs on
+isoform_dominance = ["data/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

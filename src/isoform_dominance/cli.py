@@ -275,6 +275,35 @@ def _load_saved_inputs(a, cfg):
                 left_out=[] if had else sorted(rest))
 
 
+def _saved_sequences(a, inputs):
+    """``(sequences, background)`` of a rerun from :func:`_load_saved_inputs`: no gene
+    background for a rerun of a run that had none, as for a live one."""
+    background = (None if a.no_gene_background or not inputs["gene_background"]
+                  else inputs["background_sequences"])
+    return inputs["sequences"], background
+
+
+def _analyze(a, cfg, seqs, background, saved, captured=None):
+    """:func:`identifiability.analyze` with the command's flags ``a``; ``saved`` when the
+    sequence is a rerun's from ``--inputs``.  What ``identifiability`` runs, and what the
+    self-test runs on its saved inputs."""
+    return identifiability.analyze(
+        cfg, k=a.k, sequences=seqs,
+        canonical=not a.strand_aware,
+        window=a.window,
+        background_sequences=background,
+        background_fasta=a.background_fasta, decoys=a.decoys,
+        background_gene_transcripts=(False if a.no_gene_background or saved else "auto"),
+        read_length=a.read_length, frag_mean=a.frag_mean, frag_sd=a.frag_sd,
+        paired=not a.single_end, depth=a.depth, tpm=a.tpm, n_donors=a.donors,
+        conditioning_tau=a.tau, min_informative_reads=a.min_informative_reads,
+        min_log2fc=a.min_log2fc, ensembl_release=a.ensembl_release,
+        inputs_out=captured, keep_duplicates=a.keep_duplicates,
+        max_window_records=a.max_window_records,
+        gtf=a.gtf, transcripts_fasta=a.transcripts_fasta,
+        retries=a.retries, retry_wait=a.retry_wait)
+
+
 def _file_flags(a):
     """What is wrong with how --gtf and --transcripts-fasta were passed, or None.  The
     flags they replace are checked here, before the files those name are read;
@@ -337,32 +366,14 @@ def cmd_identifiability(a):
         print("config error: %s" % e, file=sys.stderr)
         return 1
     if inputs is not None:
-        seqs = inputs["sequences"]
-        # no gene background for a rerun of a run that had none, as for a live one
-        background = (None if a.no_gene_background or not inputs["gene_background"]
-                      else inputs["background_sequences"])
+        seqs, background = _saved_sequences(a, inputs)
     else:
         seqs = _load_sequences(a.sequences, "--sequences") if a.sequences else None
         background = (_load_sequences(a.background_sequences, "--background-sequences")
                       if a.background_sequences else None)
     captured = {} if a.save_inputs else None
     try:
-        res = identifiability.analyze(
-            cfg, k=a.k, sequences=seqs,
-            canonical=not a.strand_aware,
-            window=a.window,
-            background_sequences=background,
-            background_fasta=a.background_fasta, decoys=a.decoys,
-            background_gene_transcripts=(False if a.no_gene_background or inputs is not None
-                                         else "auto"),
-            read_length=a.read_length, frag_mean=a.frag_mean, frag_sd=a.frag_sd,
-            paired=not a.single_end, depth=a.depth, tpm=a.tpm, n_donors=a.donors,
-            conditioning_tau=a.tau, min_informative_reads=a.min_informative_reads,
-            min_log2fc=a.min_log2fc, ensembl_release=a.ensembl_release,
-            inputs_out=captured, keep_duplicates=a.keep_duplicates,
-            max_window_records=a.max_window_records,
-            gtf=a.gtf, transcripts_fasta=a.transcripts_fasta,
-            retries=a.retries, retry_wait=a.retry_wait)
+        res = _analyze(a, cfg, seqs, background, inputs is not None, captured)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
     except http.client.InvalidURL as e:
@@ -675,10 +686,14 @@ def _report(a, res):
             print("  NOTE: the classes differ %.1f-fold in mean effective length. Under "
                   "positional coverage skew a 5'-skewed library tends to inflate the "
                   "shorter class (%s) and a 3'-skewed one the longer (%s): in a 49-gene "
-                  "simulation (Salmon, one quantifier, monotone positional skew) the 5' "
-                  "direction held for 35-36 of the 39 genes with a ratio above 1.23x, and "
-                  "the 3' direction for 30-32 of them, against 20 of 39 at uniform "
-                  "coverage. No other quantifier, gene panel or form of skew was tested. "
+                  "simulation with monotone positional skew, Salmon's error took the 5' "
+                  "direction for 35-36 of the 39 genes with a ratio above 1.23x and the 3' "
+                  "direction for 30-32 of them, where at uniform coverage the 5' direction "
+                  "held for 19 of 39 and the 3' for 20. kallisto, on the same reads, took the "
+                  "5' direction for 34-36 and the 3' for 29-33, but it has no bias model and "
+                  "leaned to the longer class at uniform coverage too (32 of 39), so only its "
+                  "5' figures are evidence of the skew. No other quantifier, gene panel or "
+                  "form of skew was tested. "
                   "Measure your libraries' gene-body coverage (RSeQC geneBody_coverage.py) "
                   "to know which direction applies. This tendency assumes the classes are "
                   "ambiguous where the skew concentrates reads. When the shorter class is "
@@ -696,15 +711,15 @@ def _report(a, res):
               "common; a precision figure for such a class describes a quantity nobody "
               "asked for. Review the grouping before using any number above."
               % (g, 100.0 * j), file=sys.stderr)
-    noise = res["counting_noise"]
-    print("  unique-read counting floor on log2 ratio: SE %.3f per donor, "
-          "min resolvable |log2FC| %.3f at n=%d"
+    noise = res["unique_read_counting_se"]
+    print("  unique-read counting SE (best transcript per class) on log2 ratio: %.3f per "
+          "donor, min resolvable |log2FC| %.3f at n=%d"
           % (noise["log2_ratio_se"], noise["min_resolvable_log2fc"], d["n_donors"]))
     print("    (precision of log2(n_a/n_b), the informative-read counts of each class's "
           "best single transcript -- that ratio equals the class ratio only when the two "
           "classes have the same informative fraction, so it can read better than the "
-          "class comparison actually is. The per-class figures above are for the class "
-          "totals themselves.)", file=sys.stderr)
+          "class comparison actually is, or worse. The per-class figures above are for the "
+          "class totals themselves.)", file=sys.stderr)
     gt = res["gene_total"]
     if gt["transcripts_without_windows"]:
         print("  PRECONDITION FAILED: the gene total is not estimable. %s shorter than "
@@ -819,8 +834,10 @@ def cmd_selftest(a):
 
 
 def build_parser():
-    p = argparse.ArgumentParser(prog="isoform-dominance",
-                                description="Isoform-usage quantification and discrimination from bulk RNA-seq.")
+    p = argparse.ArgumentParser(
+        prog="isoform-dominance",
+        description="Is this functional isoform-class comparison measurable by short reads? "
+                    "Group-level identifiability, quantification and testing from bulk RNA-seq")
     p.add_argument("--version", action="version", version="isoform-dominance %s" % __version__)
     sub = p.add_subparsers(dest="cmd", required=True)
 

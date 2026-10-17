@@ -84,9 +84,10 @@ def test_identifiability_json_is_standard_and_says_why_a_figure_is_null(tmp_path
     assert c["estimable"] is True and c["finite_se"] is False
     assert c["conditioning_factor"] == pytest.approx(2 ** 0.5)
     assert c["gls_relative_se"] is None and c["min_resolvable_log2fc"] is None
-    noise = rep["counting_noise"]
+    noise = rep["unique_read_counting_se"]
     assert noise["defined"] is False
     assert noise["log2_ratio_se"] is None and noise["min_resolvable_log2fc"] is None
+    assert rep["counting_noise"] == noise         # the deprecated key, until 3.0
 
 
 def test_a_finite_figure_says_so(tmp_path, capsys):
@@ -101,7 +102,8 @@ def test_a_finite_figure_says_so(tmp_path, capsys):
                      "--json"]) == 0
     rep = strict(capsys.readouterr().out)
     assert rep["contrast"]["finite_se"] is True
-    assert rep["counting_noise"]["defined"] is True
+    assert rep["unique_read_counting_se"]["defined"] is True
+    assert rep["counting_noise"] == rep["unique_read_counting_se"]
     assert all(rep["groups"][g]["finite_se"] for g in ("A", "B"))
 
 
@@ -229,3 +231,24 @@ def test_a_file_holding_nan_or_infinity_is_still_read(tmp_path):
     p.write_text('{"groups": {"A": ["T1"]}, "_note": NaN, "_w": Infinity}')
     cfg = io.load_config(str(p))
     assert cfg["_note"] != cfg["_note"] and cfg["_w"] == float("inf")
+
+
+# --------------------------------------------------------------------------- #
+# extract's sidecar: a meta_info.json with a number that is not finite
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+def test_the_index_sidecar_is_standard_json_whatever_meta_info_holds(tmp_path, token):
+    """Python's json reads ``NaN`` from a hand-edited or damaged meta_info.json, and the
+    sidecar used to write it back as that token.  A count that is not finite is now null,
+    as everywhere else; the donor's index hashes, which the mixed-index check rests on, are
+    kept, so the donor is not treated as having no meta_info."""
+    from test_index_scope import _meta, _quantdir
+    argv = _quantdir(tmp_path, {"D1": _meta("58f7"), "D2": _meta("58f7")})
+    meta = tmp_path / "quant" / "D2" / "aux_info" / "meta_info.json"
+    meta.write_text(meta.read_text().replace("642692", token))
+    assert cli.main(argv) == 0
+    side = strict((tmp_path / "pd.csv.index.json").read_text())
+    assert side["donors"]["D2"]["num_valid_targets"] is None
+    assert side["donors"]["D2"]["index_seq_hash"] == "58f7"
+    assert side["donors"]["D1"]["num_valid_targets"] == 642692
+    assert side["unreadable_meta_info"] == {} and side["missing_meta_info"] == []

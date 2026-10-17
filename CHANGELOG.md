@@ -18,6 +18,134 @@ versioning.
 > decoys and one without as two, and writes the rows in 2.1.1's order again (2.4.0 sorted
 > them by donor name).
 
+## [Unreleased]
+
+### Added
+- **`identifiability` on a saved input says what 2.7.0 said** (`tests/test_saved_identifiability.py`):
+  the `--json` report of the 2.7.0 code on the nine saved examples of `example/saved/` (the
+  eight `annotate --gtf` configs of LEPR, NTRK2, NTRK3 and FLT1 at GENCODE 44 and 50, and the
+  study's LEPR classes) is kept in `tests/data/v270_identifiability`, and the current code
+  must give the same keys, strings, booleans, integers and nulls, every real number within a
+  relative 1e-9, and exit status 0, apart from keys this release adds. The tolerance is for
+  the BLAS build: under other OpenBLAS kernels every file differs byte for byte, the
+  residuals of about 1e-16 by up to about 1e-15 and every other number by up to about 2e-13
+  relative.
+- **The simulation figures are recomputed from stored outputs, and tested** (issue #2):
+  `validation/summarize.py` reads the stored Salmon and kallisto outputs and inputs of
+  `validation/data` and the installed package, checks every file against the SHA-256 its
+  README names, and recomputes every simulation figure the README, the CLI, the docstrings and
+  `simulate_reads.py`'s docstring quote (the comments of `run_simulation.py` are not checked),
+  with the four-row comparison of issue #2 against the v2.1.1
+  unique-k-mer gate (`validation/summary.json`, and the generated block of
+  `validation/README.md`). Every figure is over one panel, the 47 genes with a row in all seven
+  Salmon designs (PFKL and EPOR are left out). It also checks that the package still predicts
+  for each gene what every one of the 720 stored rows recorded; when it does not, the stored
+  comparison no longer describes the code that ships. `tests/test_validation.py` holds the
+  files, that check, the summary and every quoted figure to it; CI runs no quantifier.
+- **The harness reads the stored inputs bundle**: `validation/run_simulation.py` and
+  `simulate_reads.py` take `--inputs validation/data/sweep116.json.gz` in place of a folder of
+  per-gene files (`--rundir`, still accepted), read as it is: the simulator draws each gene's
+  transcripts in the order its input gives them, and the bundle keeps the files' order.
+  `tests/test_validation_harness.py` checks that a replicate simulated from the bundle and one
+  from the bundle unpacked into per-gene files are the same fragments and truth, and, on a
+  reordered copy, that the order is kept (the bundle itself is in sorted order, so sorting
+  would not show on it). CI's ruff covers `validation/`. What the simulation computes and the
+  Salmon path are unchanged.
+- **The four-row table** (`validation/README.md`): the gate passes 45 of the 47 panel genes.
+  Passed and estimable at conditioning <= 10, 6 genes (median RMSE at uniform coverage 0.173);
+  above 10, 31 (0.190), not clearly worse at uniform coverage and with a smaller worst bias
+  under skew (2.01 against 2.70 log2, Mann-Whitney p 0.12). Failed and estimable, 2 (CD44,
+  ESR1; 0.267). Failed and not estimable, none. Passed and not estimable, 8 (0.163).
+- **The self-test runs `identifiability`** on the study's LEPR classes from the GENCODE 44
+  (Ensembl 110) inputs, the study's index release, saved with the package
+  (`isoform_dominance/data/`, byte for byte `example/saved/`'s, in the wheel), through the
+  functions `identifiability --inputs` runs (`cli._saved_sequences`, `cli._analyze`). It
+  checks the verdict, `identifiable`, and the contrast's min |log2FC|, 0.1290 within 0.0005
+  (0.12896 at conditioning 2.747). One more line in the output and one more check in
+  `selftest --json`; the other checks and the reference P values do not move.
+- CI tests Python 3.14 too.
+- **A JOSS draft PDF of `paper.md`** (`.github/workflows/draft-pdf.yml`, the
+  openjournals draft action): built when `paper.md`, `paper.bib` or the workflow changes on
+  `main` or in a pull request, or by hand, and kept as an artifact.
+
+### Changed
+- **The "counting-noise floor" is renamed the unique-read counting SE (best transcript per
+  class)**: it is the Poisson SE of `log2(n_a/n_b)` for each class's best transcript's
+  informative reads, an estimator that counts only unambiguously assignable reads, and no
+  floor: on the README's LEPR example it reads 0.366 where the contrast's
+  `min_resolvable_log2fc` from the whole system is 0.234. `identifiability.unique_read_counting_se`
+  replaces `counting_noise_floor`, which still returns the same with a `DeprecationWarning`;
+  the `--json` report gains `unique_read_counting_se`, and `counting_noise` holds the same
+  until 3.0, when it and the old function go. The CLI line reads "unique-read counting SE
+  (best transcript per class) on log2 ratio"; its figures do not move. The README's layer
+  table, the API reference and the two places `paper.md` used the term follow.
+- **The license is an SPDX expression**: `license = "MIT"` with `license-files = ["LICENSE"]`,
+  and no License classifier, which setuptools deprecates; the build needs setuptools >= 77.
+  `python -m build` writes no license warning, and the wheel's metadata says
+  `License-Expression: MIT`.
+- **One title, the paper's, and one line of introduction.** CITATION.cff's `title`, which
+  Zenodo's record takes, is `paper.md`'s: "isoform-dominance: deciding whether a functional
+  isoform-class comparison is measurable before running it". The line of introduction is
+  pyproject's `description`, and the CLI's help, the package docstring, the README and the
+  docs' front page now say it the same (`tests/test_titles.py`).
+
+### Fixed
+- **`extract`'s `<out>.index.json` is standard JSON whatever `meta_info.json` holds.** It was
+  written with `json.dump` alone, so a hand-edited or damaged `aux_info/meta_info.json` with
+  `NaN` or `Infinity` in a count (`num_valid_targets`, `num_decoy_targets`), which Python's
+  `json` reads, went into the sidecar as that token, which a standard parser refuses. A
+  number that is not finite is now null, as in every other JSON the package writes
+  (`io.finite_json`, `allow_nan=False`). Such a file is not treated as unreadable: the
+  donor's index hashes, which the mixed-index check rests on, are good, and treating the
+  donor as having no meta_info would drop them. A normal `meta_info.json` gives the sidecar
+  2.6.0 wrote, byte for byte, and the per-donor CSV is untouched.
+
+### Documented
+- **The README's identifiability example runs from inputs in the repository**: the LEPR
+  config and saved inputs of GENCODE 50 in `example/saved/`, with `--inputs`. Every figure of
+  the block is the one it showed; the header names the saved inputs, and the counting line
+  has its new name. `tests/test_readme_example.py` runs the command from the README with
+  every socket refused, compares each line, checks exit status 0 and, at `--min-log2fc 0.1`,
+  3, and holds the `annotate` block's transcript counts (7 and 2) to the saved config.
+- **A second quantifier was run, and the documentation said none was.** The README, the
+  NOTE `identify` prints on the skew direction and `class_efflen_ratio`'s docstring called
+  the simulation "Salmon, one quantifier" and said no other quantifier was tested; kallisto
+  0.52 had quantified the same reads (`validation/data/sim/k1_*.json`). They now give its
+  figures: the 5' direction for 34–36 of the 39 genes and the 3' for 29–33, with its uniform
+  baseline, 32 of 39 leaning to the longer class without any skew (the 5' direction 7), so
+  only its 5' figures are evidence of the skew. Salmon's uniform baseline is given for both
+  directions, 19 (5') and 20 (3') of 39, where "20 of 39" alone was the 3' one.
+- **Sentences that were wrong.** The layers are computed "from sequence and the stated
+  design", not "from sequence alone" (README, `identifiability`'s module docstring): the read
+  model and every precision figure depend on read and fragment length, depth, TPM and donors,
+  and on the saved LEPR inputs at `--min-log2fc 0.5`, `--depth 3e6` or `--tpm 1` turns
+  `identifiable` with exit 0 into `weakly_identifiable` with exit 3. `informative_fraction`'s
+  docstring said a unique stretch mid-fragment goes unread with a 200 nt fragment and 100 nt
+  reads; paired 2 x 100 nt reads read a 200 nt fragment end to end, and the example is now a
+  300 nt fragment, or a single-end read (a test holds both: 1.0 for the 200 nt fragment, 0.164
+  in a 1,000 nt transcript, 0.0 for the other two; it passed before, as only the docstring
+  changed). The README's layer table says "between the two sequenced ends". The
+  `min_resolvable_log2fc` docstring no longer calls the figure "a floor": its standard error,
+  the stored simulation's `predicted_se`, is not a lower bound on the replicate scatter a
+  quantifier shows, and at uniform coverage the replicate SD was below it for 35 of the 39
+  estimable genes. `docs/index.md` calls the LEPR result the reference result, not a
+  published one (the manuscript is under review), and describes the Wilcoxon test as the
+  README does: exact only with no zero difference and no tie (and n <= 50), otherwise an
+  exhaustive permutation test at n <= 13 and the normal approximation above.
+- `simulate_reads.py`'s docstring gives the confound on the panel: the not-estimable genes'
+  median gene is 3.9-fold deeper (49,980 against 12,966 fragments) and their smaller class
+  8.8-fold (2,611 against 298), where it said 4-8x and 343.
+
+### Corrections to earlier entries
+- 2.3.0's Spearman of the conditioning factor against realised error (+0.197 and −0.119,
+  n = 40) and its Mann-Whitney p = 0.08–0.96 for the not-identifiable genes were each
+  computed on the genes that had a row in that design, a different set per design. On the
+  panel of 47 (the 39 estimable genes with a finite predicted SE, and 8 not estimable): the
+  conditioning factor against the excess over the counting floor reads +0.207 at uniform
+  coverage and −0.121 at `bias_5p` +2.0, the predicted SE against RMSE +0.726 and −0.058,
+  and the Mann-Whitney of |bias|, not estimable against estimable, p 0.91, 0.95, 0.50, 0.29,
+  0.08, 0.28 and 0.52 from `bias_5p` −2.0 to +2.0.
+
 ## [2.7.0] - 2026-10-04
 
 A minor version: `stats` reports different Stouffer and stratified P values for some

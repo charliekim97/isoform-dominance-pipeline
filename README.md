@@ -6,7 +6,7 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20672051.svg)](https://doi.org/10.5281/zenodo.20672051)
 
-**Is this functional isoform-class comparison measurable by short reads? Answer that first, then quantify and test it — one config away for any gene.**
+**Is this functional isoform-class comparison measurable by short reads? Group-level identifiability, quantification and testing from bulk RNA-seq**
 
 Most isoform analyses stumble on two things: deciding *which transcripts form a functional
 class*, and knowing whether short reads can resolve the classes at all. `isoform-dominance`
@@ -109,9 +109,10 @@ system, and reports the smallest fold change the stated design can resolve for e
 and for the contrast between them. Ask it for the effect size you need:
 
 ```bash
-isoform-dominance identifiability --config config.json --min-log2fc 0.5
+isoform-dominance identifiability --config example/saved/LEPR.gencode50.config.json \
+    --inputs example/saved/LEPR.gencode50.inputs.json --min-log2fc 0.5
 # Identifiability (window=31, canonical k-mers)
-#   annotation: Ensembl release 116
+#   annotation: Ensembl release 116; sequence from saved inputs (release 116, example/saved/LEPR.gencode50.inputs.json)
 #   background: 9 same-gene transcript(s)
 #   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
 #   [identifiable] iso_1165aa: min |log2FC| 0.064; class 5369 unique k-mers; best transcript 5399 bp in 1 block(s), ~1072 informative reads; conditioning 3.62
@@ -119,7 +120,7 @@ isoform-dominance identifiability --config config.json --min-log2fc 0.5
 #   contrast iso_896aa vs iso_1165aa: min |log2FC| 0.234; identifiable, conditioning 117.68
 #   effective length: iso_896aa 5103 bp vs iso_1165aa 8072 bp (mean per transcript), log2 ratio -0.66
 #   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_896aa median 0.07 [0.05-0.12], 372 positions over 7 transcript(s); iso_1165aa median 0.67 [0.51-0.84], 10738 positions over 2 transcript(s)
-#   unique-read counting floor on log2 ratio: SE 0.187 per donor, min resolvable |log2FC| 0.366 at n=1
+#   unique-read counting SE (best transcript per class) on log2 ratio: 0.187 per donor, min resolvable |log2FC| 0.366 at n=1
 #   EFFECT SIZE: |log2FC| 0.500 resolved by both class totals and the contrast at this design
 #   VERDICT: identifiable
 # exit status 0; with --min-log2fc 0.1 the same run reports NOT resolved and exits 3
@@ -129,12 +130,13 @@ This example is a counterexample to the skew direction the command states (see b
 iso_896aa is the shorter class but is distinguished at its 5' end (median 0.07), and in the
 simulation its bias ran against that direction under 5 of the 6 skews.
 
-The release-116 sequences behind the 2026-09-11 block this replaces, run offline through
-`--sequences` and `--background-sequences` with the nine same-gene background transcripts;
-transcript and k-mer counts move as the annotation does. The `effective length` and
-`distinguishing windows` lines were added from a live run against the same release on
-2026-09-13, in which every other line reproduced unchanged. The header and the per-class
-lines are shown as 2.4.1 prints them; the figures are those runs'. Read the `min |log2FC|` figures first:
+The block is that command's standard output (its NOTEs go to stderr), run in a clone of this
+repository with no network: `example/saved/` holds the LEPR config `annotate --gtf` proposes
+from GENCODE 50 (Ensembl 116) and the sequence `--save-inputs` saved from the same files, the
+nine configured transcripts and the nine other transcripts of the gene, and its README says
+how they were made. `tests/test_readme_example.py` runs the command with every socket refused
+and compares each line; a live run against another release gives other transcript and k-mer
+counts, as the annotation moves. Read the `min |log2FC|` figures first:
 they are what the verdict and the exit status are built on. `conditioning` is a diagnostic.
 Without `--min-log2fc` the verdict falls back to `--tau` on the conditioning factor, which has
 no calibrated value — the same run then reads `weakly_identifiable` — and the command says on
@@ -147,10 +149,14 @@ effective length under skew, so the class effective-length ratio tracked the siz
 and, with the direction of the skew, its sign. Positions are fractions of each transcript's own length, 0 at
 the 5' end, because skew acts on each molecule in its own coordinates. When the classes differ
 at least 1.23-fold (|log2 ratio| >= 0.3) the command says on stderr which class each direction
-of skew tends to inflate, with the evidence: in a 49-gene simulation (Salmon, one quantifier,
-monotone positional skew) the 5' direction held for 35–36 of the 39 genes above that ratio, the
-3' direction for 30–32, against 20 of 39 at uniform coverage. No other quantifier, gene panel
-or form of skew was tested, and below that ratio nothing was measured, so nothing is said.
+of skew tends to inflate, with the evidence: in a 49-gene simulation (monotone positional skew)
+Salmon's error took the 5' direction for 35–36 of the 39 genes above that ratio and the 3'
+direction for 30–32, where at uniform coverage the 5' direction held for 19 of 39 and the 3' for
+20. kallisto, on the same reads, took the 5' direction for 34–36 and the 3' for 29–33, but it has
+no bias model and leaned to the longer class at uniform coverage too, 32 of 39 (the 5' direction
+7): its 3' figures are no evidence of the skew, and only the 5' ones turn toward it. No other
+quantifier, gene panel or form of skew was tested, and below that ratio nothing was measured, so
+nothing is said.
 
 Exit codes: **0** no `--min-log2fc` given, or it is resolved · **3** `--min-log2fc` given and
 not resolved at the stated design · **2** precondition failure: a transcript shorter than
@@ -170,7 +176,11 @@ and `estimable` or `finite_se` beside it says why.
 > returns numbers for a non-identifiable model just as readily. Both cases are regression-tested
 > in `tests/test_identifiability_model.py`.
 
-**What it checks, in three layers** — all from sequence alone, before any read is quantified:
+**What it checks, in three layers** — all from sequence and the stated design, before any read is
+quantified (the read model depends on the read length, paired or single ends and the
+fragment-length distribution, the `min |log2FC|` figures on the mean fragment length, and all of
+them on depth and TPM, the `min |log2FC|` figures also on the number of donors, so `--depth` or
+`--tpm` can change the verdict):
 
 > **Pass `--background-fasta`.** The default background is the gene's own remaining
 > transcripts, which is better than comparing the configured classes alone but still
@@ -301,7 +311,7 @@ and `estimable` or `finite_se` beside it says why.
 | Layer | Reports | Why it is not the layer above |
 |---|---|---|
 | Sequence uniqueness | unique k-mers, bases covered, block structure | judged against a background — the gene's other transcripts by default, the whole index with `--background-fasta` — not just the configured classes |
-| Read model | `informative_fraction`, `expected_informative_reads`, counting-noise floor on log2 ratio | informativeness is scored on the **sequenced ends**, not the fragment: a unique region mid-fragment is never observed |
+| Read model | `informative_fraction`, `expected_informative_reads`, unique-read counting SE (best transcript per class) of the log2 ratio | informativeness is scored on the **sequenced ends**, not the fragment: a unique region between the two sequenced ends is never observed |
 | Estimability | row-space residual, rank, and `min_resolvable_log2fc` from the Poisson-weighted GLS covariance, for each class total **and** their contrast; the structural conditioning factor as a diagnostic | a full-rank system with a near-degenerate contrast passes a rank test and still yields nothing |
 
 The headline figure is `min_resolvable_log2fc`: 1.96 standard errors of the log2 class ratio
@@ -322,7 +332,16 @@ below the predicted SE in 34–37 of 39, as it did in 35 of 39 at uniform covera
 scatter gives no sign of the bias. NTRK3 holds a replicate SD of 0.016–0.025 while its bias
 runs from 0.002 to 2.82 log2. **Replicate agreement does not detect this failure.**
 Measure your own libraries' gene-body coverage (RSeQC `geneBody_coverage.py`) before reading
-the figure as an error bar.
+the figure as an error bar. Set against the unique-k-mer gate of v2.1.1, on the 47 genes with
+a row in every design, the conditioning factor did not sort genes by error: the 31 genes the
+gate passes with conditioning above 10 had a median RMSE at uniform coverage of 0.190 against
+0.173 for the 6 at or below it, and a smaller worst bias under skew, 2.01 against 2.70 log2.
+The gate failed two genes the structure calls estimable (CD44, ESR1) and passed all 8 it calls
+not estimable, whose uniform RMSE (median 0.163) was no worse than the estimable genes'; as a
+group they are deeper by construction, their median gene 3.9 times the estimable genes' in
+fragments (`validation/README.md` has the table and that confound). Every
+simulation figure this README quotes is recomputed from the stored outputs in `validation/` by
+`validation/summarize.py`, and a test fails when one no longer agrees.
 
 The conditioning factor is kept as a **diagnostic**, not a headline — a **geometry proxy, not a standard
 error** — it assumes `Var(y) = sigma^2 I`, which a quantifier does not satisfy, and it moves by

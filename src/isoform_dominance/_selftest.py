@@ -2,10 +2,14 @@
 
 Generates synthetic Salmon quant.sf files from the per-transcript LEPR TPM values of the
 choroid-plexus reanalysis, runs extract + stats (+ contamination), and asserts the reference
-result is reproduced: combined n=11, 11/11 short>long, paired Wilcoxon P ~= 9.77e-4.
+result is reproduced: combined n=11, 11/11 short>long, paired Wilcoxon P ~= 9.77e-4.  Then
+runs ``identifiability`` on the study's LEPR classes from the GENCODE 44 (Ensembl 110) inputs
+saved in the package, as ``identifiability --inputs`` runs them, and checks its verdict and
+the contrast's min |log2FC|.
 """
 import tempfile, os, csv, math, shutil
-from . import extract, stats, contamination
+from importlib import resources
+from . import cli, extract, io, stats, contamination
 
 # donor: (ENST00000371060, ENST00000616738, ENST00000349533) TPM  (control choroid plexus)
 DATA = {
@@ -25,6 +29,27 @@ CONFIG = {
                                            "contaminant": ["RBFOX3", "SNAP25", "MAP2", "GAD1"]}},
 }
 EXPECT = {"GSE228458": (5, 5), "GSE137619": (6, 6), "COMBINED": (11, 11, 9.7656e-4)}
+
+#: The study's classes (CONFIG's) on the GENCODE 44 inputs saved with the package -- byte for
+#: byte example/saved's -- at the default design: what 2.7.0 gave, the contrast's min
+#: |log2FC| 0.12896 at conditioning 2.747, to the tolerance the check allows.
+IDENTIFIABILITY = {"config": "LEPR.gencode44.study.config.json",
+                   "inputs": "LEPR.gencode44.inputs.json",
+                   "verdict": "identifiable", "min_resolvable_log2fc": 0.1290, "tolerance": 0.0005}
+
+
+def identifiability_report():
+    """``identifiability --config <the study config> --inputs <the saved inputs>``'s report,
+    through the functions the command runs, from the files the package carries."""
+    data = resources.files(__package__).joinpath("data")
+    with resources.as_file(data.joinpath(IDENTIFIABILITY["config"])) as config, \
+            resources.as_file(data.joinpath(IDENTIFIABILITY["inputs"])) as inputs:
+        a = cli.build_parser().parse_args(["identifiability", "--config", str(config),
+                                           "--inputs", str(inputs)])
+        cfg = io.load_config(a.config)
+        saved = cli._load_saved_inputs(a, cfg)
+        seqs, background = cli._saved_sequences(a, saved)
+        return cli._analyze(a, cfg, seqs, background, True)
 
 
 def _write_quant(path, t1, t2, tl):
@@ -107,6 +132,18 @@ def evaluate(base):
     qc_ok = os.path.exists(os.path.join(base, "qc.png")) and all(x < 0.2 for x in ratios)
     check("contamination_qc", qc_ok, "contamination-QC purity ratios %s < 0.2"
           % [round(x, 3) for x in ratios], ratios=ratios, threshold=0.2)
+    want = IDENTIFIABILITY
+    rep = identifiability_report()
+    fc = rep["contrast"]["min_resolvable_log2fc"]
+    check("identifiability", rep["verdict"] == want["verdict"] and math.isfinite(fc)
+          and abs(fc - want["min_resolvable_log2fc"]) <= want["tolerance"],
+          "identifiability: LEPR short vs long, saved GENCODE 44 inputs: %s, contrast min "
+          "|log2FC| %.4f (expect %s, %.4f +- %.4f)"
+          % (rep["verdict"], fc, want["verdict"], want["min_resolvable_log2fc"],
+             want["tolerance"]),
+          verdict=rep["verdict"], min_resolvable_log2fc=fc,
+          conditioning_factor=rep["contrast"]["conditioning_factor"],
+          expect={k: want[k] for k in ("verdict", "min_resolvable_log2fc", "tolerance")})
 
     combinations = {}
     for key in COMBINATIONS:

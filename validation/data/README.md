@@ -57,7 +57,9 @@ positional or sequence bias model.
 | `sim/class_sizes.json` | per gene, over the 30 replicates of the `bias_5p` = -2.0 design: the median fragments drawn for each class of the primary comparison (`nA`, `nB`), the median true log2 ratio (`true`), the median fragments of the gene (`total`), and how many replicates had a defined true ratio (`n_true`) | `7c83c78a3a28f41a254f69905aa83958b17ca764935fc01deb96f973fff312dc` |
 | `sweep116.json.gz` | gzipped JSON `{"format", "source", "genes": {gene: {"config", "sequences"}}}`: each gene's config and `{transcript_id: cdna}` exactly as the simulation read them, from one file per gene each (SHA-256 of those files below) | `ebbb3654cb1ec816eb71e561aa2481f681a15654db339eb6f4614fc7d565455b` |
 
-Nothing runs them yet. Salmon is not run in CI.
+`../summarize.py` reads them and recomputes every figure the documentation quotes from them, and `tests/test_validation.py`
+holds the files to the SHA-256 above, the package's predictions to the ones the rows recorded, and the summary to them.
+Salmon is not run in CI.
 
 <details><summary>SHA-256 of the 98 per-gene files bundled in <code>sweep116.json.gz</code></summary>
 

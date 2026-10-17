@@ -1,15 +1,18 @@
 """Simulate, quantify, and compare against what the surrogate predicted.
 
     # once
-    python run_simulation.py index --fasta cdna.fa.gz --index salmon_idx
+    python validation/run_simulation.py index --fasta cdna.fa.gz --index salmon_idx
 
     # the checkpoint -- nothing downstream means anything until this passes
-    python run_simulation.py checkpoint --rundir sweep --index salmon_idx \
-        --work sim --gene PIK3CA --depth-scale 20 --replicates 30
+    python validation/run_simulation.py checkpoint --inputs validation/data/sweep116.json.gz \
+        --index salmon_idx --work sim --gene PIK3CA --depth-scale 20 --replicates 30
 
-    # a design point
-    python run_simulation.py run --rundir sweep --index salmon_idx --work sim \
-        --depth-scale 1 --ratio 1 --replicates 30 --out sim/d1_r1.json
+    # a design point: validation/data/sim/c1_d1.json is this at --bias-5p 0
+    python validation/run_simulation.py run --inputs validation/data/sweep116.json.gz \
+        --index salmon_idx --work sim --bias-5p 0 --replicates 30 --out c1_d1.json
+
+``--inputs`` is the bundle the stored outputs were made from; ``--rundir`` takes the per-gene
+``<gene>.cfg.json`` and ``<gene>.seqs.json`` it holds instead (``simulate_reads.read_inputs``).
 
 Truth is the fragment count drawn per transcript, and the comparison is against Salmon's
 ``NumReads`` -- also a fragment count.  Nothing is compared in TPM, because an effective
@@ -40,6 +43,22 @@ from isoform_dominance import identifiability as I
 SIM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "simulate_reads.py")
 
 
+def _sim():
+    """simulate_reads, loaded from beside this file."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_sim", SIM)
+    sim = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sim)
+    return sim
+
+
+def gene_inputs(a):
+    """``{gene: {"config", "sequences"}}`` from ``--inputs`` or ``--rundir``."""
+    if (a.rundir is None) == (a.inputs is None):
+        sys.exit("give exactly one of --inputs and --rundir")
+    return _sim().read_inputs(a.rundir, a.inputs)
+
+
 def sh(cmd, **kw):
     print("  $ %s" % " ".join(cmd))
     return subprocess.run(cmd, check=True, **kw)
@@ -57,8 +76,9 @@ def cmd_index(a):
     print("index built at %s" % a.index)
 
 
-def predicted(rundir, gene, tpm, depth_scale, mean_efflen=None, ratio=None):
-    """What the shipped code says before any reads exist.
+def predicted(source, gene, tpm, depth_scale, mean_efflen=None, ratio=None):
+    """What the shipped code says before any reads exist, for ``gene`` of ``source``
+    (:func:`gene_inputs`).
 
     ``mean_efflen`` must be the one the simulation drew with.  It was omitted once and
     the simulator carried its own copy of the fragment-count formula with a different
@@ -67,9 +87,8 @@ def predicted(rundir, gene, tpm, depth_scale, mean_efflen=None, ratio=None):
     30-replicate check can honestly use -- see :func:`checkpoint_counts`, which compares
     the counts directly instead.
     """
-    cfg = json.load(open(os.path.join(rundir, "%s.cfg.json" % gene)))
-    seqs = {t.split(".")[0]: s
-            for t, s in json.load(open(os.path.join(rundir, "%s.seqs.json" % gene))).items()}
+    cfg = source[gene]["config"]
+    seqs = {t.split(".")[0]: s for t, s in source[gene]["sequences"].items()}
     need = {t.split(".")[0] for v in cfg["groups"].values() for t in v}
     kw = {} if mean_efflen is None else {"mean_efflen": mean_efflen}
     res = I.analyze(cfg,
@@ -95,10 +114,7 @@ def predicted(rundir, gene, tpm, depth_scale, mean_efflen=None, ratio=None):
 
 def _predict_at(cfg, seqs, tpm, depth_scale, mean_efflen, ratio):
     """The contrast figures solved at the abundances a --ratio run actually simulates."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("_sim", SIM)
-    sim = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(sim)
+    sim = _sim()
 
     groups = {g: [t.split(".")[0] for t in v] for g, v in cfg["groups"].items()}
     pc = cfg.get("primary_comparison") or sorted(groups)[:2]
@@ -139,8 +155,8 @@ def checkpoint_counts(truth, tpm, depth_scale, mean_efflen):
     return out
 
 
-def expected_total(rundir, gene, tpm, depth_scale, mean_efflen):
-    seqs = json.load(open(os.path.join(rundir, "%s.seqs.json" % gene)))
+def expected_total(source, gene, tpm, depth_scale, mean_efflen):
+    seqs = source[gene]["sequences"]
     return sum(I.expected_informative_reads(
         1.0, tpm, len(s), depth=30e6 * depth_scale,
         mean_efflen=mean_efflen, frag_mean=I.DEFAULT_FRAG_MEAN) for s in seqs.values())
@@ -161,8 +177,8 @@ def quantify(index, r1, r2, outdir, threads, extra,
     """Dispatch to a quantifier. The salmon path below is unchanged from the version
     that produced every c1_*.json and p1_*.json result. Prove that before reading any
     kallisto number: re-run the b=0 leg to a fresh --out with the same design and diff
-    it per gene against sim/c1_d1.json. The seed is replicate-only
-    (simulate_reads.py:232), so the fragments are identical and the signed errors must
+    it per gene against validation/data/sim/c1_d1.json. The seed is replicate-only
+    (simulate_reads.main), so the fragments are identical and the signed errors must
     match to the bit. Any nonzero difference means this refactor moved the salmon path
     and the twelve stored legs can no longer be compared with anything."""
     if quantifier == "kallisto":
@@ -208,7 +224,7 @@ def _quantify_kallisto(index, r1, r2, outdir, threads, kallisto_bin):
         except ValueError:
             raise RuntimeError("abundance.tsv header %r has no est_counts column; this "
                                "kallisto writes a layout this harness does not know"
-                               % header)
+                               % header) from None
         for line in f:
             pes = line.rstrip("\n").split("\t")
             counts[pes[0].split(".")[0]] = float(pes[col])
@@ -279,10 +295,11 @@ def _quantify_salmon(index, r1, r2, outdir, threads, extra):
     return counts, diag
 
 
-def one_replicate(a, rep, genes_arg=None):
+def one_replicate(a, rep, source, genes_arg=None):
     work = a.work
     os.makedirs(work, exist_ok=True)
-    cmd = [sys.executable, SIM, a.rundir, work,
+    where = [a.rundir, work] if a.rundir else [work, "--inputs", a.inputs]
+    cmd = [sys.executable, SIM] + where + [
            "--depth-scale", str(a.depth_scale),
            "--replicate", str(rep), "--tpm", str(a.tpm),
            "--mean-efflen", str(a.mean_efflen)]
@@ -311,7 +328,7 @@ def one_replicate(a, rep, genes_arg=None):
     out = {}
     for gene, g in truth["genes"].items():
         pc = g["primary_comparison"]
-        cfg = json.load(open(os.path.join(a.rundir, "%s.cfg.json" % gene)))
+        cfg = source[gene]["config"]
         groups = {k: [t.split(".")[0] for t in v] for k, v in cfg["groups"].items()}
         est = {c: sum(counts.get(t, 0.0) for t in groups[c]) for c in pc}
         tru = g["class_fragments"]
@@ -375,7 +392,7 @@ def spearman(x, y):
     return num / den if den else float("nan")
 
 
-def summarise(per_rep, rundir, tpm, depth_scale, genes=None, mean_efflen=None, ratio=None):
+def summarise(per_rep, source, tpm, depth_scale, genes=None, mean_efflen=None, ratio=None):
     rows = []
     names = genes or sorted({g for r in per_rep for g in r})
     for gene in names:
@@ -387,7 +404,7 @@ def summarise(per_rep, rundir, tpm, depth_scale, genes=None, mean_efflen=None, r
                 errs.append(e["estimated_log2_ratio"] - e["true_log2_ratio"])
         if len(ests) < 3:
             continue
-        p = predicted(rundir, gene, tpm, depth_scale, mean_efflen, ratio)
+        p = predicted(source, gene, tpm, depth_scale, mean_efflen, ratio)
         rows.append(dict(gene=gene, n=len(ests),
                          realised_sd=statistics.stdev(ests),
                          bias=statistics.median(errs),
@@ -401,15 +418,16 @@ def cmd_checkpoint(a):
           "Nothing downstream is meaningful until the drawn fragment count matches what\n"
           "the prediction assumes, the realised SD approaches the predicted one, and the\n"
           "bias approaches zero.\n" % (a.gene, a.depth_scale, a.replicates))
+    source = gene_inputs(a)
     per, truths, diags = [], [], []
     for i in range(a.replicates):
-        out, truth, diag = one_replicate(a, i, a.gene)
+        out, truth, diag = one_replicate(a, i, source, a.gene)
         per.append(out)
         truths.append(truth)
         diags.append(diag)
 
     # (1) exact: did we draw what the prediction assumed?
-    want = expected_total(a.rundir, a.gene, a.tpm, a.depth_scale, a.mean_efflen)
+    want = expected_total(source, a.gene, a.tpm, a.depth_scale, a.mean_efflen)
     drawn = [dict(checkpoint_counts(t, a.tpm, a.depth_scale, a.mean_efflen))[a.gene]
              for t in truths]
     got = statistics.mean(drawn)
@@ -431,16 +449,15 @@ def cmd_checkpoint(a):
               "  --tpm, --depth-scale and --mean-efflen are the same on both sides.")
         return 1
 
-    rows = summarise(per, a.rundir, a.tpm, a.depth_scale, [a.gene], a.mean_efflen, a.ratio)
+    rows = summarise(per, source, a.tpm, a.depth_scale, [a.gene], a.mean_efflen, a.ratio)
     if not rows:
         sys.exit("no usable replicates")
     r = rows[0]
-    # The prediction is a floor on the SD of the best *unbiased* linear estimator.  A
-    # biased estimator can sit below it, and salmon does: on PIK3CA it came back with
-    # SD 0.0644 against a predicted 0.1048 while carrying a +0.0545 bias -- lower
-    # variance bought with bias, which is what an EM/VB estimator with a prior does.
-    # Comparing SD alone therefore asks the wrong question; total error is the one the
-    # prediction is about.
+    # The prediction is the delta-method SE of the surrogate system under Poisson counts,
+    # not a lower bound on what a quantifier's replicates show: on PIK3CA salmon came back
+    # with SD 0.0644 against a predicted 0.1048 while carrying a +0.0545 bias.  Comparing
+    # SD alone therefore asks the wrong question; total error is the one the prediction is
+    # about.
     ratio = r["rmse"] / r["predicted_se"] if r["predicted_se"] else float("inf")
     band = 3.0 / math.sqrt(2.0 * max(1, r["n"] - 1))
     bias_se = 1.253 * r["realised_sd"] / math.sqrt(r["n"])
@@ -492,10 +509,11 @@ def cmd_checkpoint(a):
 
 
 def cmd_run(a):
-    reps = [one_replicate(a, i) for i in range(a.replicates)]
+    source = gene_inputs(a)
+    reps = [one_replicate(a, i, source) for i in range(a.replicates)]
     per = [r[0] for r in reps]
     diags = [r[2] for r in reps]
-    rows = summarise(per, a.rundir, a.tpm, a.depth_scale, None, a.mean_efflen, a.ratio)
+    rows = summarise(per, source, a.tpm, a.depth_scale, None, a.mean_efflen, a.ratio)
     json.dump({"design": {"depth_scale": a.depth_scale, "ratio": a.ratio,
                           "tpm": a.tpm, "bias_5p": a.bias_5p,
                           "mean_efflen": a.mean_efflen,
@@ -517,8 +535,9 @@ def cmd_run(a):
     # `realised_sd` is the spread of the estimates and carries the estimand's own Poisson
     # variation between replicates; RMSE is the distance from the realised truth and does
     # not.  Under a coverage-model violation the SD line degrades gently while RMSE blows
-    # up: at --bias-5p 2.0 the SD-only C3 read 0.472 and looked survivable while
-    # Spearman(predicted, RMSE) was -0.080 and the median RMSE/predicted was 5.03.
+    # up: at --bias-5p 2.0, over the 41 rows printed here, the SD-only C3 read +0.472 and
+    # looked survivable while Spearman(predicted, RMSE) was -0.086 and the median
+    # RMSE/predicted was 4.55.
     # The gap between the two lines IS the bias term.
     fin = [r for r in good if r["predicted_se"] and math.isfinite(r["predicted_se"])]
     if fin:
@@ -559,7 +578,7 @@ def cmd_run(a):
     return 0
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -575,7 +594,11 @@ def main():
 
     for name, fn in (("checkpoint", cmd_checkpoint), ("run", cmd_run)):
         p = sub.add_parser(name)
-        p.add_argument("--rundir", required=True)
+        p.add_argument("--inputs", default=None,
+                       help="the inputs bundle, validation/data/sweep116.json.gz")
+        p.add_argument("--rundir", default=None,
+                       help="the per-gene <gene>.cfg.json and <gene>.seqs.json, in place of "
+                            "--inputs")
         p.add_argument("--index", required=True)
         p.add_argument("--work", default="sim")
         p.add_argument("--depth-scale", type=float, default=1.0)
@@ -604,7 +627,7 @@ def main():
             p.add_argument("--gene", required=True)
         p.set_defaults(func=fn)
 
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     sys.exit(a.func(a))
 
 

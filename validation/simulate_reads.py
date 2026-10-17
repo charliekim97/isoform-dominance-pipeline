@@ -1,9 +1,13 @@
 """Simulate paired-end fragments from real transcript sequences, with the truth kept.
 
-    python simulate_reads.py RUNDIR OUTDIR [--depth-scale 1.0] [--ratio 1.0]
-                             [--replicate 0] [--tpm 10] [--genes A,B,...]
+    python validation/simulate_reads.py OUTDIR --inputs validation/data/sweep116.json.gz
+                             [--depth-scale 1.0] [--ratio 1.0] [--replicate 0] [--tpm 10]
+                             [--genes A,B,...]
+    python validation/simulate_reads.py RUNDIR OUTDIR [...]    # per-gene files instead
 
-Writes OUTDIR/rep<N>_1.fq.gz, rep<N>_2.fq.gz and OUTDIR/rep<N>.truth.json.  The truth is
+Writes OUTDIR/rep<N>_1.fq.gz, rep<N>_2.fq.gz and OUTDIR/rep<N>.truth.json.  The genes are the
+bundle's (``--inputs``), or the ``<gene>.cfg.json`` and ``<gene>.seqs.json`` of RUNDIR it was
+made from; :func:`read_inputs` says why the order of each gene's transcripts is kept.  The truth is
 the number of fragments actually drawn from each transcript -- never a quantifier's own
 output, and counted in fragments rather than TPM so that no effective-length convention
 sits between the simulation and the comparison.
@@ -23,8 +27,8 @@ the wrong class shows it as bias rather than only as spread.
 **Known design confound, deliberately left in place (2026-09-13).**  TPM is flat *per
 transcript*, so a gene's total fragment count is proportional to how many transcripts it
 has.  Annotation depth is also what produces a class-crossing null direction, so the
-`not_identifiable` group is 4-8x deeper than the estimable one by construction (smaller
-class 2611 vs 343 fragments; counting floor differs at Mann-Whitney p = 0.0013).  Every
+`not_identifiable` group is 3.9x deeper than the estimable one by construction (smaller
+class 2611 vs 298 fragments, 8.8x; counting floor differs at Mann-Whitney p = 0.0013).  Every
 group comparison between the two is confounded by that, and validation/README.md says so
 where it matters.  A future sweep should hold the *gene* total fixed across genes instead.
 
@@ -46,6 +50,7 @@ import sys
 import numpy as np
 
 from isoform_dominance import identifiability as I
+from isoform_dominance import io
 
 READ_LEN = 100
 FRAG_MEAN, FRAG_SD = I.DEFAULT_FRAG_MEAN, I.DEFAULT_FRAG_SD
@@ -59,18 +64,41 @@ def revcomp(s):
     return s.translate(COMPLEMENT)[::-1]
 
 
-def load_genes(rundir, only=None):
-    """Every gene the survey has both a config and sequences for."""
+def read_inputs(rundir=None, inputs=None):
+    """``{gene: {"config", "sequences"}}``: every gene the survey has both a config and
+    sequences for.
+
+    From ``inputs``, the bundle the simulation's inputs are stored in
+    (``validation/data/sweep116.json.gz``, gzipped or plain), or from the
+    ``<gene>.cfg.json`` and ``<gene>.seqs.json`` of ``rundir`` the bundle was made from,
+    genes by file name.  Each gene's sequences keep the order of the file they come from,
+    and the bundle keeps the order of the files: the simulator draws a gene's transcripts
+    in that order (:func:`emit` walks them so), so sorting them would draw other fragments.
+    """
+    if (rundir is None) == (inputs is None):
+        raise ValueError("give exactly one of the folder of per-gene files and the inputs bundle")
+    if inputs is not None:
+        with io.open_text(inputs) as f:
+            return json.load(f)["genes"]
     out = {}
     for cfgp in sorted(glob.glob(os.path.join(rundir, "*.cfg.json"))):
         gene = os.path.basename(cfgp)[:-len(".cfg.json")]
-        if only and gene not in only:
-            continue
         seqp = os.path.join(rundir, "%s.seqs.json" % gene)
         if not os.path.exists(seqp):
             continue
-        cfg = json.load(open(cfgp))
-        seqs = {t.split(".")[0]: s for t, s in json.load(open(seqp)).items()}
+        out[gene] = {"config": json.load(open(cfgp)), "sequences": json.load(open(seqp))}
+    return out
+
+
+def load_genes(rundir=None, only=None, inputs=None):
+    """The genes of :func:`read_inputs` (those in ``only``, when given), as the simulator
+    uses them: ids without version, groups, primary comparison."""
+    out = {}
+    for gene, entry in read_inputs(rundir, inputs).items():
+        if only and gene not in only:
+            continue
+        cfg = entry["config"]
+        seqs = {t.split(".")[0]: s for t, s in entry["sequences"].items()}
         groups = {g: [t.split(".")[0] for t in v] for g, v in cfg["groups"].items()}
         pc = cfg.get("primary_comparison") or sorted(groups)[:2]
         out[gene] = {"groups": groups, "pc": list(pc), "seqs": seqs}
@@ -201,11 +229,15 @@ def emit(seqs, counts, rng, f1, f2, tag, bias_5p=0.0):
     return written
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("rundir")
+    ap.add_argument("rundir", nargs="?", default=None,
+                    help="the per-gene <gene>.cfg.json and <gene>.seqs.json; or --inputs")
     ap.add_argument("outdir")
+    ap.add_argument("--inputs", default=None,
+                    help="the inputs bundle, validation/data/sweep116.json.gz, in place of "
+                         "RUNDIR")
     ap.add_argument("--depth-scale", type=float, default=1.0)
     ap.add_argument("--ratio", type=float, default=None,
                     help="true class A : class B, with the gene total held fixed. Omit "
@@ -222,12 +254,14 @@ def main():
                     help="must match what the prediction is computed with; the default "
                          "is the package's own")
     ap.add_argument("--genes", default=None)
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
+    if (a.rundir is None) == (a.inputs is None):
+        ap.error("give exactly one of RUNDIR and --inputs")
 
     only = set(a.genes.split(",")) if a.genes else None
-    genes = load_genes(a.rundir, only)
+    genes = load_genes(a.rundir, only, a.inputs)
     if not genes:
-        sys.exit("no genes found in %s" % a.rundir)
+        sys.exit("no genes found in %s" % (a.rundir or a.inputs))
     os.makedirs(a.outdir, exist_ok=True)
     rng = np.random.default_rng(a.replicate * 7919 + 13)
 

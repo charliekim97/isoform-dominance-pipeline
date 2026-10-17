@@ -3,3 +3,5 @@ tests/data/** -text
 # saved inputs and stored outputs compared byte for byte: never convert their line endings
 example/saved/** -text
 validation/data/** -text
+# the self-test's saved inputs, compared byte for byte with example/saved
+src/isoform_dominance/data/** -text

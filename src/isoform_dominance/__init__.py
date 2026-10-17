@@ -1,5 +1,5 @@
-"""isoform-dominance: config-driven isoform-usage quantification and discrimination
-from bulk RNA-seq.
+"""Is this functional isoform-class comparison measurable by short reads? Group-level
+identifiability, quantification and testing from bulk RNA-seq
 
 Modules
 -------
@@ -9,4 +9,4 @@ extract         Salmon quant.sf -> per-donor isoform-group TPM
 stats           paired Wilcoxon + figure
 contamination   marker-based contamination control
 """
-__version__ = "2.7.0"
+__version__ = "2.8.0.dev0"

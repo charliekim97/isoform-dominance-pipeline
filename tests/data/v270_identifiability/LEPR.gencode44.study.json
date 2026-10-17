@@ -1,0 +1,172 @@
+{
+  "k": 31,
+  "window": 31,
+  "canonical": true,
+  "annotation": {
+    "ensembl_release": 110,
+    "fetched_release": null,
+    "file_release": null,
+    "source": null,
+    "inputs_release": 110
+  },
+  "background": {
+    "gene_id": "ENSG00000116678",
+    "gene_transcripts": [
+      "ENST00000344610",
+      "ENST00000371058",
+      "ENST00000371059",
+      "ENST00000462765",
+      "ENST00000471762"
+    ],
+    "fasta": null,
+    "fasta_sha256": null,
+    "decoys": null,
+    "decoys_sha256": null,
+    "decoys_listed": null,
+    "decoys_skipped": null,
+    "decoys_absent": null,
+    "fasta_long_records": {},
+    "max_window_records": 20,
+    "fasta_left_out": 0,
+    "windows_dropped": {
+      "total": 0,
+      "configured": 0,
+      "configured_of": 10603,
+      "columns": {}
+    },
+    "n_background_transcripts": 5,
+    "fasta_competitors": {},
+    "n_fasta_competitors": 0,
+    "sequence_from_fasta": [],
+    "keep_duplicates": false,
+    "identical_to_configured": {},
+    "identical_to_background": {},
+    "identical_source": {},
+    "same_name_copies": [],
+    "fasta_other_versions": null
+  },
+  "design": {
+    "read_length": 100,
+    "paired": true,
+    "frag_mean": 200.0,
+    "frag_sd": 60.0,
+    "depth": 30000000,
+    "mean_efflen": 1500.0,
+    "tpm": 10.0,
+    "n_donors": 1,
+    "min_log2fc": null
+  },
+  "groups": {
+    "short": {
+      "n_transcripts": 2,
+      "n_unique_kmers": 2276,
+      "distinguishable": true,
+      "best_transcript": "ENST00000371060",
+      "unique_length": 2306,
+      "unique_fraction": 0.4490749756572541,
+      "n_blocks": 1,
+      "max_block_length": 2306,
+      "informative_fraction": 0.4603232446490798,
+      "expected_informative_reads": 454.4311071175716,
+      "estimable": true,
+      "residual": 5.768105550559656e-16,
+      "conditioning_factor": 2.2794066790192313,
+      "rank": 8,
+      "label": "the short class total",
+      "coherence": {
+        "median_jaccard": 0.9403897592663355,
+        "min_jaccard": 0.9403897592663355,
+        "n_pairs": 1
+      },
+      "gls_relative_se": 0.033265767412374476,
+      "finite_se": true,
+      "min_resolvable_log2fc": 0.09406502104730874,
+      "beyond_linear": false,
+      "verdict": "identifiable",
+      "reasons": []
+    },
+    "long": {
+      "n_transcripts": 1,
+      "n_unique_kmers": 5369,
+      "distinguishable": true,
+      "best_transcript": "ENST00000349533",
+      "unique_length": 5399,
+      "unique_fraction": 0.6575325782486908,
+      "n_blocks": 1,
+      "max_block_length": 5399,
+      "informative_fraction": 0.6689105147047515,
+      "expected_informative_reads": 1071.862208762894,
+      "estimable": true,
+      "residual": 6.70457158464555e-16,
+      "conditioning_factor": 1.523485184782616,
+      "rank": 8,
+      "label": "the long class total",
+      "coherence": {
+        "median_jaccard": null,
+        "min_jaccard": null,
+        "n_pairs": 0
+      },
+      "gls_relative_se": 0.030705184254828863,
+      "finite_se": true,
+      "min_resolvable_log2fc": 0.08682450542588603,
+      "beyond_linear": false,
+      "verdict": "identifiable",
+      "reasons": []
+    }
+  },
+  "primary_comparison": [
+    "short",
+    "long"
+  ],
+  "contrast": {
+    "estimable": true,
+    "residual": 8.778934892303336e-16,
+    "conditioning_factor": 2.746955026236445,
+    "rank": 8,
+    "label": "the class contrast",
+    "gls_relative_se": 0.04560654037711031,
+    "finite_se": true,
+    "min_resolvable_log2fc": 0.12896080608295227,
+    "beyond_linear": false,
+    "verdict": "identifiable",
+    "reasons": [],
+    "class_mean_efflen": {
+      "short": 4909.0,
+      "long": 8012.0
+    },
+    "log2_efflen_ratio": -0.7067332544466595,
+    "efflen_direction_in_band": true,
+    "distinguishing_window_position": {
+      "short": {
+        "n": 4533,
+        "q1": 0.6653465346534654,
+        "median": 0.7768416927899686,
+        "q3": 0.8885148514851485
+      },
+      "long": {
+        "n": 5369,
+        "q1": 0.5078239608801955,
+        "median": 0.671882640586797,
+        "q3": 0.8359413202933985
+      }
+    }
+  },
+  "counting_noise": {
+    "log2_ratio_se": 0.08075883296414389,
+    "min_resolvable_log2fc": 0.15828731260972204,
+    "defined": true
+  },
+  "gene_total": {
+    "estimable": true,
+    "residual": 4.3709524189038452e-16,
+    "conditioning_factor": 3.0089603725362295,
+    "rank": 8,
+    "transcripts_without_windows": [],
+    "transcripts_all_windows_dropped": []
+  },
+  "effect_resolvable": null,
+  "n_compatibility_classes": 14,
+  "primary_distinguishable": true,
+  "verdict": "identifiable",
+  "reasons": []
+}

@@ -33,17 +33,23 @@ conditioning factor.  Three layers are reported, cheapest first:
 2. **Expected informative reads** -- how many read pairs, at a stated depth, class
    abundance, read length and fragment-length distribution, actually land such that a
    sequenced end covers a group-unique k-mer.  This converts a sequence property into
-   an experimental-design quantity, and with it a counting-noise floor on the
-   log2 class ratio.
+   an experimental-design quantity, and with it the unique-read counting SE of the
+   log2 class ratio (best transcript per class).
 3. **Estimability** -- rank, row-space residual and a structural conditioning factor
    for the class-collapsed compatibility system described above.  The conditioning
    factor is a geometry proxy, not a standard error; see :func:`estimability`.
 
-All three are computed offline from sequence alone; nothing here needs the reads.
+All three are computed offline from sequence and the stated design, before any read is
+quantified; nothing here needs the reads.  The read model is a function of the read length,
+paired or single ends and the fragment-length distribution; the ``min_resolvable_log2fc``
+figures are a function of the mean fragment length, through each transcript's effective
+length; all of them are functions of depth and TPM, and the ``min_resolvable_log2fc`` figures
+of the number of donors too -- so ``depth`` or ``tpm`` can change the verdict.
 """
 import hashlib
 import math
 import urllib.parse
+import warnings
 from collections import Counter
 from urllib.error import HTTPError
 
@@ -595,9 +601,11 @@ def informative_fraction(unique_flags, transcript_length, k,
 
     A fragment is informative only if **a sequenced end** covers a whole group-unique
     k-mer.  Modelling the fragment rather than the reads would be wrong and optimistic:
-    with a 200 nt fragment and 100 nt reads a unique stretch sitting in the middle of
-    the fragment is never observed.  For a fragment ``[p, p+f)`` the observed windows
-    are ``[p, p+L)`` and, when paired, ``[p+f-L, p+f)``.
+    with a 300 nt fragment and 2 x 100 nt reads the middle 100 nt between the two
+    sequenced ends are never read, and a single-end read leaves everything past its own
+    100 nt unread.  (A 200 nt fragment is read end to end by 2 x 100 nt reads.)  For a
+    fragment ``[p, p+f)`` the observed windows are ``[p, p+L)`` and, when paired,
+    ``[p+f-L, p+f)``.
 
     Evaluated exactly over all start positions by prefix sums, then averaged over a
     truncated-normal fragment-length distribution.
@@ -667,18 +675,21 @@ def class_efflen_ratio(lengths_a, lengths_b, frag_mean=DEFAULT_FRAG_MEAN):
     The mean is the plain mean over each class's transcripts of
     :func:`effective_length`.  ``None`` for all three when either class is empty.
 
-    In a 49-gene simulation (Salmon, monotone positional coverage skew) the quantifier
-    split the ambiguous mass between the classes by effective length, so this ratio
-    tracked the size of the error and, with the direction of the skew, its sign: a
-    5'-skewed library tended to inflate the shorter class, a 3'-skewed one the longer.
-    No other quantifier, panel or form of skew was tested.  The tendency assumes the
-    classes are ambiguous where the skew concentrates reads; a shorter class distinguished
-    at that end is an untested interaction under which it can reverse -- LEPR, shorter
-    class distinguished at its 5' end, ran against it under 5 of 6 skews.  The mechanism
-    is about each transcript's effective length, so the transcript count must not enter.
-    Five summaries were scored against realised bias on that simulation (Spearman at the
-    two extreme skews, and how often the 5' sign came out right among genes whose ratio
-    exceeds 1.23x):
+    In a 49-gene simulation (monotone positional coverage skew) Salmon split the
+    ambiguous mass between the classes by effective length, so this ratio tracked the size
+    of the error and, with the direction of the skew, its sign: a 5'-skewed library tended
+    to inflate the shorter class, a 3'-skewed one the longer -- for 35-36 and 30-32 of the
+    39 genes whose ratio exceeds 1.23x, against 19 and 20 of 39 at uniform coverage.
+    kallisto, on the same reads, gave 34-36 and 29-33, but it has no bias model and
+    leaned to the longer class at uniform coverage too (32 of 39), so only its 5' figures
+    are evidence of the skew.  No other quantifier, panel or form of skew was tested.  The
+    tendency assumes the classes are ambiguous where the skew concentrates reads; a
+    shorter class distinguished at that end is an untested interaction under which it can
+    reverse -- LEPR, shorter class distinguished at its 5' end, ran against it under 5 of
+    6 skews with Salmon.  The mechanism is about each transcript's effective length, so
+    the transcript count must not enter.  Five summaries were scored against Salmon's
+    realised bias on that simulation (Spearman at the two extreme skews, and how often the
+    5' sign came out right among genes whose ratio exceeds 1.23x):
 
     ===================  ==========  ==========  =====
     summary              b = +2.0    b = -2.0    sign
@@ -730,14 +741,18 @@ def position_summary(positions):
     return {"n": len(positions), "q1": float(q1), "median": float(med), "q3": float(q3)}
 
 
-def counting_noise_floor(n_informative_a, n_informative_b, n_donors=1):
-    """Counting-noise standard error of the per-sample log2 class ratio.
+def unique_read_counting_se(n_informative_a, n_informative_b, n_donors=1):
+    """Unique-read counting SE of the per-sample log2 class ratio (best transcript per class).
 
-    Poisson counting error alone; biological and technical variation add on top, so
-    this is a floor on the achievable precision, never an estimate of it.  Returned
-    as NaN when either class has no informative reads, because the ratio is then
-    undefined rather than merely imprecise; ``defined`` says which, and ``--json`` writes
-    the NaN as null.
+    The standard error, from Poisson counting error alone, of ``log2(n_a / n_b)`` for the
+    expected informative-read counts ``n_a`` and ``n_b`` of each class's best single
+    transcript: the precision of an estimator that counts only unambiguously assignable
+    reads.  It is no floor on the precision of the class comparison: the contrast's
+    :func:`min_resolvable_log2fc`, from the whole system, can be smaller -- 0.234 against
+    this figure's 0.366 on the README's LEPR example -- and biological and technical
+    variation add to both.  Returned as NaN when either class has no informative reads,
+    because the ratio is then undefined rather than merely imprecise; ``defined`` says
+    which, and ``--json`` writes the NaN as null.
     """
     if n_informative_a <= 0 or n_informative_b <= 0:
         return {"log2_ratio_se": float("nan"), "min_resolvable_log2fc": float("nan"),
@@ -749,6 +764,15 @@ def counting_noise_floor(n_informative_a, n_informative_b, n_donors=1):
         "min_resolvable_log2fc": 1.96 * se / math.sqrt(n_donors),
         "defined": True,
     }
+
+
+def counting_noise_floor(n_informative_a, n_informative_b, n_donors=1):
+    """Deprecated alias of :func:`unique_read_counting_se`, removed in 3.0: the figure is
+    not a floor."""
+    warnings.warn("counting_noise_floor is deprecated and will be removed in 3.0: use "
+                  "unique_read_counting_se, which returns the same", DeprecationWarning,
+                  stacklevel=2)
+    return unique_read_counting_se(n_informative_a, n_informative_b, n_donors)
 
 
 def class_coherence(tracks, ids):
@@ -872,20 +896,26 @@ def min_resolvable_log2fc(relative_se, n_donors=1):
     interval just excludes zero: a true effect of this size is detected about half the time
     (about 50% power), and 80% power needs about 2.8 standard errors, 1.43 times as much.
 
-    The companion to :func:`counting_noise_floor`, which answers the same question for an
+    The companion to :func:`unique_read_counting_se`, which answers the same question for an
     estimator that counts only unambiguously assignable reads.  This one is for the
     estimator that inverts the whole system, which is what ``conditioning_factor``
     describes -- the two numbers in a report have always belonged to different estimators.
 
-    Still a floor: Poisson counting error only, biological and technical variation on top.
-    And a bound on spread, not on accuracy: it assumes uniform coverage and a correctly
-    specified compatibility model.  Under positional coverage skew the estimate can be
-    biased well past it while the replicate SD stays below the predicted SE, so replicate
-    agreement does not reveal the bias; the README gives the simulation numbers.
+    The figure is 1.96 times the delta-method GLS standard error of the log2 class ratio
+    in this surrogate system, under Poisson counting error alone, divided by the square root
+    of the number of donors.  That standard error (the figure / 1.96 at one donor, the
+    ``predicted_se`` of the stored simulation in ``validation/``) is not a lower bound on the
+    replicate scatter a quantifier shows: at uniform coverage in that simulation the replicate
+    SD was below it for 35 of the 39 estimable genes of its 47-gene panel.  Biological
+    and technical variation add to the scatter of real data.  And it describes spread, not
+    accuracy: it assumes uniform coverage and a correctly specified compatibility model.
+    Under positional coverage skew the estimate can be biased well past it while the
+    replicate SD stays below the predicted SE, so replicate agreement does not reveal the
+    bias; the README gives the simulation numbers.
     A figure past :data:`LINEARISATION_LIMIT` on the log scale reads as "not resolvable at
     this design", not as a calibrated value; ``analyze`` flags those as ``beyond_linear``.
 
-    Not comparable to :func:`counting_noise_floor`'s figure, which is the precision of
+    Not comparable to :func:`unique_read_counting_se`'s figure, which is the precision of
     ``log2(n_a/n_b)`` for the informative-read counts of each class's *best single
     transcript*.  That ratio equals the class ratio only when the two classes share an
     informative fraction, so the older number can look much better than the class
@@ -1292,7 +1322,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         resolve.  When given it replaces ``conditioning_tau`` in the verdict, and the
         comparison is against :func:`min_resolvable_log2fc` computed from the GLS
         standard error of the *whole* system under Poisson counts -- not from
-        :func:`counting_noise_floor`, which describes a unique-read-counting estimator
+        :func:`unique_read_counting_se`, which describes a unique-read-counting estimator
         and is reported alongside for what it is.
     ensembl_release
         The Ensembl release to fetch sequence and the gene background from, when
@@ -1369,7 +1399,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         transcript windowless, and the CLI's precondition reads
         ``transcripts_without_windows``),
         ``effect_resolvable`` (whether both class totals and the contrast resolve
-        ``min_log2fc``, none of them ``beyond_linear``; None without it), and -- for callers written against v2.1 --
+        ``min_log2fc``, none of them ``beyond_linear``; None without it),
+        ``unique_read_counting_se`` (:func:`unique_read_counting_se` for the best
+        transcript of each compared class; ``counting_noise`` holds the same, a deprecated
+        key removed in 3.0), and -- for callers written against v2.1 --
         ``primary_distinguishable``.  Note that ``verdict`` supersedes
         ``primary_distinguishable``: a class with no unique k-mer of its own is still
         estimable when a class it is nested inside has unique sequence, and a class
@@ -1740,7 +1773,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     contrast["distinguishing_window_position"] = {
         g: position_summary(positions[g]) for g in pc[:2]}
 
-    noise = counting_noise_floor(
+    noise = unique_read_counting_se(
         report[pc[0]]["expected_informative_reads"],
         report[pc[1]]["expected_informative_reads"],
         n_donors=n_donors)
@@ -1825,7 +1858,9 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         "groups": report,
         "primary_comparison": list(pc),
         "contrast": contrast,
-        "counting_noise": noise,
+        "unique_read_counting_se": noise,
+        # the old name, deprecated: the figure is no floor.  Removed in 3.0
+        "counting_noise": dict(noise),
         "gene_total": gene_total,
         "effect_resolvable": effect_resolvable,
         "n_compatibility_classes": len(classes),
