@@ -275,6 +275,35 @@ def _load_saved_inputs(a, cfg):
                 left_out=[] if had else sorted(rest))
 
 
+def _saved_sequences(a, inputs):
+    """``(sequences, background)`` of a rerun from :func:`_load_saved_inputs`: no gene
+    background for a rerun of a run that had none, as for a live one."""
+    background = (None if a.no_gene_background or not inputs["gene_background"]
+                  else inputs["background_sequences"])
+    return inputs["sequences"], background
+
+
+def _analyze(a, cfg, seqs, background, saved, captured=None):
+    """:func:`identifiability.analyze` with the command's flags ``a``; ``saved`` when the
+    sequence is a rerun's from ``--inputs``.  What ``identifiability`` runs, and what the
+    self-test runs on its saved inputs."""
+    return identifiability.analyze(
+        cfg, k=a.k, sequences=seqs,
+        canonical=not a.strand_aware,
+        window=a.window,
+        background_sequences=background,
+        background_fasta=a.background_fasta, decoys=a.decoys,
+        background_gene_transcripts=(False if a.no_gene_background or saved else "auto"),
+        read_length=a.read_length, frag_mean=a.frag_mean, frag_sd=a.frag_sd,
+        paired=not a.single_end, depth=a.depth, tpm=a.tpm, n_donors=a.donors,
+        conditioning_tau=a.tau, min_informative_reads=a.min_informative_reads,
+        min_log2fc=a.min_log2fc, ensembl_release=a.ensembl_release,
+        inputs_out=captured, keep_duplicates=a.keep_duplicates,
+        max_window_records=a.max_window_records,
+        gtf=a.gtf, transcripts_fasta=a.transcripts_fasta,
+        retries=a.retries, retry_wait=a.retry_wait)
+
+
 def _file_flags(a):
     """What is wrong with how --gtf and --transcripts-fasta were passed, or None.  The
     flags they replace are checked here, before the files those name are read;
@@ -337,32 +366,14 @@ def cmd_identifiability(a):
         print("config error: %s" % e, file=sys.stderr)
         return 1
     if inputs is not None:
-        seqs = inputs["sequences"]
-        # no gene background for a rerun of a run that had none, as for a live one
-        background = (None if a.no_gene_background or not inputs["gene_background"]
-                      else inputs["background_sequences"])
+        seqs, background = _saved_sequences(a, inputs)
     else:
         seqs = _load_sequences(a.sequences, "--sequences") if a.sequences else None
         background = (_load_sequences(a.background_sequences, "--background-sequences")
                       if a.background_sequences else None)
     captured = {} if a.save_inputs else None
     try:
-        res = identifiability.analyze(
-            cfg, k=a.k, sequences=seqs,
-            canonical=not a.strand_aware,
-            window=a.window,
-            background_sequences=background,
-            background_fasta=a.background_fasta, decoys=a.decoys,
-            background_gene_transcripts=(False if a.no_gene_background or inputs is not None
-                                         else "auto"),
-            read_length=a.read_length, frag_mean=a.frag_mean, frag_sd=a.frag_sd,
-            paired=not a.single_end, depth=a.depth, tpm=a.tpm, n_donors=a.donors,
-            conditioning_tau=a.tau, min_informative_reads=a.min_informative_reads,
-            min_log2fc=a.min_log2fc, ensembl_release=a.ensembl_release,
-            inputs_out=captured, keep_duplicates=a.keep_duplicates,
-            max_window_records=a.max_window_records,
-            gtf=a.gtf, transcripts_fasta=a.transcripts_fasta,
-            retries=a.retries, retry_wait=a.retry_wait)
+        res = _analyze(a, cfg, seqs, background, inputs is not None, captured)
     except ensembl.ReleaseNotServed as e:
         return _release_fail(e)
     except http.client.InvalidURL as e:

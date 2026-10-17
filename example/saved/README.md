@@ -48,4 +48,8 @@ from these GENCODE files (each inputs file records them under `annotation_source
 | `NTRK3.gencode50.config.json` | config: `iso_604aa` (7) vs `iso_825aa` (20) | `e777bc52b82838a531e98c93fd9e3d468f9d31ef9d593e4fe03202cf822a5c22` |
 | `NTRK3.gencode50.inputs.json` | saved inputs: 27 configured + 11 background transcripts, release 116 | `947886045b25272ca02d987c56b6f685d778ea2f5c9373e3c85cd0bcf7c12034` |
 
-Nothing reads them yet.
+`tests/test_saved_identifiability.py` holds the `identifiability --json` report on each of the nine runs to the one
+2.7.0 gave (`tests/data/v270_identifiability`), and `tests/test_readme_example.py` runs the README's identifiability
+example on `LEPR.gencode50.*`. `isoform-dominance selftest` runs the study config on `LEPR.gencode44.inputs.json` from
+byte-for-byte copies in `src/isoform_dominance/data/`, which the wheel carries; `tests/test_selftest.py` checks that
+they are these files.

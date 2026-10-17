@@ -46,6 +46,14 @@ versioning.
   under skew (2.01 against 2.70 log2, Mann-Whitney p 0.12). Failed and estimable, 2 (CD44,
   ESR1; 0.267). Failed and not estimable, none. Passed and not estimable, 8 (0.163).
 
+- **The self-test runs `identifiability`** on the study's LEPR classes from the GENCODE 44
+  (Ensembl 110) inputs, the study's index release, saved with the package
+  (`isoform_dominance/data/`, byte for byte `example/saved/`'s, in the wheel), through the
+  functions `identifiability --inputs` runs (`cli._saved_sequences`, `cli._analyze`). It
+  checks the verdict, `identifiable`, and the contrast's min |log2FC|, 0.1290 within 0.0005
+  (0.12896 at conditioning 2.747). One more line in the output and one more check in
+  `selftest --json`; the other checks and the reference P values do not move.
+
 ### Changed
 - **The "counting-noise floor" is renamed the unique-read counting SE (best transcript per
   class)**: it is the Poisson SE of `log2(n_a/n_b)` for each class's best transcript's

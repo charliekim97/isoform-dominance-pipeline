@@ -32,6 +32,10 @@ isoform-dominance = "isoform_dominance.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# the saved inputs the self-test's identifiability check runs on
+isoform_dominance = ["data/*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
