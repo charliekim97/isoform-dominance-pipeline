@@ -110,6 +110,11 @@ versioning.
   `tests/data/v260_outputs` skip a name beginning with `.` (a Finder's `.DS_Store`, the `._`
   file beside a file on a foreign volume), at any depth in the folders listed recursively.
   Every other comparison is as it was.
+- **`validation/README.md` counts kallisto's panel.** Its panel sentence said kallisto had a
+  row for "the same" genes with the Salmon panel's count. `summarize.py` now computes the
+  genes with a row in all seven kallisto designs (`summary.json`: `panel.kallisto_genes`,
+  `panel.kallisto_n`), says "the same" only when they are the Salmon panel's genes, and names
+  the difference otherwise. On the stored outputs they are the same 47.
 - **`extract`'s `<out>.index.json` is standard JSON whatever `meta_info.json` holds.** It was
   written with `json.dump` alone, so a hand-edited or damaged `aux_info/meta_info.json` with
   `NaN` or `Infinity` in a count (`num_valid_targets`, `num_decoy_targets`), which Python's

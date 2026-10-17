@@ -104,6 +104,28 @@ def test_every_stored_prediction_is_what_the_package_says_now(computed):
     assert sorted(computed["panel"]["left_out"]) == ["EPOR", "PFKL"]
 
 
+def test_the_kallisto_panel_is_computed(computed):
+    """The panel sentence said kallisto had a row for the same genes from the Salmon count;
+    it is the genes with a row in all seven kallisto designs, computed."""
+    p = computed["panel"]
+    _, rows, _ = summarize.load()
+    assert p["kallisto_genes"] == sorted(g for g in rows["kallisto"][0]
+                                         if all(g in d for d in rows["kallisto"]))
+    assert p["kallisto_n"] == len(p["kallisto_genes"]) == 47
+    assert p["kallisto_genes"] == p["genes"]
+    assert "(kallisto has a row for the same 47)" in summarize.render(computed)
+
+
+def test_a_different_kallisto_panel_is_said(computed):
+    s = copy.deepcopy(computed)
+    s["panel"]["kallisto_genes"] = [g for g in s["panel"]["genes"] if g != "CANX"] + ["EPOR"]
+    s["panel"]["kallisto_n"] = len(s["panel"]["kallisto_genes"])
+    text = summarize.render(s)
+    assert "the same" not in text.split("Left out:")[0]
+    assert ("(kallisto has a row in all seven of its designs for 47 genes: not CANX, and "
+            "also EPOR)") in text
+
+
 def test_a_prediction_that_moved_is_named(analysed):
     _, rows, _ = summarize.load()
     structure = copy.deepcopy({g: a["structural"] for g, a in analysed.items()})
@@ -295,6 +317,11 @@ def quotes(s):
         # validation/README.md, outside the generated block
         (vreadme, "the genes with a row in all seven Salmon designs, %d of the %d"
                   % (s["panel"]["n"], v["n_genes"])),
+        # said only while it is so: a kallisto panel of other genes has no such sentence
+        (vreadme, "kallisto has a row for the same %d in all seven" % s["panel"]["kallisto_n"]
+                  if s["panel"]["kallisto_genes"] == s["panel"]["genes"] else
+                  "kallisto has a row in all seven of its designs for %d genes"
+                  % s["panel"]["kallisto_n"]),
         (vreadme, "**Row 1** holds %d genes: %s." % (good["n"], ", ".join(good["genes"]))),
         (vreadme, "The %d genes with conditioning above 10 had no clearly larger error at "
                   "uniform coverage than the %d at or below it (median RMSE %.3f against %.3f, "
