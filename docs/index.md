@@ -39,7 +39,7 @@ isoform-dominance --version
 isoform-dominance selftest
 # or: pytest -q
 ```
-reproduces the published LEPR result (5/5, 6/6, combined n=11 P=9.8e-4) on a clean machine.
+reproduces the reference LEPR result (5/5, 6/6, combined n=11 P=9.8e-4) on a clean machine.
 
 ## What makes it more than a quantifier
 
@@ -142,7 +142,11 @@ drops all but the first of identical sequences when it builds an index (the inde
 
 ## Statistical notes
 
-- Donor-level two-sided **exact Wilcoxon signed-rank** (`scipy.stats.wilcoxon`), per cohort + combined.
+- Donor-level two-sided **Wilcoxon signed-rank** (`scipy.stats.wilcoxon`, `method="auto"`), per
+  cohort + combined. It is exact only with neither a zero difference nor a tie among the absolute
+  differences (and n ≤ 50); otherwise SciPy runs an exhaustive permutation test at n ≤ 13 and
+  the normal approximation above that. Which one produced each p-value is reported
+  (`wilcoxon_method`).
 - **Small-n floor:** n = 5 cannot reach P < 0.05 in the exact two-sided test (floor 0.0625);
   report exact P + direction (e.g. 5/5) and combine concordant cohorts for the summary statistic.
 - Effect size = median fold-change, reported alongside significance.
@@ -151,7 +155,7 @@ drops all but the first of identical sequences when it builds an index (the inde
 
 ```
 src/isoform_dominance/   annotate · identifiability · extract · stats · contamination · cli · _selftest
-tests/                   pytest (offline; reproduces the published result + unit tests)
+tests/                   pytest (offline; reproduces the reference result + unit tests)
 scripts/01_salmon_quant.sbatch
 example/                 config + sample maps
 .github/workflows/ci.yml docs/  pyproject.toml  CITATION.cff  LICENSE

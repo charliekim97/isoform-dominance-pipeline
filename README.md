@@ -176,7 +176,9 @@ and `estimable` or `finite_se` beside it says why.
 > returns numbers for a non-identifiable model just as readily. Both cases are regression-tested
 > in `tests/test_identifiability_model.py`.
 
-**What it checks, in three layers** — all from sequence alone, before any read is quantified:
+**What it checks, in three layers** — all from sequence and the stated design, before any read is
+quantified (the read model and every precision figure depend on the read and fragment lengths,
+depth, TPM and number of donors, so `--depth` or `--tpm` can change the verdict):
 
 > **Pass `--background-fasta`.** The default background is the gene's own remaining
 > transcripts, which is better than comparing the configured classes alone but still
@@ -307,7 +309,7 @@ and `estimable` or `finite_se` beside it says why.
 | Layer | Reports | Why it is not the layer above |
 |---|---|---|
 | Sequence uniqueness | unique k-mers, bases covered, block structure | judged against a background — the gene's other transcripts by default, the whole index with `--background-fasta` — not just the configured classes |
-| Read model | `informative_fraction`, `expected_informative_reads`, unique-read counting SE (best transcript per class) of the log2 ratio | informativeness is scored on the **sequenced ends**, not the fragment: a unique region mid-fragment is never observed |
+| Read model | `informative_fraction`, `expected_informative_reads`, unique-read counting SE (best transcript per class) of the log2 ratio | informativeness is scored on the **sequenced ends**, not the fragment: a unique region between the two sequenced ends is never observed |
 | Estimability | row-space residual, rank, and `min_resolvable_log2fc` from the Poisson-weighted GLS covariance, for each class total **and** their contrast; the structural conditioning factor as a diagnostic | a full-rank system with a near-degenerate contrast passes a rank test and still yields nothing |
 
 The headline figure is `min_resolvable_log2fc`: 1.96 standard errors of the log2 class ratio

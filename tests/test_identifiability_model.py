@@ -222,6 +222,22 @@ def test_expected_informative_reads_scales_with_depth_and_tpm():
                                         depth=60_000_000) == pytest.approx(2 * base)
 
 
+def test_paired_ends_that_tile_the_fragment_see_its_middle():
+    """2 x 100 nt reads cover a 200 nt fragment end to end, so a unique stretch in its middle
+    is observed; what goes unread is the middle of a longer fragment, or everything past
+    the one read of a single-end library."""
+    k = 31
+
+    def frac(length, frag, lo, hi, paired=True):
+        flags = [lo <= i <= hi for i in range(length - k + 1)]
+        return I.informative_fraction(flags, length, k, read_length=100, frag_mean=frag,
+                                      frag_sd=0, paired=paired)
+    assert frac(200, 200, 70, 130) == 1.0
+    assert frac(1000, 200, 70, 130) == pytest.approx(131 / 801)        # 0.164
+    assert frac(300, 300, 110, 150) == 0.0          # between the two ends of 300 nt
+    assert frac(200, 200, 70, 130, paired=False) == 0.0
+
+
 def test_unique_read_counting_se_is_nan_without_informative_reads():
     assert np.isnan(I.unique_read_counting_se(0, 100)["log2_ratio_se"])
     got = I.unique_read_counting_se(100, 100, n_donors=4)

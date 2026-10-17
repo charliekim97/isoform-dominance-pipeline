@@ -113,6 +113,23 @@ versioning.
   baseline, 32 of 39 leaning to the longer class without any skew (the 5' direction 7), so
   only its 5' figures are evidence of the skew. Salmon's uniform baseline is given for both
   directions, 19 (5') and 20 (3') of 39, where "20 of 39" alone was the 3' one.
+- **Sentences that were wrong.** The layers are computed "from sequence and the stated
+  design", not "from sequence alone" (README, `identifiability`'s module docstring): the read
+  model and every precision figure depend on read and fragment length, depth, TPM and donors,
+  and on the saved LEPR inputs at `--min-log2fc 0.5`, `--depth 3e6` or `--tpm 1` turns
+  `identifiable` with exit 0 into `weakly_identifiable` with exit 3. `informative_fraction`'s
+  docstring said a unique stretch mid-fragment goes unread with a 200 nt fragment and 100 nt
+  reads; paired 2 x 100 nt reads read a 200 nt fragment end to end, and the example is now a
+  300 nt fragment, or a single-end read (a test holds both: 1.0 for the 200 nt fragment, 0.164
+  in a 1,000 nt transcript, 0.0 for the other two; it passed before, as only the docstring
+  changed). The README's layer table says "between the two sequenced ends". The
+  `min_resolvable_log2fc` docstring no longer calls the figure "a floor": its standard error,
+  the stored simulation's `predicted_se`, is not a lower bound on the replicate scatter a
+  quantifier shows, and at uniform coverage the replicate SD was below it for 35 of the 39
+  estimable genes. `docs/index.md` calls the LEPR result the reference result, not a
+  published one (the manuscript is under review), and describes the Wilcoxon test as the
+  README does: exact only with no zero difference and no tie (and n <= 50), otherwise an
+  exhaustive permutation test at n <= 13 and the normal approximation above.
 - `simulate_reads.py`'s docstring gives the confound on the panel: the not-estimable genes'
   median gene is 3.9-fold deeper (49,980 against 12,966 fragments) and their smaller class
   8.8-fold (2,611 against 298), where it said 4-8x and 343.

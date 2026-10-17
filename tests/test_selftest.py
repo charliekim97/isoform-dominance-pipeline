@@ -1,4 +1,4 @@
-"""End-to-end: synthetic data must reproduce the published LEPR result."""
+"""End-to-end: synthetic data must reproduce the reference LEPR result."""
 import json
 import pathlib
 import re
@@ -8,7 +8,7 @@ import pytest
 from isoform_dominance import _selftest, cli
 
 
-def test_reproduces_published_result(tmp_path):
+def test_reproduces_the_reference_result(tmp_path):
     ok, msgs = _selftest.run(str(tmp_path))
     assert ok, "self-test failed:\n" + "\n".join(msgs)
 

@@ -39,7 +39,10 @@ conditioning factor.  Three layers are reported, cheapest first:
    for the class-collapsed compatibility system described above.  The conditioning
    factor is a geometry proxy, not a standard error; see :func:`estimability`.
 
-All three are computed offline from sequence alone; nothing here needs the reads.
+All three are computed offline from sequence and the stated design, before any read is
+quantified; nothing here needs the reads.  The read model and every precision figure are
+functions of that design -- read and fragment length, depth, TPM, number of donors -- so
+``depth`` or ``tpm`` can change the verdict.
 """
 import hashlib
 import math
@@ -596,9 +599,11 @@ def informative_fraction(unique_flags, transcript_length, k,
 
     A fragment is informative only if **a sequenced end** covers a whole group-unique
     k-mer.  Modelling the fragment rather than the reads would be wrong and optimistic:
-    with a 200 nt fragment and 100 nt reads a unique stretch sitting in the middle of
-    the fragment is never observed.  For a fragment ``[p, p+f)`` the observed windows
-    are ``[p, p+L)`` and, when paired, ``[p+f-L, p+f)``.
+    with a 300 nt fragment and 2 x 100 nt reads the middle 100 nt between the two
+    sequenced ends are never read, and a single-end read leaves everything past its own
+    100 nt unread.  (A 200 nt fragment is read end to end by 2 x 100 nt reads.)  For a
+    fragment ``[p, p+f)`` the observed windows are ``[p, p+L)`` and, when paired,
+    ``[p+f-L, p+f)``.
 
     Evaluated exactly over all start positions by prefix sums, then averaged over a
     truncated-normal fragment-length distribution.
@@ -894,11 +899,16 @@ def min_resolvable_log2fc(relative_se, n_donors=1):
     estimator that inverts the whole system, which is what ``conditioning_factor``
     describes -- the two numbers in a report have always belonged to different estimators.
 
-    Still a floor: Poisson counting error only, biological and technical variation on top.
-    And a bound on spread, not on accuracy: it assumes uniform coverage and a correctly
-    specified compatibility model.  Under positional coverage skew the estimate can be
-    biased well past it while the replicate SD stays below the predicted SE, so replicate
-    agreement does not reveal the bias; the README gives the simulation numbers.
+    The figure is 1.96 times the delta-method GLS standard error of the log2 class ratio
+    in this surrogate system, under Poisson counting error alone.  That standard error (the
+    figure / 1.96, the ``predicted_se`` of the stored simulation in ``validation/``) is not
+    a lower bound on the replicate scatter a quantifier shows: at uniform coverage in that
+    simulation the replicate SD was below it for 35 of the 39 estimable genes.  Biological
+    and technical variation add to the scatter of real data.  And it describes spread, not
+    accuracy: it assumes uniform coverage and a correctly specified compatibility model.
+    Under positional coverage skew the estimate can be biased well past it while the
+    replicate SD stays below the predicted SE, so replicate agreement does not reveal the
+    bias; the README gives the simulation numbers.
     A figure past :data:`LINEARISATION_LIMIT` on the log scale reads as "not resolvable at
     this design", not as a calibrated value; ``analyze`` flags those as ``beyond_linear``.
 

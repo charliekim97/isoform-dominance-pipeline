@@ -256,6 +256,8 @@ def quotes(s):
                 "the default 10.0" % (v["n_genes"], v["median_conditioning"])),
         (ident, "on TPI1 it reads %.2f where the class totals themselves are not resolvable"
                 % v["TPI1_counting_min_resolvable_log2fc"]),
+        (ident, "at uniform coverage in that simulation the replicate SD was below it for %d of "
+                "the %d estimable genes" % (s1["realised_sd_under_predicted_se"][u], s1["n"])),
         # the harness
         (sim, "`not_identifiable` group is %.1fx deeper than the estimable one by construction "
               "(smaller class %.0f vs %.0f fragments, %.1fx; counting floor differs at "
