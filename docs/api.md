@@ -153,8 +153,11 @@ writes to a file. Returns a dict with `k`, `window`, `canonical`; `annotation`
 `expected_informative_reads`, `estimable`, `conditioning_factor`, `gls_relative_se`,
 `finite_se`, `min_resolvable_log2fc`, `coherence`, ...); `contrast` (the same estimability
 fields for the class contrast, plus the effective-length and distinguishing-window
-summaries); `counting_noise` (`log2_ratio_se`, `min_resolvable_log2fc`, and `defined`,
-false when either class has no informative read and both figures are NaN); `gene_total`;
+summaries); `unique_read_counting_se` (`log2_ratio_se`, `min_resolvable_log2fc`, and
+`defined`, false when either class has no informative read and both figures are NaN: the
+unique-read counting SE of the log2 class ratio for each class's best transcript, which is
+no floor on the contrast's figure; `counting_noise` holds the same, a deprecated key removed
+in 3.0, as is the function's old name `counting_noise_floor`); `gene_total`;
 `effect_resolvable` (None when no `min_log2fc` was given); `n_compatibility_classes`;
 `verdict` and `reasons`. The docstring defines each.
 
@@ -167,7 +170,7 @@ A figure that is not finite is infinite in the returned dict and null in `--json
 standard JSON (`io.finite_json`). `estimable` false says why a `conditioning_factor` is;
 `finite_se` false says why `gls_relative_se` and `min_resolvable_log2fc` are, including for
 a contrast that is estimable while its class totals are not, which `estimable` cannot say;
-`counting_noise.defined` says it for the counting-noise floor.
+`unique_read_counting_se.defined` says it for the unique-read counting SE.
 
 A `background_fasta` record with the id of a gene-background transcript is that transcript; every other record that is no copy is an outside record. An outside record that holds a configured window found in at most `max_window_records` outside records (each counted once; default `identifiability.DEFAULT_MAX_WINDOW_RECORDS = 20`) is a column, unless it is longer than `LONG_RECORD`; every window of a column that an outside record left out holds is dropped from every layer -- the unique windows, the read model and the system -- in two passes over the FASTA (the columns' windows, then the added records'). `compatibility_matrix(tracks, ids, drop=)` leaves those windows out and keeps each column's window count as its denominator, so the system is the one with every outside record a column, less the rows that touch a left-out record: what is estimable here is estimable there, with a GLS standard error no smaller. `gene_total` leaves out a column whose every window was dropped and lists it as `transcripts_all_windows_dropped`; `transcripts_without_windows` lists only the transcripts shorter than the window, and it alone sets the CLI's exit 2 (`cli._identifiability_exit`): with windows dropped a column sums to less than one, and the gene total can leave the row space with no transcript windowless. The contrast's `gls_relative_se` is the delta-method SE of log(A/B) only when its gradient `c_a/a - c_b/b` is estimable, and infinite otherwise (`finite_se` false; null in `--json`).
 

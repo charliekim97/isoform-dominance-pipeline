@@ -46,6 +46,18 @@ versioning.
   under skew (2.01 against 2.70 log2, Mann-Whitney p 0.12). Failed and estimable, 2 (CD44,
   ESR1; 0.267). Failed and not estimable, none. Passed and not estimable, 8 (0.163).
 
+### Changed
+- **The "counting-noise floor" is renamed the unique-read counting SE (best transcript per
+  class)**: it is the Poisson SE of `log2(n_a/n_b)` for each class's best transcript's
+  informative reads, an estimator that counts only unambiguously assignable reads, and no
+  floor: on the README's LEPR example it reads 0.366 where the contrast's
+  `min_resolvable_log2fc` from the whole system is 0.234. `identifiability.unique_read_counting_se`
+  replaces `counting_noise_floor`, which still returns the same with a `DeprecationWarning`;
+  the `--json` report gains `unique_read_counting_se`, and `counting_noise` holds the same
+  until 3.0, when it and the old function go. The CLI line reads "unique-read counting SE
+  (best transcript per class) on log2 ratio"; its figures do not move. The README's layer
+  table, the API reference and the two places `paper.md` used the term follow.
+
 ### Documented
 - **A second quantifier was run, and the documentation said none was.** The README, the
   NOTE `identify` prints on the skew direction and `class_efflen_ratio`'s docstring called

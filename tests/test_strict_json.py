@@ -84,9 +84,10 @@ def test_identifiability_json_is_standard_and_says_why_a_figure_is_null(tmp_path
     assert c["estimable"] is True and c["finite_se"] is False
     assert c["conditioning_factor"] == pytest.approx(2 ** 0.5)
     assert c["gls_relative_se"] is None and c["min_resolvable_log2fc"] is None
-    noise = rep["counting_noise"]
+    noise = rep["unique_read_counting_se"]
     assert noise["defined"] is False
     assert noise["log2_ratio_se"] is None and noise["min_resolvable_log2fc"] is None
+    assert rep["counting_noise"] == noise         # the deprecated key, until 3.0
 
 
 def test_a_finite_figure_says_so(tmp_path, capsys):
@@ -101,7 +102,8 @@ def test_a_finite_figure_says_so(tmp_path, capsys):
                      "--json"]) == 0
     rep = strict(capsys.readouterr().out)
     assert rep["contrast"]["finite_se"] is True
-    assert rep["counting_noise"]["defined"] is True
+    assert rep["unique_read_counting_se"]["defined"] is True
+    assert rep["counting_noise"] == rep["unique_read_counting_se"]
     assert all(rep["groups"][g]["finite_se"] for g in ("A", "B"))
 
 

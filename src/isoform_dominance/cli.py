@@ -700,15 +700,15 @@ def _report(a, res):
               "common; a precision figure for such a class describes a quantity nobody "
               "asked for. Review the grouping before using any number above."
               % (g, 100.0 * j), file=sys.stderr)
-    noise = res["counting_noise"]
-    print("  unique-read counting floor on log2 ratio: SE %.3f per donor, "
-          "min resolvable |log2FC| %.3f at n=%d"
+    noise = res["unique_read_counting_se"]
+    print("  unique-read counting SE (best transcript per class) on log2 ratio: %.3f per "
+          "donor, min resolvable |log2FC| %.3f at n=%d"
           % (noise["log2_ratio_se"], noise["min_resolvable_log2fc"], d["n_donors"]))
     print("    (precision of log2(n_a/n_b), the informative-read counts of each class's "
           "best single transcript -- that ratio equals the class ratio only when the two "
           "classes have the same informative fraction, so it can read better than the "
-          "class comparison actually is. The per-class figures above are for the class "
-          "totals themselves.)", file=sys.stderr)
+          "class comparison actually is, or worse. The per-class figures above are for the "
+          "class totals themselves.)", file=sys.stderr)
     gt = res["gene_total"]
     if gt["transcripts_without_windows"]:
         print("  PRECONDITION FAILED: the gene total is not estimable. %s shorter than "

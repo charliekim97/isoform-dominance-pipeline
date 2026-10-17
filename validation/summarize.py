@@ -283,7 +283,8 @@ def analyse(genes):
             "old_gate": old_gate(genes[gene]), "structural": s,
             "coherence": {c: res["groups"][c]["coherence"]["min_jaccard"]
                           for c in res["primary_comparison"]},
-            "counting_min_resolvable_log2fc": res["counting_noise"]["min_resolvable_log2fc"],
+            "counting_min_resolvable_log2fc":
+                res["unique_read_counting_se"]["min_resolvable_log2fc"],
             "poisson_unit_factor": poisson_unit_factor(genes[gene]) if s["estimable"] else None}
     return out
 

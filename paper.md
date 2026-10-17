@@ -35,7 +35,7 @@ the measurability question in three layers, before a single read is quantified: 
 sequence is unique to each class once the rest of the gene — or an arbitrary background
 FASTA, such as the one a Salmon index was built from — is accounted for; how many
 fragments would be sequenced across that unique sequence at a stated depth, read length
-and fragment-length distribution, and hence what counting-noise floor the class ratio
+and fragment-length distribution, and hence what unique-read counting SE (best transcript per class) the class ratio
 carries; and whether each class total, and the contrast between them, is an *estimable*
 function of the fragment-class system at all. Quantification is then read from `Salmon`
 `quant.sf` files [@patro2017] and summarised per donor; the contrast is tested with a
@@ -135,7 +135,7 @@ stores and what an unstranded library requires.
 falls entirely inside a sequenced end, so a stretch straddling the gap between a pair's
 two reads, or lying beyond them in a longer fragment, contributes nothing. The expected
 count is evaluated exactly over all start positions, averaged over a truncated-normal
-fragment-length distribution, and converted to a counting-noise floor on the log2 class
+fragment-length distribution, and converted to a unique-read counting SE (best transcript per class) of the log2 class
 ratio.
 
 *The compatibility system is a sequence-derived surrogate, not the observation model of

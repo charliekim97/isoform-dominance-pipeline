@@ -119,7 +119,7 @@ isoform-dominance identifiability --config config.json --min-log2fc 0.5
 #   contrast iso_896aa vs iso_1165aa: min |log2FC| 0.234; identifiable, conditioning 117.68
 #   effective length: iso_896aa 5103 bp vs iso_1165aa 8072 bp (mean per transcript), log2 ratio -0.66
 #   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_896aa median 0.07 [0.05-0.12], 372 positions over 7 transcript(s); iso_1165aa median 0.67 [0.51-0.84], 10738 positions over 2 transcript(s)
-#   unique-read counting floor on log2 ratio: SE 0.187 per donor, min resolvable |log2FC| 0.366 at n=1
+#   unique-read counting SE (best transcript per class) on log2 ratio: 0.187 per donor, min resolvable |log2FC| 0.366 at n=1
 #   EFFECT SIZE: |log2FC| 0.500 resolved by both class totals and the contrast at this design
 #   VERDICT: identifiable
 # exit status 0; with --min-log2fc 0.1 the same run reports NOT resolved and exits 3
@@ -305,7 +305,7 @@ and `estimable` or `finite_se` beside it says why.
 | Layer | Reports | Why it is not the layer above |
 |---|---|---|
 | Sequence uniqueness | unique k-mers, bases covered, block structure | judged against a background — the gene's other transcripts by default, the whole index with `--background-fasta` — not just the configured classes |
-| Read model | `informative_fraction`, `expected_informative_reads`, counting-noise floor on log2 ratio | informativeness is scored on the **sequenced ends**, not the fragment: a unique region mid-fragment is never observed |
+| Read model | `informative_fraction`, `expected_informative_reads`, unique-read counting SE (best transcript per class) of the log2 ratio | informativeness is scored on the **sequenced ends**, not the fragment: a unique region mid-fragment is never observed |
 | Estimability | row-space residual, rank, and `min_resolvable_log2fc` from the Poisson-weighted GLS covariance, for each class total **and** their contrast; the structural conditioning factor as a diagnostic | a full-rank system with a near-degenerate contrast passes a rank test and still yields nothing |
 
 The headline figure is `min_resolvable_log2fc`: 1.96 standard errors of the log2 class ratio

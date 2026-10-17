@@ -33,8 +33,8 @@ conditioning factor.  Three layers are reported, cheapest first:
 2. **Expected informative reads** -- how many read pairs, at a stated depth, class
    abundance, read length and fragment-length distribution, actually land such that a
    sequenced end covers a group-unique k-mer.  This converts a sequence property into
-   an experimental-design quantity, and with it a counting-noise floor on the
-   log2 class ratio.
+   an experimental-design quantity, and with it the unique-read counting SE of the
+   log2 class ratio (best transcript per class).
 3. **Estimability** -- rank, row-space residual and a structural conditioning factor
    for the class-collapsed compatibility system described above.  The conditioning
    factor is a geometry proxy, not a standard error; see :func:`estimability`.
@@ -44,6 +44,7 @@ All three are computed offline from sequence alone; nothing here needs the reads
 import hashlib
 import math
 import urllib.parse
+import warnings
 from collections import Counter
 from urllib.error import HTTPError
 
@@ -733,14 +734,18 @@ def position_summary(positions):
     return {"n": len(positions), "q1": float(q1), "median": float(med), "q3": float(q3)}
 
 
-def counting_noise_floor(n_informative_a, n_informative_b, n_donors=1):
-    """Counting-noise standard error of the per-sample log2 class ratio.
+def unique_read_counting_se(n_informative_a, n_informative_b, n_donors=1):
+    """Unique-read counting SE of the per-sample log2 class ratio (best transcript per class).
 
-    Poisson counting error alone; biological and technical variation add on top, so
-    this is a floor on the achievable precision, never an estimate of it.  Returned
-    as NaN when either class has no informative reads, because the ratio is then
-    undefined rather than merely imprecise; ``defined`` says which, and ``--json`` writes
-    the NaN as null.
+    The standard error, from Poisson counting error alone, of ``log2(n_a / n_b)`` for the
+    expected informative-read counts ``n_a`` and ``n_b`` of each class's best single
+    transcript: the precision of an estimator that counts only unambiguously assignable
+    reads.  It is no floor on the precision of the class comparison: the contrast's
+    :func:`min_resolvable_log2fc`, from the whole system, can be smaller -- 0.234 against
+    this figure's 0.366 on the README's LEPR example -- and biological and technical
+    variation add to both.  Returned as NaN when either class has no informative reads,
+    because the ratio is then undefined rather than merely imprecise; ``defined`` says
+    which, and ``--json`` writes the NaN as null.
     """
     if n_informative_a <= 0 or n_informative_b <= 0:
         return {"log2_ratio_se": float("nan"), "min_resolvable_log2fc": float("nan"),
@@ -752,6 +757,15 @@ def counting_noise_floor(n_informative_a, n_informative_b, n_donors=1):
         "min_resolvable_log2fc": 1.96 * se / math.sqrt(n_donors),
         "defined": True,
     }
+
+
+def counting_noise_floor(n_informative_a, n_informative_b, n_donors=1):
+    """Deprecated alias of :func:`unique_read_counting_se`, removed in 3.0: the figure is
+    not a floor."""
+    warnings.warn("counting_noise_floor is deprecated and will be removed in 3.0: use "
+                  "unique_read_counting_se, which returns the same", DeprecationWarning,
+                  stacklevel=2)
+    return unique_read_counting_se(n_informative_a, n_informative_b, n_donors)
 
 
 def class_coherence(tracks, ids):
@@ -875,7 +889,7 @@ def min_resolvable_log2fc(relative_se, n_donors=1):
     interval just excludes zero: a true effect of this size is detected about half the time
     (about 50% power), and 80% power needs about 2.8 standard errors, 1.43 times as much.
 
-    The companion to :func:`counting_noise_floor`, which answers the same question for an
+    The companion to :func:`unique_read_counting_se`, which answers the same question for an
     estimator that counts only unambiguously assignable reads.  This one is for the
     estimator that inverts the whole system, which is what ``conditioning_factor``
     describes -- the two numbers in a report have always belonged to different estimators.
@@ -888,7 +902,7 @@ def min_resolvable_log2fc(relative_se, n_donors=1):
     A figure past :data:`LINEARISATION_LIMIT` on the log scale reads as "not resolvable at
     this design", not as a calibrated value; ``analyze`` flags those as ``beyond_linear``.
 
-    Not comparable to :func:`counting_noise_floor`'s figure, which is the precision of
+    Not comparable to :func:`unique_read_counting_se`'s figure, which is the precision of
     ``log2(n_a/n_b)`` for the informative-read counts of each class's *best single
     transcript*.  That ratio equals the class ratio only when the two classes share an
     informative fraction, so the older number can look much better than the class
@@ -1295,7 +1309,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         resolve.  When given it replaces ``conditioning_tau`` in the verdict, and the
         comparison is against :func:`min_resolvable_log2fc` computed from the GLS
         standard error of the *whole* system under Poisson counts -- not from
-        :func:`counting_noise_floor`, which describes a unique-read-counting estimator
+        :func:`unique_read_counting_se`, which describes a unique-read-counting estimator
         and is reported alongside for what it is.
     ensembl_release
         The Ensembl release to fetch sequence and the gene background from, when
@@ -1372,7 +1386,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         transcript windowless, and the CLI's precondition reads
         ``transcripts_without_windows``),
         ``effect_resolvable`` (whether both class totals and the contrast resolve
-        ``min_log2fc``, none of them ``beyond_linear``; None without it), and -- for callers written against v2.1 --
+        ``min_log2fc``, none of them ``beyond_linear``; None without it),
+        ``unique_read_counting_se`` (:func:`unique_read_counting_se` for the best
+        transcript of each compared class; ``counting_noise`` holds the same, a deprecated
+        key removed in 3.0), and -- for callers written against v2.1 --
         ``primary_distinguishable``.  Note that ``verdict`` supersedes
         ``primary_distinguishable``: a class with no unique k-mer of its own is still
         estimable when a class it is nested inside has unique sequence, and a class
@@ -1743,7 +1760,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     contrast["distinguishing_window_position"] = {
         g: position_summary(positions[g]) for g in pc[:2]}
 
-    noise = counting_noise_floor(
+    noise = unique_read_counting_se(
         report[pc[0]]["expected_informative_reads"],
         report[pc[1]]["expected_informative_reads"],
         n_donors=n_donors)
@@ -1828,7 +1845,9 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         "groups": report,
         "primary_comparison": list(pc),
         "contrast": contrast,
-        "counting_noise": noise,
+        "unique_read_counting_se": noise,
+        # the old name, deprecated: the figure is no floor.  Removed in 3.0
+        "counting_noise": dict(noise),
         "gene_total": gene_total,
         "effect_resolvable": effect_resolvable,
         "n_compatibility_classes": len(classes),
