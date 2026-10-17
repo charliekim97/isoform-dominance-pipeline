@@ -67,6 +67,15 @@ versioning.
 - **A JOSS draft PDF of `paper.md`** (`.github/workflows/draft-pdf.yml`, the
   openjournals draft action): built when `paper.md`, `paper.bib` or the workflow changes on
   `main` or in a pull request, or by hand, and kept as an artifact.
+- **A test that the package calls none of its own deprecated aliases**
+  (`tests/test_no_deprecated_calls.py`): `identifiability.analyze` on a saved input,
+  `identifiability --json` on another and the self-test run with every `DeprecationWarning`
+  attributed to a module of this package made an error, and only those. Under the floor job's
+  matplotlib 3.7 and pyparsing 3.3, matplotlib warns about pyparsing's old names while it
+  draws a figure, which is no call of ours, so making every `DeprecationWarning` an error
+  would fail there.
+
+### Changed
 - **The "counting-noise floor" is renamed the unique-read counting SE (best transcript per
   class)**: it is the Poisson SE of `log2(n_a/n_b)` for each class's best transcript's
   informative reads, an estimator that counts only unambiguously assignable reads, and no
