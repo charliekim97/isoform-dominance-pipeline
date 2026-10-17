@@ -40,9 +40,11 @@ conditioning factor.  Three layers are reported, cheapest first:
    factor is a geometry proxy, not a standard error; see :func:`estimability`.
 
 All three are computed offline from sequence and the stated design, before any read is
-quantified; nothing here needs the reads.  The read model and every precision figure are
-functions of that design -- read and fragment length, depth, TPM, number of donors -- so
-``depth`` or ``tpm`` can change the verdict.
+quantified; nothing here needs the reads.  The read model is a function of the read length,
+paired or single ends and the fragment-length distribution; the ``min_resolvable_log2fc``
+figures are a function of the mean fragment length, through each transcript's effective
+length; all of them are functions of depth and TPM, and the ``min_resolvable_log2fc`` figures
+of the number of donors too -- so ``depth`` or ``tpm`` can change the verdict.
 """
 import hashlib
 import math
@@ -900,10 +902,11 @@ def min_resolvable_log2fc(relative_se, n_donors=1):
     describes -- the two numbers in a report have always belonged to different estimators.
 
     The figure is 1.96 times the delta-method GLS standard error of the log2 class ratio
-    in this surrogate system, under Poisson counting error alone.  That standard error (the
-    figure / 1.96, the ``predicted_se`` of the stored simulation in ``validation/``) is not
-    a lower bound on the replicate scatter a quantifier shows: at uniform coverage in that
-    simulation the replicate SD was below it for 35 of the 39 estimable genes.  Biological
+    in this surrogate system, under Poisson counting error alone, divided by the square root
+    of the number of donors.  That standard error (the figure / 1.96 at one donor, the
+    ``predicted_se`` of the stored simulation in ``validation/``) is not a lower bound on the
+    replicate scatter a quantifier shows: at uniform coverage in that simulation the replicate
+    SD was below it for 35 of the 39 estimable genes of its 47-gene panel.  Biological
     and technical variation add to the scatter of real data.  And it describes spread, not
     accuracy: it assumes uniform coverage and a correctly specified compatibility model.
     Under positional coverage skew the estimate can be biased well past it while the

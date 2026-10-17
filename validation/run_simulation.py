@@ -453,12 +453,11 @@ def cmd_checkpoint(a):
     if not rows:
         sys.exit("no usable replicates")
     r = rows[0]
-    # The prediction is a floor on the SD of the best *unbiased* linear estimator.  A
-    # biased estimator can sit below it, and salmon does: on PIK3CA it came back with
-    # SD 0.0644 against a predicted 0.1048 while carrying a +0.0545 bias -- lower
-    # variance bought with bias, which is what an EM/VB estimator with a prior does.
-    # Comparing SD alone therefore asks the wrong question; total error is the one the
-    # prediction is about.
+    # The prediction is the delta-method SE of the surrogate system under Poisson counts,
+    # not a lower bound on what a quantifier's replicates show: on PIK3CA salmon came back
+    # with SD 0.0644 against a predicted 0.1048 while carrying a +0.0545 bias.  Comparing
+    # SD alone therefore asks the wrong question; total error is the one the prediction is
+    # about.
     ratio = r["rmse"] / r["predicted_se"] if r["predicted_se"] else float("inf")
     band = 3.0 / math.sqrt(2.0 * max(1, r["n"] - 1))
     bias_se = 1.253 * r["realised_sd"] / math.sqrt(r["n"])
@@ -536,8 +535,9 @@ def cmd_run(a):
     # `realised_sd` is the spread of the estimates and carries the estimand's own Poisson
     # variation between replicates; RMSE is the distance from the realised truth and does
     # not.  Under a coverage-model violation the SD line degrades gently while RMSE blows
-    # up: at --bias-5p 2.0 the SD-only C3 read 0.472 and looked survivable while
-    # Spearman(predicted, RMSE) was -0.080 and the median RMSE/predicted was 5.03.
+    # up: at --bias-5p 2.0, over the 41 rows printed here, the SD-only C3 read +0.472 and
+    # looked survivable while Spearman(predicted, RMSE) was -0.086 and the median
+    # RMSE/predicted was 4.55.
     # The gap between the two lines IS the bias term.
     fin = [r for r in good if r["predicted_se"] and math.isfinite(r["predicted_se"])]
     if fin:

@@ -177,8 +177,10 @@ and `estimable` or `finite_se` beside it says why.
 > in `tests/test_identifiability_model.py`.
 
 **What it checks, in three layers** — all from sequence and the stated design, before any read is
-quantified (the read model and every precision figure depend on the read and fragment lengths,
-depth, TPM and number of donors, so `--depth` or `--tpm` can change the verdict):
+quantified (the read model depends on the read length, paired or single ends and the
+fragment-length distribution, the `min |log2FC|` figures on the mean fragment length, and all of
+them on depth and TPM, the `min |log2FC|` figures also on the number of donors, so `--depth` or
+`--tpm` can change the verdict):
 
 > **Pass `--background-fasta`.** The default background is the gene's own remaining
 > transcripts, which is better than comparing the configured classes alone but still
@@ -331,12 +333,13 @@ scatter gives no sign of the bias. NTRK3 holds a replicate SD of 0.016–0.025 w
 runs from 0.002 to 2.82 log2. **Replicate agreement does not detect this failure.**
 Measure your own libraries' gene-body coverage (RSeQC `geneBody_coverage.py`) before reading
 the figure as an error bar. Set against the unique-k-mer gate of v2.1.1, on the 47 genes with
-a row in every design, the conditioning factor did not sort genes by error: the 31 estimable
-genes above 10 had a median RMSE at uniform coverage of 0.190 against 0.173 for the 6 at or
-below it, and a smaller worst bias under skew, 2.01 against 2.70 log2. The gate failed two
-genes the structure calls estimable (CD44, ESR1) and passed all 8 it calls not estimable, whose
-uniform RMSE (median 0.163) was no worse than the estimable genes'; they are also the deepest
-genes of the simulation (`validation/README.md` has the table and that confound). Every
+a row in every design, the conditioning factor did not sort genes by error: the 31 genes the
+gate passes with conditioning above 10 had a median RMSE at uniform coverage of 0.190 against
+0.173 for the 6 at or below it, and a smaller worst bias under skew, 2.01 against 2.70 log2.
+The gate failed two genes the structure calls estimable (CD44, ESR1) and passed all 8 it calls
+not estimable, whose uniform RMSE (median 0.163) was no worse than the estimable genes'; as a
+group they are deeper by construction, their median gene 3.9 times the estimable genes' in
+fragments (`validation/README.md` has the table and that confound). Every
 simulation figure this README quotes is recomputed from the stored outputs in `validation/` by
 `validation/summarize.py`, and a test fails when one no longer agrees.
 

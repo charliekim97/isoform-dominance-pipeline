@@ -211,9 +211,9 @@ def quotes(s):
         (readme, "NTRK3 holds a replicate SD of %s while its bias runs from %.3f to %.2f log2"
                  % (_span(s1["NTRK3"]["realised_sd"], 3), *s1["NTRK3"]["abs_bias"])),
         (readme, "on the %d genes with a row in every design, the conditioning factor did not "
-                 "sort genes by error: the %d estimable genes above 10 had a median RMSE at "
-                 "uniform coverage of %.3f against %.3f for the %d at or below it, and a smaller "
-                 "worst bias under skew, %.2f against %.2f log2"
+                 "sort genes by error: the %d genes the gate passes with conditioning above 10 "
+                 "had a median RMSE at uniform coverage of %.3f against %.3f for the %d at or "
+                 "below it, and a smaller worst bias under skew, %.2f against %.2f log2"
                  % (s["panel"]["n"], high["n"], high["uniform_rmse_median"],
                     good["uniform_rmse_median"], good["n"], high["worst_abs_bias_median"],
                     good["worst_abs_bias_median"])),
@@ -222,6 +222,8 @@ def quotes(s):
                  "estimable genes'"
                  % (WORD[fail["n"]], ", ".join(fail["genes"]), blind["n"],
                     blind["uniform_rmse_median"])),
+        (readme, "as a group they are deeper by construction, their median gene %.1f times the "
+                 "estimable genes' in fragments" % s8["median_gene_fragments"]["ratio"]),
         # the NOTE identify prints, and the --min-log2fc help (the survey)
         (cli, "in a %d-gene simulation with monotone positional skew, %s"
               % (v["n_genes"], salmon_kallisto("-"))),
@@ -257,7 +259,8 @@ def quotes(s):
         (ident, "on TPI1 it reads %.2f where the class totals themselves are not resolvable"
                 % v["TPI1_counting_min_resolvable_log2fc"]),
         (ident, "at uniform coverage in that simulation the replicate SD was below it for %d of "
-                "the %d estimable genes" % (s1["realised_sd_under_predicted_se"][u], s1["n"])),
+                "the %d estimable genes of its %d-gene panel"
+                % (s1["realised_sd_under_predicted_se"][u], s1["n"], s["panel"]["n"])),
         # the harness
         (sim, "`not_identifiable` group is %.1fx deeper than the estimable one by construction "
               "(smaller class %.0f vs %.0f fragments, %.1fx; counting floor differs at "
@@ -283,11 +286,13 @@ def quotes(s):
                      s["table_comparison"]["uniform_excess"],
                      high["worst_abs_bias_median"], good["worst_abs_bias_median"],
                      s["table_comparison"]["worst_abs_bias"])),
-        (vreadme, "**Row 3** holds %d genes, %s, whose uniform-coverage error is the table's "
-                  "largest (median RMSE %.3f, excess %.2f). ESR1's worst |bias|, %.2f log2, is "
-                  "at bias_5p -2.0, where only %d of its 30 replicates had a defined ratio"
+        (vreadme, "**Row 3** holds %d genes, %s, whose median uniform-coverage RMSE, %.3f, is "
+                  "the table's largest (their median excess, %.2f, is below the not-estimable "
+                  "row's %.2f). ESR1's worst |bias|, %.2f log2, is at bias_5p -2.0, where only "
+                  "%d of its 30 replicates had a defined ratio"
                   % (fail["n"], " and ".join(fail["genes"]), fail["uniform_rmse_median"],
-                     fail["uniform_excess_median"], note["ESR1"]["worst_abs_bias"],
+                     fail["uniform_excess_median"], blind["uniform_excess_median"],
+                     note["ESR1"]["worst_abs_bias"],
                      note["ESR1"]["replicates_with_a_ratio"][bm2])),
         (vreadme, "the %d genes the gate passes and the structure calls not estimable had no "
                   "worse RMSE at uniform coverage than the estimable genes (median %.3f against "
@@ -295,6 +300,9 @@ def quotes(s):
                   % (blind["n"], blind["uniform_rmse_median"],
                      note["estimable_uniform_rmse_median"], note["NTRK3_uniform_rmse"],
                      blind["uniform_excess_median"])),
+        (vreadme, "as a group they are deeper by construction (a median gene %.1f times the "
+                  "estimable genes'), so most of them have a smaller counting floor"
+                  % s8["median_gene_fragments"]["ratio"]),
         (vreadme, "S8 gives a %.1f-fold larger median gene and an %.1f-fold larger smaller class"
                   % (s8["median_gene_fragments"]["ratio"],
                      s8["median_smaller_class_fragments"]["ratio"])),

@@ -14,8 +14,8 @@ predicted for each gene, before any read existed, was recorded beside the realis
 CI does not run Salmon. `tests/test_validation.py` checks that the stored files are the ones `data/README.md` names,
 that the package still predicts for every gene what each stored row recorded (when it does not, the stored
 comparison no longer describes the code that ships), that `summary.json` and the block below are what
-`summarize.py` computes, and that every figure the README, the CLI, the package's docstrings and the harness quote
-from `data/` is the computed one.
+`summarize.py` computes, and that every figure the README, the CLI, the package's docstrings, `simulate_reads.py`'s
+docstring and this file quote from `data/` is the computed one (the comments in `run_simulation.py` are not checked).
 
 ```bash
 python validation/summarize.py            # print the summary
@@ -44,7 +44,7 @@ files give the same replicate. For kallisto, build its index with `index --quant
 
 ## The panel
 
-Every figure below is over one panel: the genes with a row in all seven Salmon designs, 47 of the 49. A gene has no
+Every figure below except the row check and the survey, which cover all 49 genes, is over one panel: the genes with a row in all seven Salmon designs, 47 of the 49. A gene has no
 row in a design when fewer than three of its 30 replicates gave both classes a positive estimate and a positive
 truth; the two left out are listed with the designs they have. kallisto has a row for the same 47 in all seven.
 Each figure states its n.
@@ -148,31 +148,32 @@ conditioned (1) or badly conditioned (2), and genes the gate fails that the stru
 - **Row 2 did not appear as a separate failure.** The 31 genes with conditioning above 10 had no clearly larger
   error at uniform coverage than the 6 at or below it (median RMSE 0.190 against 0.173, excess 2.09 against 1.62;
   Mann-Whitney p 0.77 and 0.22), and under skew their worst |bias| was smaller (2.01 against 2.70 log2, p 0.12).
-- **Row 3** holds 2 genes, CD44 and ESR1, whose uniform-coverage error is the table's largest (median RMSE 0.267,
-  excess 3.36). ESR1's worst |bias|, 6.00 log2, is at bias_5p -2.0, where only 8 of its 30 replicates had a defined
+- **Row 3** holds 2 genes, CD44 and ESR1, whose median uniform-coverage RMSE, 0.267, is the table's largest (their
+  median excess, 3.36, is below the not-estimable row's 6.33). ESR1's worst |bias|, 6.00 log2, is at bias_5p -2.0, where only 8 of its 30 replicates had a defined
   ratio.
 - **Row 4** holds no gene: every gene the gate fails is estimable.
 - **Outside the four rows**, the 8 genes the gate passes and the structure calls not estimable had no worse RMSE at
   uniform coverage than the estimable genes (median 0.163 against 0.190; NTRK3 0.017). Their large excess (6.33) is
-  the confound of S8: they are the deepest genes of the simulation, so their counting floor is the smallest.
+  the confound of S8: as a group they are deeper by construction (a median gene 3.9 times the estimable genes'), so
+  most of them have a smaller counting floor; not each one does (SMN2, among them, is the shallowest of all 49 genes).
 
 ## Where each figure is quoted
 
 | figures | quoted in |
 |---|---|
-| S1 | README, "It bounds spread, not accuracy" |
+| S1 | README, "It bounds spread, not accuracy"; `min_resolvable_log2fc`'s docstring |
 | S2, S7 | README, the paragraph on `effective length`; the NOTE `identify` prints on the skew direction (`cli.py`); `identifiability.class_efflen_ratio`'s docstring; `DIRECTION_MIN_ABS_LOG2_EFFLEN_RATIO`'s comment |
 | S3 | README, after the identifiability example; `class_efflen_ratio`'s docstring |
 | S4 | `class_efflen_ratio`'s docstring |
 | S5, S6 | CHANGELOG, `[Unreleased]` |
 | S8 | `simulate_reads.py`'s docstring; here |
 | the table | README, "It bounds spread, not accuracy"; here |
-| the survey | the docstrings of `gls_covariance`, `class_coherence`, `min_resolvable_log2fc` and `analyze`; the comment in `_verdict`; the help of `--min-log2fc` |
+| the survey | the docstrings of `gls_covariance`, `class_coherence`, `min_resolvable_log2fc` and `analyze`; the comment in `_verdict`; the help of `--min-log2fc`; `simulate_reads.py`'s docstring |
 
 ## Read S8 before any comparison of the not-estimable genes with the others
 
 Every transcript was given TPM 10, so a gene's fragment count grows with its number of transcripts, and a large
-annotation is also what makes a class contrast inestimable. The not-estimable genes are therefore the deepest:
+annotation is also what makes a class contrast inestimable. The not-estimable genes are therefore deeper as a group:
 S8 gives a 3.9-fold larger median gene and an 8.8-fold larger smaller class. Any comparison of the two groups (S5,
 the table's excess) is confounded by depth. A later simulation should hold the gene's total fixed instead; that
 needs the prediction re-solved at the new abundances, which `simulate_reads.py`'s docstring explains.

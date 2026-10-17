@@ -27,13 +27,15 @@ versioning.
   study's LEPR classes) is kept in `tests/data/v270_identifiability`, and the current code
   must give the same keys, strings, booleans, integers and nulls, every real number within a
   relative 1e-9, and exit status 0, apart from keys this release adds. The tolerance is for
-  the BLAS build: under two other OpenBLAS kernels every file differs byte for byte, the
-  residuals of about 1e-16 by up to 7e-16 and every other number by at most 1e-13 relative.
+  the BLAS build: under other OpenBLAS kernels every file differs byte for byte, the
+  residuals of about 1e-16 by up to about 1e-15 and every other number by up to about 2e-13
+  relative.
 - **The simulation figures are recomputed from stored outputs, and tested** (issue #2):
   `validation/summarize.py` reads the stored Salmon and kallisto outputs and inputs of
   `validation/data` and the installed package, checks every file against the SHA-256 its
   README names, and recomputes every simulation figure the README, the CLI, the docstrings and
-  the harness quote, with the four-row comparison of issue #2 against the v2.1.1
+  `simulate_reads.py`'s docstring quote (the comments of `run_simulation.py` are not checked),
+  with the four-row comparison of issue #2 against the v2.1.1
   unique-k-mer gate (`validation/summary.json`, and the generated block of
   `validation/README.md`). Every figure is over one panel, the 47 genes with a row in all seven
   Salmon designs (PFKL and EPOR are left out). It also checks that the package still predicts
