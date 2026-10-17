@@ -87,6 +87,16 @@ versioning.
   `.github/workflows/ensembl-nightly.yml`) leave the key out, as they leave out the other
   thing only a GTF says, where a same-name gene lies; `tests/test_saved_identifiability.py`
   holds it null on every saved input.
+- **The simulation harness is run end to end without Salmon** (`tests/test_harness_smoke.py`):
+  `run_simulation.py run` on LEPR and TGFB1, three replicates at `--depth-scale 0.04` (the
+  smaller classes expect 129 and 59 fragments), with only the `salmon` command stubbed to
+  write `quant.sf` with each transcript's `NumReads` the fragments the simulator drew from it,
+  `aux_info/meta_info.json` and `lib_format_counts.json`, so the simulator subprocess,
+  `_quantify_salmon`'s reading of those files and `summarise` all run: two rows, each with
+  bias and RMSE 0, and a stub one fragment off gives both an error. A replicate simulated in
+  two processes at `PYTHONHASHSEED` 0 and 1 is the same truth and, decompressed, the same
+  reads; the harness runs the simulator as a subprocess, where an order that rests on the
+  hash seed would show. What the simulation computes and the Salmon path are unchanged.
 - **A test that the package calls none of its own deprecated aliases**
   (`tests/test_no_deprecated_calls.py`): `identifiability.analyze` on a saved input,
   `identifiability --json` on another and the self-test run with every `DeprecationWarning`

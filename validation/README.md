@@ -16,6 +16,10 @@ that the package still predicts for every gene what each stored row recorded (wh
 comparison no longer describes the code that ships), that `summary.json` and the block below are what
 `summarize.py` computes, and that every figure the README, the CLI, the package's docstrings, `simulate_reads.py`'s
 docstring and this file quote from `data/` is the computed one (the comments in `run_simulation.py` are not checked).
+`tests/test_harness_smoke.py` runs the harness with no quantifier:
+
+- `run` on LEPR and TGFB1, three replicates at `--depth-scale 0.04`, with only the `salmon` command stubbed to write the fragments the simulator drew as `quant.sf`'s `NumReads` (and `meta_info.json`, `lib_format_counts.json`): two rows, each with bias and RMSE 0.
+- one replicate of the two genes simulated in two processes, at `PYTHONHASHSEED` 0 and 1: the same truth and, decompressed, the same reads (within one environment; not across numpy versions).
 
 ```bash
 python validation/summarize.py            # print the summary
