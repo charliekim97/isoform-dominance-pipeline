@@ -2,6 +2,8 @@
 import json
 import pathlib
 import re
+from importlib import resources
+from types import SimpleNamespace
 
 import pytest
 
@@ -153,3 +155,60 @@ def test_the_identifiability_check_can_fail(monkeypatch, capsys, change):
     verdicts = {c["name"]: c["ok"] for c in json.loads(capsys.readouterr().out)["checks"]}
     assert verdicts.pop("identifiability") is False
     assert all(verdicts.values())
+
+
+# --------------------------------------------------------------------------- #
+# the package's own files, missing or broken: one failed check, not a lost report
+# --------------------------------------------------------------------------- #
+def _broken_package_data(monkeypatch, tmp_path, inputs):
+    """Point the self-test's package data at a copy under ``tmp_path`` whose saved inputs
+    are ``inputs`` (bytes), or absent when ``inputs`` is None."""
+    data = tmp_path / "data"
+    data.mkdir()
+    name = _selftest.IDENTIFIABILITY["config"]
+    (data / name).write_bytes((PACKAGED / name).read_bytes())
+    if inputs is not None:
+        (data / _selftest.IDENTIFIABILITY["inputs"]).write_bytes(inputs)
+    monkeypatch.setattr(_selftest, "resources", SimpleNamespace(
+        files=lambda package: tmp_path, as_file=resources.as_file))
+
+
+_BROKEN = {"absent": (None, "No such file or directory"),
+           "not JSON": (b'{"format": ', "is not valid JSON"),
+           "not saved inputs": (b'{"format": "something else"}', "is not a saved-inputs file")}
+
+
+@pytest.mark.parametrize("case", sorted(_BROKEN))
+def test_broken_package_data_fails_one_check_and_keeps_the_json(monkeypatch, tmp_path,
+                                                               capsys, case):
+    inputs, cause = _BROKEN[case]
+    _broken_package_data(monkeypatch, tmp_path, inputs)
+    rc = cli.main(["selftest", "--json"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)          # the whole of stdout, so no stray text
+    assert rc == 1
+    assert payload["ok"] is False
+    checks = {c["name"]: c for c in payload["checks"]}
+    assert list(checks) == ["GSE228458", "GSE137619", "COMBINED", "figure",
+                            "contamination_qc", "identifiability"]
+    failed = checks.pop("identifiability")
+    assert failed["ok"] is False
+    assert failed["message"].startswith("[FAIL] identifiability: ")
+    assert cause in failed["message"] and cause in failed["error"]
+    assert (failed["verdict"], failed["min_resolvable_log2fc"]) == (None, None)
+    assert all(c["ok"] is True for c in checks.values())
+    assert set(payload["combinations"]) == set(_COMBINATION_LINES)
+    assert payload["combinations"]["stouffer"]["p"] == pytest.approx(0.004419, abs=5e-7)
+
+
+def test_broken_package_data_keeps_the_human_report(monkeypatch, tmp_path, capsys):
+    _broken_package_data(monkeypatch, tmp_path, None)
+    assert cli.main(["selftest"]) == 1
+    lines = capsys.readouterr().out.splitlines()
+    assert sum(ln.startswith("  [OK] ") for ln in lines) == 5
+    failed = [ln for ln in lines if ln.startswith("  [FAIL] ")]
+    assert len(failed) == 1 and failed[0].startswith("  [FAIL] identifiability: ")
+    assert "No such file or directory" in failed[0]
+    for label in _COMBINATION_LINES.values():
+        assert any(re.match(r"\s*%s\s" % re.escape(label), ln) for ln in lines), label
+    assert lines[-1] == "FAIL"

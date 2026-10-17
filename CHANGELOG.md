@@ -67,8 +67,6 @@ versioning.
 - **A JOSS draft PDF of `paper.md`** (`.github/workflows/draft-pdf.yml`, the
   openjournals draft action): built when `paper.md`, `paper.bib` or the workflow changes on
   `main` or in a pull request, or by hand, and kept as an artifact.
-
-### Changed
 - **The "counting-noise floor" is renamed the unique-read counting SE (best transcript per
   class)**: it is the Poisson SE of `log2(n_a/n_b)` for each class's best transcript's
   informative reads, an estimator that counts only unambiguously assignable reads, and no
@@ -90,6 +88,14 @@ versioning.
   docs' front page now say it the same (`tests/test_titles.py`).
 
 ### Fixed
+- **A broken package file fails one self-test check, not the self-test.** When the files the
+  self-test's `identifiability` check reads from the package could not be opened (`OSError`)
+  or were not a config and saved inputs (`InputError`, or another `ValueError` from reading
+  them), the exception reached `cli.main`, which printed one `error:` line: stdout was empty,
+  and the five other checks and `selftest --json` were lost. The check is now recorded as
+  failed, with the cause in its message and in an `error` field (its `verdict`,
+  `min_resolvable_log2fc` and `conditioning_factor` null); the other checks, the cohort
+  combinations and `--json` are printed as before, and the exit status is 1, as it was.
 - **`extract`'s `<out>.index.json` is standard JSON whatever `meta_info.json` holds.** It was
   written with `json.dump` alone, so a hand-edited or damaged `aux_info/meta_info.json` with
   `NaN` or `Infinity` in a count (`num_valid_targets`, `num_decoy_targets`), which Python's

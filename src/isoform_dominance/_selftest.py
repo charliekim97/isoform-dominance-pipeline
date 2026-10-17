@@ -133,17 +133,27 @@ def evaluate(base):
     check("contamination_qc", qc_ok, "contamination-QC purity ratios %s < 0.2"
           % [round(x, 3) for x in ratios], ratios=ratios, threshold=0.2)
     want = IDENTIFIABILITY
-    rep = identifiability_report()
-    fc = rep["contrast"]["min_resolvable_log2fc"]
-    check("identifiability", rep["verdict"] == want["verdict"] and math.isfinite(fc)
-          and abs(fc - want["min_resolvable_log2fc"]) <= want["tolerance"],
-          "identifiability: LEPR short vs long, saved GENCODE 44 inputs: %s, contrast min "
-          "|log2FC| %.4f (expect %s, %.4f +- %.4f)"
-          % (rep["verdict"], fc, want["verdict"], want["min_resolvable_log2fc"],
-             want["tolerance"]),
-          verdict=rep["verdict"], min_resolvable_log2fc=fc,
-          conditioning_factor=rep["contrast"]["conditioning_factor"],
-          expect={k: want[k] for k in ("verdict", "min_resolvable_log2fc", "tolerance")})
+    expect = {k: want[k] for k in ("verdict", "min_resolvable_log2fc", "tolerance")}
+    try:
+        rep = identifiability_report()
+    except (OSError, ValueError) as e:      # the package's files: unreadable, or not the inputs
+        # one failed check, so the other checks and --json still reach the reader
+        error = ("%s: %s" % (e.strerror or e, e.filename)
+                 if isinstance(e, OSError) and e.filename is not None else str(e))
+        check("identifiability", False,
+              "identifiability: LEPR short vs long, saved GENCODE 44 inputs: not run: %s"
+              % error, verdict=None, min_resolvable_log2fc=None, conditioning_factor=None,
+              expect=expect, error=error)
+    else:
+        fc = rep["contrast"]["min_resolvable_log2fc"]
+        check("identifiability", rep["verdict"] == want["verdict"] and math.isfinite(fc)
+              and abs(fc - want["min_resolvable_log2fc"]) <= want["tolerance"],
+              "identifiability: LEPR short vs long, saved GENCODE 44 inputs: %s, contrast min "
+              "|log2FC| %.4f (expect %s, %.4f +- %.4f)"
+              % (rep["verdict"], fc, want["verdict"], want["min_resolvable_log2fc"],
+                 want["tolerance"]),
+              verdict=rep["verdict"], min_resolvable_log2fc=fc,
+              conditioning_factor=rep["contrast"]["conditioning_factor"], expect=expect)
 
     combinations = {}
     for key in COMBINATIONS:
