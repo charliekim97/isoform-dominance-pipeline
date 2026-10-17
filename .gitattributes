@@ -1,2 +1,5 @@
 # fixtures compared byte for byte: never convert their line endings
 tests/data/** -text
+# saved inputs and stored outputs compared byte for byte: never convert their line endings
+example/saved/** -text
+validation/data/** -text
