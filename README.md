@@ -109,9 +109,10 @@ system, and reports the smallest fold change the stated design can resolve for e
 and for the contrast between them. Ask it for the effect size you need:
 
 ```bash
-isoform-dominance identifiability --config config.json --min-log2fc 0.5
+isoform-dominance identifiability --config example/saved/LEPR.gencode50.config.json \
+    --inputs example/saved/LEPR.gencode50.inputs.json --min-log2fc 0.5
 # Identifiability (window=31, canonical k-mers)
-#   annotation: Ensembl release 116
+#   annotation: Ensembl release 116; sequence from saved inputs (release 116, example/saved/LEPR.gencode50.inputs.json)
 #   background: 9 same-gene transcript(s)
 #   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
 #   [identifiable] iso_1165aa: min |log2FC| 0.064; class 5369 unique k-mers; best transcript 5399 bp in 1 block(s), ~1072 informative reads; conditioning 3.62
@@ -129,12 +130,13 @@ This example is a counterexample to the skew direction the command states (see b
 iso_896aa is the shorter class but is distinguished at its 5' end (median 0.07), and in the
 simulation its bias ran against that direction under 5 of the 6 skews.
 
-The release-116 sequences behind the 2026-09-11 block this replaces, run offline through
-`--sequences` and `--background-sequences` with the nine same-gene background transcripts;
-transcript and k-mer counts move as the annotation does. The `effective length` and
-`distinguishing windows` lines were added from a live run against the same release on
-2026-09-13, in which every other line reproduced unchanged. The header and the per-class
-lines are shown as 2.4.1 prints them; the figures are those runs'. Read the `min |log2FC|` figures first:
+The block is that command's standard output (its NOTEs go to stderr), run in a clone of this
+repository with no network: `example/saved/` holds the LEPR config `annotate --gtf` proposes
+from GENCODE 50 (Ensembl 116) and the sequence `--save-inputs` saved from the same files, the
+nine configured transcripts and the nine other transcripts of the gene, and its README says
+how they were made. `tests/test_readme_example.py` runs the command with every socket refused
+and compares each line; a live run against another release gives other transcript and k-mer
+counts, as the annotation moves. Read the `min |log2FC|` figures first:
 they are what the verdict and the exit status are built on. `conditioning` is a diagnostic.
 Without `--min-log2fc` the verdict falls back to `--tau` on the conditioning factor, which has
 no calibrated value — the same run then reads `weakly_identifiable` — and the command says on

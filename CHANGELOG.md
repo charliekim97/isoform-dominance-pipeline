@@ -59,6 +59,12 @@ versioning.
   table, the API reference and the two places `paper.md` used the term follow.
 
 ### Documented
+- **The README's identifiability example runs from inputs in the repository**: the LEPR
+  config and saved inputs of GENCODE 50 in `example/saved/`, with `--inputs`. Every figure of
+  the block is the one it showed; the header names the saved inputs, and the counting line
+  has its new name. `tests/test_readme_example.py` runs the command from the README with
+  every socket refused, compares each line, checks exit status 0 and, at `--min-log2fc 0.1`,
+  3, and holds the `annotate` block's transcript counts (7 and 2) to the saved config.
 - **A second quantifier was run, and the documentation said none was.** The README, the
   NOTE `identify` prints on the skew direction and `class_efflen_ratio`'s docstring called
   the simulation "Salmon, one quantifier" and said no other quantifier was tested; kallisto
