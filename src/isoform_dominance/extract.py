@@ -1,6 +1,6 @@
 """Extract per-donor isoform-group TPM from Salmon quant.sf (stdlib only)."""
 import csv, os, glob, json
-from . import index_scope
+from . import index_scope, io
 from .io import InputError, load_sample_map, shared_transcripts, transcript_to_group
 
 
@@ -206,6 +206,9 @@ def run(config, quantdir, samplemap, cohort, out, allow_mixed_index=False, notes
         notes.append(warning)
     write_perdonor(config, rows, cohort, out)
     with open(out + ".index.json", "w") as f:
-        json.dump(dict(prov, cohort=cohort, missing_transcripts=missing,
-                       same_name_copies=copies), f, indent=1)
+        # standard JSON: a count in meta_info.json that is not finite -- Python's json reads
+        # NaN and Infinity -- is null, not a token a standard parser refuses; the donor's
+        # hashes, which the mixed-index check rests on, stay
+        json.dump(io.finite_json(dict(prov, cohort=cohort, missing_transcripts=missing,
+                                      same_name_copies=copies)), f, indent=1, allow_nan=False)
     return len(rows)

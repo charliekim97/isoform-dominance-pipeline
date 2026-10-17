@@ -87,6 +87,17 @@ versioning.
   pyproject's `description`, and the CLI's help, the package docstring, the README and the
   docs' front page now say it the same (`tests/test_titles.py`).
 
+### Fixed
+- **`extract`'s `<out>.index.json` is standard JSON whatever `meta_info.json` holds.** It was
+  written with `json.dump` alone, so a hand-edited or damaged `aux_info/meta_info.json` with
+  `NaN` or `Infinity` in a count (`num_valid_targets`, `num_decoy_targets`), which Python's
+  `json` reads, went into the sidecar as that token, which a standard parser refuses. A
+  number that is not finite is now null, as in every other JSON the package writes
+  (`io.finite_json`, `allow_nan=False`). Such a file is not treated as unreadable: the
+  donor's index hashes, which the mixed-index check rests on, are good, and treating the
+  donor as having no meta_info would drop them. A normal `meta_info.json` gives the sidecar
+  2.6.0 wrote, byte for byte, and the per-donor CSV is untouched.
+
 ### Documented
 - **The README's identifiability example runs from inputs in the repository**: the LEPR
   config and saved inputs of GENCODE 50 in `example/saved/`, with `--inputs`. Every figure of
