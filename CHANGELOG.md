@@ -62,6 +62,9 @@ versioning.
   (0.12896 at conditioning 2.747). One more line in the output and one more check in
   `selftest --json`; the other checks and the reference P values do not move.
 - CI tests Python 3.14 too.
+- **A JOSS draft PDF of `paper.md`** (`.github/workflows/draft-pdf.yml`, the
+  openjournals draft action): built when `paper.md`, `paper.bib` or the workflow changes on
+  `main` or in a pull request, or by hand, and kept as an artifact.
 
 ### Changed
 - **The "counting-noise floor" is renamed the unique-read counting SE (best transcript per
