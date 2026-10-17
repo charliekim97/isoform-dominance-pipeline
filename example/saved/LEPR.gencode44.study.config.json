@@ -1,0 +1,20 @@
+{
+ "gene": "LEPR",
+ "gene_id": "ENSG00000116678",
+ "species": "homo_sapiens",
+ "ensembl_release": 110,
+ "groups": {
+  "short": [
+   "ENST00000371060",
+   "ENST00000616738"
+  ],
+  "long": [
+   "ENST00000349533"
+  ]
+ },
+ "primary_comparison": [
+  "short",
+  "long"
+ ],
+ "_note": "The classes of the choroid-plexus LEPR reanalysis (LepRa = short, LepRb = long), as in the self-test; the remaining LEPR transcripts of GENCODE 44 are the gene background."
+}

@@ -1,0 +1,151 @@
+{
+  "gene": "NTRK2",
+  "gene_id": "ENSG00000148053",
+  "species": "homo_sapiens",
+  "ensembl_release": 116,
+  "groups": {
+    "iso_822aa": [
+      "ENST00000277120",
+      "ENST00000323115",
+      "ENST00000376213",
+      "ENST00000686259",
+      "ENST00000686324",
+      "ENST00000686496",
+      "ENST00000689301",
+      "ENST00000691788",
+      "ENST00000692181",
+      "ENST00000692473",
+      "ENST00000884757",
+      "ENST00000884758"
+    ],
+    "iso_477aa": [
+      "ENST00000359847",
+      "ENST00000395882",
+      "ENST00000685387",
+      "ENST00000686322",
+      "ENST00000686542",
+      "ENST00000687148",
+      "ENST00000687596",
+      "ENST00000688013",
+      "ENST00000689685",
+      "ENST00000689815",
+      "ENST00000690281",
+      "ENST00000691415",
+      "ENST00000692389",
+      "ENST00000692506",
+      "ENST00000692762",
+      "ENST00000692804",
+      "ENST00000693109",
+      "ENST00000693127",
+      "ENST00001004852",
+      "ENST00001004853",
+      "ENST00001017875",
+      "ENST00001017876"
+    ]
+  },
+  "primary_comparison": [
+    "iso_477aa",
+    "iso_822aa"
+  ],
+  "_proposal": {
+    "alternative_rule": "the non-canonical cluster with the most transcripts; a tie goes to the longer representative protein, and a tie on both to the lower terminal-acceptor coordinate",
+    "tied_with": []
+  },
+  "_proposed": "Auto-proposed by `isoform-dominance annotate`. Groups = protein-coding transcripts sharing a 3' terminal-exon splice acceptor (isoform-defining alternative last exon). REVIEW and rename to functional names (e.g. short/long) before use; smaller clusters are listed under _clusters.",
+  "_clusters": [
+    {
+      "terminal_acceptor": 84810542,
+      "rep_protein_aa": 477,
+      "n_transcripts": 22,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00000359847",
+        "ENST00000395882",
+        "ENST00000685387",
+        "ENST00000686322",
+        "ENST00000686542",
+        "ENST00000687148",
+        "ENST00000687596",
+        "ENST00000688013",
+        "ENST00000689685",
+        "ENST00000689815",
+        "ENST00000690281",
+        "ENST00000691415",
+        "ENST00000692389",
+        "ENST00000692506",
+        "ENST00000692762",
+        "ENST00000692804",
+        "ENST00000693109",
+        "ENST00000693127",
+        "ENST00001004852",
+        "ENST00001004853",
+        "ENST00001017875",
+        "ENST00001017876"
+      ]
+    },
+    {
+      "terminal_acceptor": 85021252,
+      "rep_protein_aa": 822,
+      "n_transcripts": 12,
+      "contains_canonical": true,
+      "transcripts": [
+        "ENST00000277120",
+        "ENST00000323115",
+        "ENST00000376213",
+        "ENST00000686259",
+        "ENST00000686324",
+        "ENST00000686496",
+        "ENST00000689301",
+        "ENST00000691788",
+        "ENST00000692181",
+        "ENST00000692473",
+        "ENST00000884757",
+        "ENST00000884758"
+      ]
+    },
+    {
+      "terminal_acceptor": 84871789,
+      "rep_protein_aa": 553,
+      "n_transcripts": 6,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00000304053",
+        "ENST00000376208",
+        "ENST00000685720",
+        "ENST00000686443",
+        "ENST00000687636",
+        "ENST00000693539"
+      ]
+    },
+    {
+      "terminal_acceptor": 85094991,
+      "rep_protein_aa": 776,
+      "n_transcripts": 1,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00000687386"
+      ]
+    },
+    {
+      "terminal_acceptor": 84811491,
+      "rep_protein_aa": 500,
+      "n_transcripts": 1,
+      "contains_canonical": false,
+      "transcripts": [
+        "ENST00000693384"
+      ]
+    }
+  ],
+  "annotation_source": {
+    "kind": "gtf",
+    "file": "gencode.v50.annotation.gtf.gz",
+    "bytes": 124527720,
+    "sha256": "83fba3e9b03f0b8c958f3595c6c350adc55f468abf8b0e47b6d5284cfe13a453",
+    "provider": "GENCODE",
+    "gencode_release": 50,
+    "ensembl_release": 116,
+    "date": "2026-04-08",
+    "description": "evidence-based annotation of the human genome (GRCh38), version 50 (Ensembl 116)",
+    "n_transcripts": 64
+  }
+}
