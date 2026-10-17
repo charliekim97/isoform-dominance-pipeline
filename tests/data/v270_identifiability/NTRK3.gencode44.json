@@ -1,0 +1,178 @@
+{
+  "k": 31,
+  "window": 31,
+  "canonical": true,
+  "annotation": {
+    "ensembl_release": 110,
+    "fetched_release": null,
+    "file_release": null,
+    "source": null,
+    "inputs_release": 110
+  },
+  "background": {
+    "gene_id": "ENSG00000140538",
+    "gene_transcripts": [
+      "ENST00000317501",
+      "ENST00000557897",
+      "ENST00000558306",
+      "ENST00000558676",
+      "ENST00000559188",
+      "ENST00000559680",
+      "ENST00000559764",
+      "ENST00000560017",
+      "ENST00000560201",
+      "ENST00000560739",
+      "ENST00000695463"
+    ],
+    "fasta": null,
+    "fasta_sha256": null,
+    "decoys": null,
+    "decoys_sha256": null,
+    "decoys_listed": null,
+    "decoys_skipped": null,
+    "decoys_absent": null,
+    "fasta_long_records": {},
+    "max_window_records": 20,
+    "fasta_left_out": 0,
+    "windows_dropped": {
+      "total": 0,
+      "configured": 0,
+      "configured_of": 20698,
+      "columns": {}
+    },
+    "n_background_transcripts": 11,
+    "fasta_competitors": {},
+    "n_fasta_competitors": 0,
+    "sequence_from_fasta": [],
+    "keep_duplicates": false,
+    "identical_to_configured": {},
+    "identical_to_background": {},
+    "identical_source": {},
+    "same_name_copies": [],
+    "fasta_other_versions": null
+  },
+  "design": {
+    "read_length": 100,
+    "paired": true,
+    "frag_mean": 200.0,
+    "frag_sd": 60.0,
+    "depth": 30000000,
+    "mean_efflen": 1500.0,
+    "tpm": 10.0,
+    "n_donors": 1,
+    "min_log2fc": null
+  },
+  "groups": {
+    "iso_839aa": {
+      "n_transcripts": 6,
+      "n_unique_kmers": 17699,
+      "distinguishable": true,
+      "best_transcript": "ENST00000629765",
+      "unique_length": 17601,
+      "unique_fraction": 0.8792586671995204,
+      "n_blocks": 1,
+      "max_block_length": 17601,
+      "informative_fraction": 0.8849107198872819,
+      "expected_informative_reads": 3507.609111489208,
+      "estimable": true,
+      "residual": 1.2896637432735046e-15,
+      "conditioning_factor": 5.239117174589452,
+      "rank": 19,
+      "label": "the iso_839aa class total",
+      "coherence": {
+        "median_jaccard": 0.14611689351481186,
+        "min_jaccard": 0.12617382617382616,
+        "n_pairs": 15
+      },
+      "gls_relative_se": 0.011670692728651651,
+      "finite_se": true,
+      "min_resolvable_log2fc": 0.033001011025794655,
+      "beyond_linear": false,
+      "verdict": "identifiable",
+      "reasons": []
+    },
+    "iso_617aa": {
+      "n_transcripts": 2,
+      "n_unique_kmers": 533,
+      "distinguishable": true,
+      "best_transcript": "ENST00000558576",
+      "unique_length": 424,
+      "unique_fraction": 0.5913528591352859,
+      "n_blocks": 1,
+      "max_block_length": 424,
+      "informative_fraction": 0.7689529441105845,
+      "expected_informative_reads": 79.66352500985654,
+      "estimable": true,
+      "residual": 1.026376996023117e-15,
+      "conditioning_factor": 5.314885057619437,
+      "rank": 19,
+      "label": "the iso_617aa class total",
+      "coherence": {
+        "median_jaccard": 0.23076923076923078,
+        "min_jaccard": 0.23076923076923078,
+        "n_pairs": 1
+      },
+      "gls_relative_se": 0.10021097422127788,
+      "finite_se": true,
+      "min_resolvable_log2fc": 0.28336479608131115,
+      "beyond_linear": false,
+      "verdict": "identifiable",
+      "reasons": []
+    }
+  },
+  "primary_comparison": [
+    "iso_617aa",
+    "iso_839aa"
+  ],
+  "contrast": {
+    "estimable": true,
+    "residual": 9.6281819082503e-16,
+    "conditioning_factor": 9.136688724373416,
+    "rank": 19,
+    "label": "the class contrast",
+    "gls_relative_se": 0.10430098868379649,
+    "finite_se": true,
+    "min_resolvable_log2fc": 0.294930057502501,
+    "beyond_linear": false,
+    "verdict": "identifiable",
+    "reasons": [],
+    "class_mean_efflen": {
+      "iso_617aa": 1303.0,
+      "iso_839aa": 8342.0
+    },
+    "log2_efflen_ratio": -2.6785562283210913,
+    "efflen_direction_in_band": true,
+    "distinguishing_window_position": {
+      "iso_617aa": {
+        "n": 792,
+        "q1": 0.5521137026239067,
+        "median": 0.8403790087463556,
+        "q3": 0.9329752987821268
+      },
+      "iso_839aa": {
+        "n": 37307,
+        "q1": 0.3540059884712664,
+        "median": 0.587530697138275,
+        "q3": 0.8172759093390656
+      }
+    }
+  },
+  "counting_noise": {
+    "log2_ratio_se": 0.1634637195270957,
+    "min_resolvable_log2fc": 0.3203888902731076,
+    "defined": true
+  },
+  "gene_total": {
+    "estimable": true,
+    "residual": 1.9459347604481164e-15,
+    "conditioning_factor": 5.226117748122829,
+    "rank": 19,
+    "transcripts_without_windows": [],
+    "transcripts_all_windows_dropped": []
+  },
+  "effect_resolvable": null,
+  "n_compatibility_classes": 57,
+  "primary_distinguishable": true,
+  "verdict": "identifiable",
+  "reasons": []
+}

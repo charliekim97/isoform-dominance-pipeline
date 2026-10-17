@@ -1,0 +1,188 @@
+{
+  "k": 31,
+  "window": 31,
+  "canonical": true,
+  "annotation": {
+    "ensembl_release": 116,
+    "fetched_release": null,
+    "file_release": null,
+    "source": null,
+    "inputs_release": 116
+  },
+  "background": {
+    "gene_id": "ENSG00000140538",
+    "gene_transcripts": [
+      "ENST00000542733",
+      "ENST00000557897",
+      "ENST00000558306",
+      "ENST00000558576",
+      "ENST00000558676",
+      "ENST00000559188",
+      "ENST00000559680",
+      "ENST00000559764",
+      "ENST00000560017",
+      "ENST00000560201",
+      "ENST00000560739"
+    ],
+    "fasta": null,
+    "fasta_sha256": null,
+    "decoys": null,
+    "decoys_sha256": null,
+    "decoys_listed": null,
+    "decoys_skipped": null,
+    "decoys_absent": null,
+    "fasta_long_records": {},
+    "max_window_records": 20,
+    "fasta_left_out": 0,
+    "windows_dropped": {
+      "total": 0,
+      "configured": 0,
+      "configured_of": 23064,
+      "columns": {}
+    },
+    "n_background_transcripts": 11,
+    "fasta_competitors": {},
+    "n_fasta_competitors": 0,
+    "sequence_from_fasta": [],
+    "keep_duplicates": false,
+    "identical_to_configured": {},
+    "identical_to_background": {},
+    "identical_source": {},
+    "same_name_copies": [],
+    "fasta_other_versions": null
+  },
+  "design": {
+    "read_length": 100,
+    "paired": true,
+    "frag_mean": 200.0,
+    "frag_sd": 60.0,
+    "depth": 30000000,
+    "mean_efflen": 1500.0,
+    "tpm": 10.0,
+    "n_donors": 1,
+    "min_log2fc": null
+  },
+  "groups": {
+    "iso_825aa": {
+      "n_transcripts": 20,
+      "n_unique_kmers": 17892,
+      "distinguishable": true,
+      "best_transcript": "ENST00000889751",
+      "unique_length": 17617,
+      "unique_fraction": 0.873772443209999,
+      "n_blocks": 2,
+      "max_block_length": 17557,
+      "informative_fraction": 0.8850938834034292,
+      "expected_informative_reads": 3533.825838876531,
+      "estimable": false,
+      "residual": 0.0032286016071117617,
+      "conditioning_factor": null,
+      "rank": 30,
+      "label": "the iso_825aa class total",
+      "coherence": {
+        "median_jaccard": 0.9769049475626372,
+        "min_jaccard": 0.12122542563051857,
+        "n_pairs": 190
+      },
+      "gls_relative_se": null,
+      "finite_se": false,
+      "min_resolvable_log2fc": null,
+      "beyond_linear": true,
+      "verdict": "not_identifiable",
+      "reasons": [
+        "the iso_825aa class total outside the row space of the compatibility system"
+      ]
+    },
+    "iso_604aa": {
+      "n_transcripts": 7,
+      "n_unique_kmers": 1378,
+      "distinguishable": true,
+      "best_transcript": "ENST00000695463",
+      "unique_length": 1495,
+      "unique_fraction": 0.36687116564417177,
+      "n_blocks": 4,
+      "max_block_length": 1067,
+      "informative_fraction": 0.5050919948326952,
+      "expected_informative_reads": 391.5473143943053,
+      "estimable": false,
+      "residual": 0.005457332770147851,
+      "conditioning_factor": null,
+      "rank": 30,
+      "label": "the iso_604aa class total",
+      "coherence": {
+        "median_jaccard": 0.9352568613652358,
+        "min_jaccard": 0.8670317634173056,
+        "n_pairs": 21
+      },
+      "gls_relative_se": null,
+      "finite_se": false,
+      "min_resolvable_log2fc": null,
+      "beyond_linear": true,
+      "verdict": "not_identifiable",
+      "reasons": [
+        "the iso_604aa class total outside the row space of the compatibility system"
+      ]
+    }
+  },
+  "primary_comparison": [
+    "iso_604aa",
+    "iso_825aa"
+  ],
+  "contrast": {
+    "estimable": false,
+    "residual": 0.005557475669281122,
+    "conditioning_factor": null,
+    "rank": 30,
+    "label": "the class contrast",
+    "gls_relative_se": null,
+    "finite_se": false,
+    "min_resolvable_log2fc": null,
+    "beyond_linear": true,
+    "verdict": "not_identifiable",
+    "reasons": [
+      "the class contrast outside the row space of the compatibility system"
+    ],
+    "class_mean_efflen": {
+      "iso_604aa": 4074.4285714285716,
+      "iso_825aa": 19075.2
+    },
+    "log2_efflen_ratio": -2.2270285393165223,
+    "efflen_direction_in_band": true,
+    "distinguishing_window_position": {
+      "iso_604aa": {
+        "n": 9439,
+        "q1": 0.7140839867568888,
+        "median": 0.7948777648428406,
+        "q3": 0.8742973448791548
+      },
+      "iso_825aa": {
+        "n": 334187,
+        "q1": 0.3457525007081518,
+        "median": 0.5643668384449892,
+        "q3": 0.7829482456210544
+      }
+    }
+  },
+  "counting_noise": {
+    "log2_ratio_se": 0.07684229323092978,
+    "min_resolvable_log2fc": 0.15061089473262237,
+    "defined": true
+  },
+  "gene_total": {
+    "estimable": true,
+    "residual": 7.987679144503219e-16,
+    "conditioning_factor": 5.927673186710259,
+    "rank": 30,
+    "transcripts_without_windows": [],
+    "transcripts_all_windows_dropped": []
+  },
+  "effect_resolvable": null,
+  "n_compatibility_classes": 77,
+  "primary_distinguishable": true,
+  "verdict": "not_identifiable",
+  "reasons": [
+    "the class contrast outside the row space of the compatibility system",
+    "the iso_604aa class total outside the row space of the compatibility system",
+    "the iso_825aa class total outside the row space of the compatibility system"
+  ]
+}

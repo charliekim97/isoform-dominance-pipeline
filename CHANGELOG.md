@@ -20,6 +20,16 @@ versioning.
 
 ## [Unreleased]
 
+### Added
+- **`identifiability` on a saved input says what 2.7.0 said** (`tests/test_saved_identifiability.py`):
+  the `--json` report of the 2.7.0 code on the nine saved examples of `example/saved/` (the
+  eight `annotate --gtf` configs of LEPR, NTRK2, NTRK3 and FLT1 at GENCODE 44 and 50, and the
+  study's LEPR classes) is kept in `tests/data/v270_identifiability`, and the current code
+  must give the same keys, strings, booleans, integers and nulls, every real number within a
+  relative 1e-9, and exit status 0, apart from keys this release adds. The tolerance is for
+  the BLAS build: under two other OpenBLAS kernels every file differs byte for byte, the
+  residuals of about 1e-16 by up to 7e-16 and every other number by at most 1e-13 relative.
+
 ## [2.7.0] - 2026-10-04
 
 A minor version: `stats` reports different Stouffer and stratified P values for some
