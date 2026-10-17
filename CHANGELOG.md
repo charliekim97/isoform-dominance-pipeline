@@ -40,6 +40,15 @@ versioning.
   for each gene what every one of the 720 stored rows recorded; when it does not, the stored
   comparison no longer describes the code that ships. `tests/test_validation.py` holds the
   files, that check, the summary and every quoted figure to it; CI runs no quantifier.
+- **The harness reads the stored inputs bundle**: `validation/run_simulation.py` and
+  `simulate_reads.py` take `--inputs validation/data/sweep116.json.gz` in place of a folder of
+  per-gene files (`--rundir`, still accepted), read as it is: the simulator draws each gene's
+  transcripts in the order its input gives them, and the bundle keeps the files' order.
+  `tests/test_validation_harness.py` checks that a replicate simulated from the bundle and one
+  from the bundle unpacked into per-gene files are the same fragments and truth, and, on a
+  reordered copy, that the order is kept (the bundle itself is in sorted order, so sorting
+  would not show on it). CI's ruff covers `validation/`. What the simulation computes and the
+  Salmon path are unchanged.
 - **The four-row table** (`validation/README.md`): the gate passes 45 of the 47 panel genes.
   Passed and estimable at conditioning <= 10, 6 genes (median RMSE at uniform coverage 0.173);
   above 10, 31 (0.190), not clearly worse at uniform coverage and with a smaller worst bias

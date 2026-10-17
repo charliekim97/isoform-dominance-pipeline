@@ -338,7 +338,8 @@ def test_a_changed_figure_is_a_missing_quote(computed):
     assert all(q in texts[p] for p, q in quotes(s))
     for change in (lambda x: x["S2"]["five_prime_rule"].__setitem__(5, 37),
                    lambda x: x["S7"]["three_prime_rule"].__setitem__(3, 31),
-                   lambda x: x["S8"]["median_smaller_class_fragments"].__setitem__("estimable", 343),
+                   lambda x: x["S8"]["median_smaller_class_fragments"].__setitem__(
+                       "estimable", 343),
                    lambda x: x["survey"].__setitem__("median_conditioning", 66.0)):
         t = copy.deepcopy(computed)
         change(t)

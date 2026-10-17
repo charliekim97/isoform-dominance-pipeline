@@ -84,7 +84,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install ruff
-      - run: ruff check src tests scripts
+      - run: ruff check src tests scripts validation
 
   docs-example:
     name: committed example matches the code

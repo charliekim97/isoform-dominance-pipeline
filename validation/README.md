@@ -26,29 +26,21 @@ python validation/summarize.py --write    # rewrite summary.json and the block b
 
 Salmon (the stored outputs: Salmon 2.7.0, the bioconda Rust rewrite) and an index of Ensembl 116's cDNA; each
 replicate simulates one library of all 49 genes and quantifies it, about 1-2 minutes on a laptop, so a design of 30
-replicates takes 30-60 minutes. The harness reads one config and one sequence file per gene; the bundle holds them
-in the order the simulation read them, which matters, because the simulator draws a gene's transcripts in that
-order:
+replicates takes 30-60 minutes. The harness reads the genes from the stored bundle:
 
 ```bash
-python - <<'EOF'
-import gzip, json, os
-os.makedirs("sweep", exist_ok=True)
-with gzip.open("validation/data/sweep116.json.gz", "rt") as f:
-    bundle = json.load(f)
-for gene, g in bundle["genes"].items():
-    json.dump(g["config"], open("sweep/%s.cfg.json" % gene, "w"), indent=1)
-    json.dump(g["sequences"], open("sweep/%s.seqs.json" % gene, "w"))
-EOF
 curl -O https://ftp.ensembl.org/pub/release-116/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz
 python validation/run_simulation.py index --fasta Homo_sapiens.GRCh38.cdna.all.fa.gz --index salmon_idx
-python validation/run_simulation.py run --rundir sweep --index salmon_idx --work sim \
-    --bias-5p 0 --replicates 30 --out c1_d1.json
+python validation/run_simulation.py run --inputs validation/data/sweep116.json.gz --index salmon_idx \
+    --work sim --bias-5p 0 --replicates 30 --out c1_d1.json
 ```
 
 `--bias-5p` is the design (`data/README.md` lists the seven); the seed of replicate r is fixed (`r * 7919 + 13`), so
-the same command draws the same fragments. For kallisto, build its index with `index --quantifier kallisto` and run
-with `--quantifier kallisto --kallisto-bin <path>`.
+the same command draws the same fragments. The simulator draws each gene's transcripts in the order the bundle gives
+them, which is the order of the per-gene files it was made from (`--rundir` takes those files instead), so the
+bundle is read as it is, never sorted; `tests/test_validation_harness.py` checks that the bundle and its unpacked
+files give the same replicate. For kallisto, build its index with `index --quantifier kallisto` and run with
+`--quantifier kallisto --kallisto-bin <path>`.
 
 ## The panel
 
