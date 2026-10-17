@@ -1,5 +1,5 @@
-"""isoform-dominance: config-driven isoform-usage quantification and discrimination
-from bulk RNA-seq.
+"""Is this functional isoform-class comparison measurable by short reads? Group-level
+identifiability, quantification and testing from bulk RNA-seq
 
 Modules
 -------

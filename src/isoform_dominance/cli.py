@@ -834,8 +834,10 @@ def cmd_selftest(a):
 
 
 def build_parser():
-    p = argparse.ArgumentParser(prog="isoform-dominance",
-                                description="Isoform-usage quantification and discrimination from bulk RNA-seq.")
+    p = argparse.ArgumentParser(
+        prog="isoform-dominance",
+        description="Is this functional isoform-class comparison measurable by short reads? "
+                    "Group-level identifiability, quantification and testing from bulk RNA-seq")
     p.add_argument("--version", action="version", version="isoform-dominance %s" % __version__)
     sub = p.add_subparsers(dest="cmd", required=True)
 

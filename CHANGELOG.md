@@ -78,6 +78,11 @@ versioning.
   and no License classifier, which setuptools deprecates; the build needs setuptools >= 77.
   `python -m build` writes no license warning, and the wheel's metadata says
   `License-Expression: MIT`.
+- **One title, the paper's, and one line of introduction.** CITATION.cff's `title`, which
+  Zenodo's record takes, is `paper.md`'s: "isoform-dominance: deciding whether a functional
+  isoform-class comparison is measurable before running it". The line of introduction is
+  pyproject's `description`, and the CLI's help, the package docstring, the README and the
+  docs' front page now say it the same (`tests/test_titles.py`).
 
 ### Documented
 - **The README's identifiability example runs from inputs in the repository**: the LEPR

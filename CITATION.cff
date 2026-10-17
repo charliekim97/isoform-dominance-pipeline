@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-title: "isoform-dominance: isoform-usage quantification and discrimination from bulk RNA-seq"
+title: "isoform-dominance: deciding whether a functional isoform-class comparison is measurable before running it"
 type: software
 authors:
   - family-names: "Kim"

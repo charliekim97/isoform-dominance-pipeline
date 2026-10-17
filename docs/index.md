@@ -5,7 +5,7 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20672051.svg)](https://doi.org/10.5281/zenodo.20672051)
 
-**Isoform-usage quantification *and discrimination* from bulk RNA-seq — one config away for any gene.**
+**Is this functional isoform-class comparison measurable by short reads? Group-level identifiability, quantification and testing from bulk RNA-seq**
 
 Most isoform analyses stumble on two things: deciding *which transcripts form a functional
 group*, and knowing whether short reads can even *tell the groups apart*. `isoform-dominance`
