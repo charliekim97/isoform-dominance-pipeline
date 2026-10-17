@@ -94,12 +94,16 @@ def _cfg(gene="LEPR", **kw):
 
 def _without_provenance(res):
     """A report less what says where its sequence came from, and less what only a GTF can
-    say -- where a same-name gene of the index lies -- as JSON: a figure that is not a
-    number (NaN) is equal to itself there."""
+    say -- where a same-name gene of the index lies, and whether a class is made only of
+    models tagged ``mRNA_end_NF`` -- as JSON: a figure that is not a number (NaN) is equal
+    to itself there."""
     bg = dict(res["background"], same_name_copies=[
         {k: c[k] for k in ("gene_id", "gene_name", "transcripts")}
         for c in res["background"]["same_name_copies"]])
-    return json.dumps(dict(res, annotation=None, background=bg), sort_keys=True, default=str)
+    groups = {g: {k: v for k, v in r.items() if k != "incomplete_3prime_only"}
+              for g, r in res["groups"].items()}
+    return json.dumps(dict(res, annotation=None, background=bg, groups=groups),
+                      sort_keys=True, default=str)
 
 
 # --------------------------------------------------------------------------- #

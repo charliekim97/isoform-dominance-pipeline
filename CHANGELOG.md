@@ -67,6 +67,26 @@ versioning.
 - **A JOSS draft PDF of `paper.md`** (`.github/workflows/draft-pdf.yml`, the
   openjournals draft action): built when `paper.md`, `paper.bib` or the workflow changes on
   `main` or in a pull request, or by hand, and kept as an artifact.
+- **`--gtf` says when a class is made only of models whose 3' end was not found.** GENCODE
+  tags such a transcript `mRNA_end_NF`; its last annotated exon is not known to be its 3'
+  terminal exon, and is often an internal exon of a complete transcript, so a class of such
+  models alone, which `annotate` made from that exon's acceptor, can be a fragment set against
+  a complete class. `annotate --gtf` prints a NOTE on stderr for each class of the proposed
+  comparison every one of whose transcripts is so tagged, naming the class and its
+  transcripts; the config and `annotate --json` are byte for byte what they were, from the GTF
+  and from REST. `identifiability --gtf` gives every class of `groups`
+  `incomplete_3prime_only` (true or false), with the same NOTE for a class of the primary
+  comparison; it is null when the transcripts did not come from a GTF (REST's lookup has no
+  tags; `--sequences`, `--inputs`, `--transcripts-fasta` alone), and no verdict or figure
+  moves. The GTF records of `annotation_files.scan` carry each transcript's tags (`_tags`),
+  which `annotate.transcripts_of` does not read. On the GENCODE 50 extract GSK3B's proposed
+  `iso_69aa` is three such models against `iso_400aa`, which has none; STK11's `iso_433aa`
+  holds one of twelve and is not marked (`tests/test_incomplete_3prime.py`). The comparisons
+  of a GTF report with a REST, FASTA-only or saved-inputs one
+  (`tests/test_gtf_identifiability.py`, and the weekly job's `report()` in
+  `.github/workflows/ensembl-nightly.yml`) leave the key out, as they leave out the other
+  thing only a GTF says, where a same-name gene lies; `tests/test_saved_identifiability.py`
+  holds it null on every saved input.
 - **A test that the package calls none of its own deprecated aliases**
   (`tests/test_no_deprecated_calls.py`): `identifiability.analyze` on a saved input,
   `identifiability --json` on another and the self-test run with every `DeprecationWarning`

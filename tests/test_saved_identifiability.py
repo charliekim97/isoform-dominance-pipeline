@@ -21,6 +21,8 @@ GOLDEN = ROOT / "tests" / "data" / "v270_identifiability"
 
 #: keys of the report that 2.8.0 adds; everything else is 2.7.0's
 ADDED = ("unique_read_counting_se",)
+#: keys of each group that 2.8.0 adds, null on a saved input: only a GTF says them
+ADDED_PER_GROUP = ("incomplete_3prime_only",)
 
 #: golden file -> (config, saved inputs) under example/saved
 RUNS = {"%s.gencode%d" % (g, n): ("%s.gencode%d.config.json" % (g, n),
@@ -83,6 +85,9 @@ def test_the_report_on_a_saved_input_is_the_one_2_7_0_gave(name, capsys):
     assert code == 0
     for key in ADDED:
         got.pop(key, None)
+    for group in got["groups"].values():
+        for key in ADDED_PER_GROUP:
+            assert group.pop(key) is None
     assert differences(got, want) == []
     verdict, estimable, fc = SUMMARY[name]
     c = got["contrast"]

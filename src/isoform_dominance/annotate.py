@@ -421,8 +421,12 @@ def build_config_from_gtf(gene, gtf, species="homo_sapiens", gene_id=None, relea
     (Ensembl 116)``); ``release``, when given, must be the same.  A header that names none
     -- an Ensembl GTF, or a GENCODE release whose header has not been seen -- is accepted,
     and ``release`` is recorded as the file's.  What a REST run cannot see is appended to
-    ``notes``: a header with no release, a symbol found only ignoring case, and a gene none
-    of whose transcripts the GTF tags ``Ensembl_canonical`` (REST always names one).
+    ``notes``: a header with no release, a symbol found only ignoring case, a gene none
+    of whose transcripts the GTF tags ``Ensembl_canonical`` (REST always names one), and a
+    class of the proposed comparison every one of whose transcripts the GTF tags
+    ``mRNA_end_NF`` (REST's lookup has no tags).  Such a model's last annotated exon may not
+    be its 3' terminal exon, so the class can be a fragment set against a complete class;
+    the config is not changed.
     ``acceptor_tolerance`` is :func:`build_config`'s, through the same function.
     """
     af = annotation_files
@@ -465,6 +469,17 @@ def build_config_from_gtf(gene, gtf, species="homo_sapiens", gene_id=None, relea
     info = transcripts_of(g, gene, species)
     cfg = _config(gene, species, hdr["ensembl_release"] if hdr["ensembl_release"] is not None
                   else release, info, choice, acceptor_tolerance)
+    primary = cfg["primary_comparison"]
+    for name, ids in af.incomplete_classes(g, cfg["groups"], primary).items():
+        other = [n for n in primary if n != name]
+        notes.append(
+            "%s is made only of transcripts %s tags %s, whose 3' end was not found: %s. The "
+            "last annotated exon of such a model may not be its 3' terminal exon -- it is "
+            "often an internal exon of a complete transcript -- so its terminal acceptor, "
+            "which made the class, may not be one, and the comparison%s may set a fragment "
+            "against a complete class. Review the groups."
+            % (name, gtf, af.END_NF, ", ".join(ids),
+               " with %s" % " and ".join(other) if other else ""))
     cfg["annotation_source"] = dict(
         kind="gtf", **af.provenance(gtf),
         **{k: hdr[k] for k in ("provider", "gencode_release", "ensembl_release", "date",

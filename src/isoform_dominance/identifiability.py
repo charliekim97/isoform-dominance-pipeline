@@ -1173,7 +1173,7 @@ def _from_files(config, needed, gtf, fasta, supplied, gene_background, species, 
         return {"sequences": {t: got[t][1] for t in needed}, "background": {},
                 "gene_id": None, "gene_background": False, "versions":
                 {t: got[t][0] for t in needed}, "release": release, "source": source,
-                "same_name": None,
+                "same_name": None, "incomplete_3prime": None,
                 "label": "file:%s" % release if release is not None else "file"}
     named = source["gtf"]["ensembl_release"]
     if named is not None and release is not None and int(release) != named:
@@ -1193,6 +1193,7 @@ def _from_files(config, needed, gtf, fasta, supplied, gene_background, species, 
             "background": {t: s for t, s in every.items() if t not in set(needed)},
             "gene_id": gene["id"], "gene_background": gene_background, "versions": versions,
             "release": release, "source": source, "same_name": same_name,
+            "incomplete_3prime": {t["id"]: af.incomplete_3prime(t) for t in gene["Transcript"]},
             "label": "file:%s" % release if release is not None else "file"}
 
 
@@ -1365,7 +1366,14 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     Returns
     -------
     dict
-        ``groups`` (per-class sequence, read-model and estimability numbers),
+        ``groups`` (per-class sequence, read-model and estimability numbers, and
+        ``incomplete_3prime_only``: with ``gtf``, whether the GTF tags every transcript of
+        the class ``mRNA_end_NF``, so that its last annotated exon may not be its 3'
+        terminal exon and the class may be a fragment of a complete one; None when the
+        transcripts did not come from a GTF -- REST's lookup has no tags, and
+        ``sequences``, saved inputs and ``transcripts_fasta`` alone carry none, so a
+        comparison of a GTF run's report with one of those leaves it out.  It moves no
+        verdict and no figure),
         ``primary_comparison``, ``contrast`` (estimability of ``s_A - s_B``, with
         ``log2_efflen_ratio`` and ``class_mean_efflen`` from :func:`class_efflen_ratio`,
         ``efflen_direction_in_band``, and ``distinguishing_window_position`` per class
@@ -1727,6 +1735,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         report[g].update(estimability(A, c, svd=svd))
         report[g]["label"] = "the %s class total" % g
         report[g]["coherence"] = class_coherence(tracks, ids)
+        # what only a GTF says: every model of the class lacks its annotated 3' end
+        end_nf = files["incomplete_3prime"] if files is not None else None
+        report[g]["incomplete_3prime_only"] = (None if end_nf is None else
+                                               bool(ids) and all(end_nf[t] for t in ids))
         class_indicator[g] = c
         rse = gls_relative_se(cov, c, theta) if report[g]["estimable"] else float("inf")
         report[g]["gls_relative_se"] = rse
