@@ -784,8 +784,9 @@ def class_coherence(tracks, ids):
     group that happens to be hard to measure, it is two unrelated transcripts that share
     one acceptor, and every precision figure computed for it describes a quantity nobody
     wants.  Across a 49-gene survey three classes came in under 0.05 (TPI1 0.004, whose
-    two members are 374 nt and 2217 nt long; CD44 0.009; DMD 0.038) while the median
-    class sat near 0.7.
+    two members are 374 nt and 2217 nt long; CD44 0.009; DMD 0.038), while the median of
+    the same figure, ``min_jaccard``, over the 74 classes of its primary comparisons that
+    have two or more members was 0.49.
 
     Low coherence is a reason to revisit the grouping, not a verdict: a class can be
     perfectly coherent and still be hard to measure, which is what most of that survey's
@@ -815,10 +816,11 @@ def gls_covariance(A, theta):
     homoskedastic: ``Var(y_c) = E[y_c]``, so the weight is ``W = diag(1/mean)``.
 
     The difference is not cosmetic.  Over 41 estimable genes the homoskedastic factor had
-    a median of 65.0 and a range of 850x; the same genes under Poisson weighting had a
-    median of 16.4 and a range of 157x.  The *ranking* barely moved (Spearman 0.93), so
-    this does not rescue a fixed threshold on the factor -- what it does is put the number
-    on a scale that can be turned into a detectable effect.
+    a median of 65.0 and a range of 850x; the same genes under Poisson weighting with
+    theta = 1 (one expected fragment) per transcript had a median of 16.4 and a range of
+    157x.  The *ranking* barely moved (Spearman 0.93), so this does not rescue a fixed
+    threshold on the factor -- what it does is put the number on a scale that can be
+    turned into a detectable effect.
 
     ``theta`` is the vector of expected fragment counts per transcript.  It is what the
     analysis is trying to estimate, so a plug-in is unavoidable; :func:`analyze` passes a

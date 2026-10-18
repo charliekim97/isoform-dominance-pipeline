@@ -3128,6 +3128,8 @@
   "conditioning_range": 850.3500588255514,
   "fraction_over_tau": 0.8536585365853658,
   "median_conditioning": 64.98073262245336,
+  "median_min_jaccard": 0.49253082987383257,
+  "n_classes_with_pairs": 74,
   "n_estimable": 41,
   "n_genes": 49,
   "n_transcripts": 1911,

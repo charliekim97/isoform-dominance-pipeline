@@ -187,6 +187,17 @@ versioning.
   published one (the manuscript is under review), and describes the Wilcoxon test as the
   README does: exact only with no zero difference and no tie (and n <= 50), otherwise an
   exhaustive permutation test at n <= 13 and the normal approximation above.
+- **Two docstring figures say what they were computed from.** `gls_covariance`'s Poisson-
+  weighted factor over the 41 estimable genes (median 16.4, range 157x, Spearman 0.93 with
+  the homoskedastic factor) is at theta = 1, one expected fragment, per transcript
+  (`summarize.poisson_unit_factor`: 16.40, 156.6x, 0.930); with the design's expected counts
+  as theta it is 353.74, 116.8x and 0.922, so the sentence now names theta = 1.
+  `class_coherence`'s "the median class sat near 0.7" was no computed figure: the median
+  `min_jaccard`, the figure of the three classes it quotes, over the 74 primary-comparison
+  classes of the 49 genes with two or more members is 0.49 (0.4925; their median
+  `median_jaccard` is 0.8178), which `validation/summarize.py`'s survey now computes
+  (`n_classes_with_pairs`, `median_min_jaccard`) and `tests/test_validation.py` holds the
+  docstring to.
 - `simulate_reads.py`'s docstring gives the confound on the panel: the not-estimable genes'
   median gene is 3.9-fold deeper (49,980 against 12,966 fragments) and their smaller class
   8.8-fold (2,611 against 298), where it said 4-8x and 343.

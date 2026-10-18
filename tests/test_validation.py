@@ -288,8 +288,9 @@ def quotes(s):
                 % (s3["against_rule"], s3["skewed_designs"])),
         (ident, "reads %+.3f at b = 0" % s4["class total"]["spearman"][u]),
         (ident, "Over %d estimable genes the homoskedastic factor had a median of %.1f and a "
-                "range of %.0fx; the same genes under Poisson weighting had a median of %.1f and "
-                "a range of %.0fx. The *ranking* barely moved (Spearman %.2f)"
+                "range of %.0fx; the same genes under Poisson weighting with theta = 1 (one "
+                "expected fragment) per transcript had a median of %.1f and a range of %.0fx. "
+                "The *ranking* barely moved (Spearman %.2f)"
                 % (v["n_estimable"], v["median_conditioning"], v["conditioning_range"],
                    v["poisson_unit_median"], v["poisson_unit_range"],
                    v["poisson_unit_spearman"])),
@@ -363,11 +364,34 @@ def quotes(s):
     low = v["classes_under_0_05_min_jaccard"]
     tpi1 = s["genes"]["TPI1"]["structural"]["transcript_lengths"][low[0]["class"]]
     out.append((ident, "Across a %d-gene survey %s classes came in under 0.05 (%s %.3f, whose two "
-                       "members are %d nt and %d nt long; %s %.3f; %s %.3f)"
+                       "members are %d nt and %d nt long; %s %.3f; %s %.3f), while the median "
+                       "of the same figure, ``min_jaccard``, over the %d classes of its "
+                       "primary comparisons that have two or more members was %.2f"
                 % (v["n_genes"], WORD[len(low)], low[0]["gene"], low[0]["min_jaccard"],
                    *sorted(tpi1), low[1]["gene"], low[1]["min_jaccard"], low[2]["gene"],
-                   low[2]["min_jaccard"])))
+                   low[2]["min_jaccard"], v["n_classes_with_pairs"], v["median_min_jaccard"])))
     return out
+
+
+def test_the_survey_gives_the_median_coherence_of_the_classes_with_pairs(computed, analysed):
+    """class_coherence's docstring quoted "the median class sat near 0.7", which no
+    computation gave; the median min_jaccard of the primary-comparison classes with two or
+    more members is computed instead, from the survey's own coherence figures."""
+    v = computed["survey"]
+    js = sorted(j for a in analysed.values() for j in a["coherence"].values() if j is not None)
+    assert v["n_classes_with_pairs"] == len(js) == 74
+    assert v["median_min_jaccard"] == (js[36] + js[37]) / 2
+    assert round(v["median_min_jaccard"], 4) == 0.4925
+    assert sum(len(a["coherence"]) for a in analysed.values()) == 98
+
+
+def test_the_poisson_figures_are_at_theta_one(computed):
+    """gls_covariance's docstring gives the Poisson-weighted factor at theta = 1 per
+    transcript (summarize.poisson_unit_factor): 16.40, 156.6x and 0.930, where the design's
+    expected counts as theta give 353.74, 116.8x and 0.922."""
+    v = computed["survey"]
+    assert (round(v["poisson_unit_median"], 2), round(v["poisson_unit_range"], 1),
+            round(v["poisson_unit_spearman"], 3)) == (16.40, 156.6, 0.930)
 
 
 def test_every_quoted_figure_is_the_computed_one(computed):

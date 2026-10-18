@@ -446,6 +446,10 @@ def summarize(data=DATA, analysed=None):
                                                    for g in have], [unit[g] for g in have]),
               "classes_under_0_05_min_jaccard": [{"gene": g, "class": c, "min_jaccard": j}
                                                  for j, g, c in coherence if j < 0.05],
+              # over the primary-comparison classes with two or more members, the others
+              # having no pair: class_coherence's docstring
+              "n_classes_with_pairs": len(coherence),
+              "median_min_jaccard": statistics.median(j for j, _, _ in coherence),
               "TPI1_counting_min_resolvable_log2fc":
                   analysed["TPI1"]["counting_min_resolvable_log2fc"]}
 
@@ -633,14 +637,16 @@ def render(s):
       "for %d; their conditioning factor: median %s, range %.0fx, above %g for %.0f%%. "
       "The Poisson-weighted factor at theta = 1 per transcript: median %s, range %.0fx, "
       "Spearman %s with the conditioning factor. Classes whose least similar pair of "
-      "transcripts shares under 5%% of windows: %s. TPI1's unique-read counting "
-      "min |log2FC|: %s."
+      "transcripts shares under 5%% of windows: %s; over the %d classes of the primary "
+      "comparisons with two or more transcripts, the median share of the least similar "
+      "pair: %s. TPI1's unique-read counting min |log2FC|: %s."
       % (v["n_transcripts"], v["shortest_transcript"],
          v["n_estimable"], _f(v["median_conditioning"], 1), v["conditioning_range"], TAU,
          100 * v["fraction_over_tau"], _f(v["poisson_unit_median"], 1),
          v["poisson_unit_range"], _f(v["poisson_unit_spearman"], 2),
          ", ".join("%s %s %s" % (x["gene"], x["class"], _f(x["min_jaccard"], 3))
                    for x in v["classes_under_0_05_min_jaccard"]),
+         v["n_classes_with_pairs"], _f(v["median_min_jaccard"], 2),
          _f(v["TPI1_counting_min_resolvable_log2fc"], 2)))
     return "\n".join(out)
 

@@ -140,7 +140,7 @@ Every transcript has TPM 10, so a gene's fragments grow with its transcript coun
 
 ### The structural survey of the same 49 genes
 
-Quoted by the package's docstrings, the `--min-log2fc` help and the harness. 1911 transcripts, the shortest 100 nt. The contrast is estimable for 41; their conditioning factor: median 65.0, range 850x, above 10 for 85%. The Poisson-weighted factor at theta = 1 per transcript: median 16.4, range 157x, Spearman 0.93 with the conditioning factor. Classes whose least similar pair of transcripts shares under 5% of windows: TPI1 iso_63aa 0.004, CD44 iso_536aa 0.009, DMD iso_970aa 0.038. TPI1's unique-read counting min |log2FC|: 0.76.
+Quoted by the package's docstrings, the `--min-log2fc` help and the harness. 1911 transcripts, the shortest 100 nt. The contrast is estimable for 41; their conditioning factor: median 65.0, range 850x, above 10 for 85%. The Poisson-weighted factor at theta = 1 per transcript: median 16.4, range 157x, Spearman 0.93 with the conditioning factor. Classes whose least similar pair of transcripts shares under 5% of windows: TPI1 iso_63aa 0.004, CD44 iso_536aa 0.009, DMD iso_970aa 0.038; over the 74 classes of the primary comparisons with two or more transcripts, the median share of the least similar pair: 0.49. TPI1's unique-read counting min |log2FC|: 0.76.
 <!-- summary:end -->
 
 ## What the four-row table shows
