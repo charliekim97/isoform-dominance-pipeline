@@ -75,7 +75,7 @@ versioning.
   comparison every one of whose transcripts is so tagged, naming the class and its
   transcripts; the config and `annotate --json` are byte for byte what they were, from the GTF
   and from REST. `identifiability --gtf` gives every class of `groups`
-  `incomplete_3prime_only` (true or false), with the same NOTE for a class of the primary
+  `incomplete_3prime_only` (true or false), with a similar NOTE for a class of the primary
   comparison; it is null when the transcripts did not come from a GTF (REST's lookup has no
   tags; `--sequences`, `--inputs`, `--transcripts-fasta` alone), and no verdict or figure
   moves. The GTF records of `annotation_files.scan` carry each transcript's tags (`_tags`),

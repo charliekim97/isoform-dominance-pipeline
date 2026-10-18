@@ -315,8 +315,8 @@ them on depth and TPM, the `min |log2FC|` figures also on the number of donors, 
 > fragment set against a complete class. `annotate --gtf` says so in a NOTE on stderr, naming
 > the class and its transcripts, and writes the config it wrote before (at GENCODE 50, GSK3B's
 > proposed `iso_69aa` is three such models); `identifiability --gtf` gives every class
-> `incomplete_3prime_only`, true or false, says the same NOTE of a compared class, and moves
-> no verdict or figure. REST's lookup has no tags, so a run from REST, `--sequences`,
+> `incomplete_3prime_only`, true or false, gives a similar NOTE for a compared class, and
+> moves no verdict or figure. REST's lookup has no tags, so a run from REST, `--sequences`,
 > `--inputs` or `--transcripts-fasta` alone reports null, and the weekly comparison of REST
 > with the files leaves the key out.
 
