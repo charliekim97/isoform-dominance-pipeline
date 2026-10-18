@@ -18,7 +18,7 @@ versioning.
 > decoys and one without as two, and writes the rows in 2.1.1's order again (2.4.0 sorted
 > them by donor name).
 
-## [Unreleased]
+## [2.8.0] - 2026-10-18
 
 ### Added
 - **`identifiability` on a saved input says what 2.7.0 said** (`tests/test_saved_identifiability.py`):
