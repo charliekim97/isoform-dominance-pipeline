@@ -1240,9 +1240,9 @@ def _gtf_gene(config, needed, gtf, species):
 
 def _check_classes(config):
     """``config``'s compared classes, its ``primary_comparison``; ``ValueError`` when its
-    classes cannot be compared: no groups, a comparison that does not name two of them, a
-    transcript in two.  :func:`analyze` checks this before anything else, and the self-test
-    on its packaged config before it runs the analysis."""
+    classes cannot be compared: no groups, a comparison that does not name two of them or
+    compares one with itself, a transcript in two.  :func:`analyze` checks this before
+    anything else, and the self-test on its packaged config before it runs the analysis."""
     groups = config["groups"]
     if not groups:
         raise ValueError("config['groups'] is empty; nothing to test.")
@@ -1254,6 +1254,10 @@ def _check_classes(config):
     if missing:
         raise ValueError(
             "primary_comparison names group(s) not in config['groups']: %r" % (missing,))
+    if pc[0] == pc[1]:
+        # the contrast of a class with itself is zero: "identifiable", min |log2FC| 0.0
+        raise ValueError("primary_comparison compares group %r with itself; name two "
+                         "different groups" % (pc[0],))
     shared = io.shared_transcripts(groups)
     if shared:
         # in the two compared classes its +1 and -1 cancel and the contrast silently drops

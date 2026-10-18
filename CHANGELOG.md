@@ -138,21 +138,31 @@ versioning.
   docs' front page now say it the same (`tests/test_titles.py`).
 
 ### Fixed
+- **A `primary_comparison` that compares a class with itself is refused.** With the same group
+  named twice, `identifiability` compared the class with itself, a contrast of zero, and
+  reported it `identifiable` with a min |log2FC| of 0.0 and exit status 0; `stats` compared
+  each donor's class with itself, every ratio 1, and reported P as NaN; and `extract` wrote a
+  fraction of 0.5 for every donor. `identifiability` and `stats` now refuse the config, naming
+  the group: `identifiability` with a `config error:` line and exit status 1, and
+  `io.primary_pair`, which `stats` calls, with a `ValueError`, as each did for a comparison
+  naming fewer than two groups. `extract`, which writes every group's TPMs whatever the
+  comparison, writes no fraction column for it and says why in a WARNING
+  (`tests/test_silent_wrong_answers.py`, `tests/test_edge.py`).
 - **A broken package file fails one self-test check, not the self-test.** When the files the
   self-test's `identifiability` check reads from the package could not be opened (`OSError`),
   were not a config and saved inputs (`InputError`, or another `ValueError` from reading them,
   such as inputs saved for another gene), or held a config whose classes `identifiability`
-  refuses (no groups, a `primary_comparison` that does not name two of them, a transcript in
-  two classes), the self-test stopped, with one `error:` line from `cli.main` for an `OSError`
-  or an `InputError` and a traceback for any other `ValueError`: stdout was empty, and the
-  five other checks and `selftest --json` were lost. The check is now recorded as failed, with
-  the cause in its message and in an `error` field (its `verdict`, `min_resolvable_log2fc` and
-  `conditioning_factor` null); the other checks, the cohort combinations and `--json` are
-  printed as before, and the exit status is 1, as it was. The classes are checked as the
-  config is read, by the function `analyze` runs first (`identifiability._check_classes`); an
-  error of the analysis itself, numpy's `LinAlgError` (a `ValueError` since numpy 1.25) among
-  them, is a fault in the code and still stops the self-test with its traceback
-  (`tests/test_selftest.py`).
+  refuses (no groups, a `primary_comparison` that does not name two different ones, a
+  transcript in two classes), the self-test stopped, with one `error:` line from `cli.main`
+  for an `OSError` or an `InputError` and a traceback for any other `ValueError`: stdout was
+  empty, and the five other checks and `selftest --json` were lost. The check is now recorded
+  as failed, with the cause in its message and in an `error` field (its `verdict`,
+  `min_resolvable_log2fc` and `conditioning_factor` null); the other checks, the cohort
+  combinations and `--json` are printed as before, and the exit status is 1, as it was. The
+  classes are checked as the config is read, by the function `analyze` runs first
+  (`identifiability._check_classes`); an error of the analysis itself, numpy's `LinAlgError`
+  (a `ValueError` since numpy 1.25) among them, is a fault in the code and still stops the
+  self-test with its traceback (`tests/test_selftest.py`).
 - **The tests that list a folder leave out hidden files**: the listings of
   `src/isoform_dominance/data`, `example/saved`, `validation/data` and
   `tests/data/v260_outputs` skip a name beginning with `.` (a Finder's `.DS_Store`, the `._`

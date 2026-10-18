@@ -155,6 +155,11 @@ def primary_pair(config):
             "comparison; got %r. `annotate` proposes a pair only when an "
             "alternative terminal-exon cluster exists; edit the config to define "
             "two groups." % (pc,))
+    if pc[0] == pc[1] and pc[0] in groups:
+        # each donor's class against itself: every ratio 1, and P NaN.  A group the config
+        # lacks is left to the table's reading, which names the missing column
+        raise ValueError("primary_comparison compares group %r with itself; name two "
+                         "different groups" % (pc[0],))
     return pc[0], pc[1]
 
 
