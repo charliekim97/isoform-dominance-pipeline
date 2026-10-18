@@ -1238,6 +1238,34 @@ def _gtf_gene(config, needed, gtf, species):
     return g, same
 
 
+def _check_classes(config):
+    """``config``'s compared classes, its ``primary_comparison``; ``ValueError`` when its
+    classes cannot be compared: no groups, a comparison that does not name two of them, a
+    transcript in two.  :func:`analyze` checks this before anything else, and the self-test
+    on its packaged config before it runs the analysis."""
+    groups = config["groups"]
+    if not groups:
+        raise ValueError("config['groups'] is empty; nothing to test.")
+    pc = config.get("primary_comparison", list(groups)[:2])
+    if len(pc) < 2:
+        raise ValueError(
+            "primary_comparison must name two isoform groups; got %r" % (pc,))
+    missing = [g for g in pc if g not in groups]
+    if missing:
+        raise ValueError(
+            "primary_comparison names group(s) not in config['groups']: %r" % (missing,))
+    shared = io.shared_transcripts(groups)
+    if shared:
+        # in the two compared classes its +1 and -1 cancel and the contrast silently drops
+        # it; in any two, its column enters the system twice
+        t, gs = sorted(shared.items())[0]
+        raise ValueError("transcript %s is in groups %s%s; a transcript belongs to one class"
+                         % (t, " and ".join('"%s"' % g for g in gs),
+                            " (and %d more transcript(s) are in two groups)"
+                            % (len(shared) - 1) if len(shared) > 1 else ""))
+    return pc
+
+
 def analyze(config, k=DEFAULT_K, sequences=None, *,
             canonical=True, window=None,
             background_sequences=None, background_fasta=None, decoys=None,
@@ -1420,8 +1448,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         estimable but practically not.
     """
     groups = config["groups"]
-    if not groups:
-        raise ValueError("config['groups'] is empty; nothing to test.")
+    pc = _check_classes(config)
     window = int(window or k)
     if decoys and not background_fasta:
         raise ValueError("--decoys names records of a --background-fasta, and none was given")
@@ -1429,25 +1456,6 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             or max_window_records < 0):
         raise ValueError("max_window_records must be an integer >= 0, got %r"
                          % (max_window_records,))
-
-    pc = config.get("primary_comparison", list(groups)[:2])
-    if len(pc) < 2:
-        raise ValueError(
-            "primary_comparison must name two isoform groups; got %r" % (pc,))
-    missing = [g for g in pc if g not in groups]
-    if missing:
-        raise ValueError(
-            "primary_comparison names group(s) not in config['groups']: %r" % (missing,))
-
-    shared = io.shared_transcripts(groups)
-    if shared:
-        # in the two compared classes its +1 and -1 cancel and the contrast silently drops
-        # it; in any two, its column enters the system twice
-        t, gs = sorted(shared.items())[0]
-        raise ValueError("transcript %s is in groups %s%s; a transcript belongs to one class"
-                         % (t, " and ".join('"%s"' % g for g in gs),
-                            " (and %d more transcript(s) are in two groups)"
-                            % (len(shared) - 1) if len(shared) > 1 else ""))
     if window > read_length:
         # no read holds a whole window, so no fragment is informative and every class
         # reads as unmeasurable for a reason that is not the gene's

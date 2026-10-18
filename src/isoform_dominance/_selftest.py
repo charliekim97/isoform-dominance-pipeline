@@ -9,7 +9,7 @@ the contrast's min |log2FC|.
 """
 import tempfile, os, csv, math, shutil
 from importlib import resources
-from . import cli, extract, io, stats, contamination
+from . import cli, extract, identifiability, io, stats, contamination
 
 # donor: (ENST00000371060, ENST00000616738, ENST00000349533) TPM  (control choroid plexus)
 DATA = {
@@ -38,18 +38,24 @@ IDENTIFIABILITY = {"config": "LEPR.gencode44.study.config.json",
                    "verdict": "identifiable", "min_resolvable_log2fc": 0.1290, "tolerance": 0.0005}
 
 
-def identifiability_report():
-    """``identifiability --config <the study config> --inputs <the saved inputs>``'s report,
-    through the functions the command runs, from the files the package carries."""
+def identifiability_inputs():
+    """What ``identifiability --config <the study config> --inputs <the saved inputs>``
+    reads from the files the package carries, through the functions the command runs:
+    ``(args, config, sequences, background)``.  ``OSError`` when a file cannot be read,
+    ``ValueError`` (:class:`io.InputError` among them) when it is not a config or saved
+    inputs for it, or the config's classes cannot be compared, which the analysis would
+    refuse first.  From a zipped package the paths in ``args`` are temporary copies, gone
+    when this returns; nothing after it reads them."""
     data = resources.files(__package__).joinpath("data")
     with resources.as_file(data.joinpath(IDENTIFIABILITY["config"])) as config, \
             resources.as_file(data.joinpath(IDENTIFIABILITY["inputs"])) as inputs:
         a = cli.build_parser().parse_args(["identifiability", "--config", str(config),
                                            "--inputs", str(inputs)])
         cfg = io.load_config(a.config)
+        identifiability._check_classes(cfg)
         saved = cli._load_saved_inputs(a, cfg)
         seqs, background = cli._saved_sequences(a, saved)
-        return cli._analyze(a, cfg, seqs, background, True)
+    return a, cfg, seqs, background
 
 
 def _write_quant(path, t1, t2, tl):
@@ -135,9 +141,12 @@ def evaluate(base):
     want = IDENTIFIABILITY
     expect = {k: want[k] for k in ("verdict", "min_resolvable_log2fc", "tolerance")}
     try:
-        rep = identifiability_report()
-    except (OSError, ValueError) as e:      # the package's files: unreadable, or not the inputs
-        # one failed check, so the other checks and --json still reach the reader
+        a, cfg, seqs, background = identifiability_inputs()
+    except (OSError, ValueError) as e:      # the package's files: unreadable or unusable
+        # one failed check, so the other checks and --json still reach the reader.  Only the
+        # reading is caught, with the check of the config's classes: what the analysis
+        # raises (numpy's LinAlgError among them, a ValueError since numpy 1.25) is a fault
+        # in the code, and stops the self-test with its traceback
         error = ("%s: %s" % (e.strerror or e, e.filename)
                  if isinstance(e, OSError) and e.filename is not None else str(e))
         check("identifiability", False,
@@ -145,6 +154,7 @@ def evaluate(base):
               % error, verdict=None, min_resolvable_log2fc=None, conditioning_factor=None,
               expect=expect, error=error)
     else:
+        rep = cli._analyze(a, cfg, seqs, background, True)
         fc = rep["contrast"]["min_resolvable_log2fc"]
         check("identifiability", rep["verdict"] == want["verdict"] and math.isfinite(fc)
               and abs(fc - want["min_resolvable_log2fc"]) <= want["tolerance"],

@@ -6,6 +6,7 @@ import shutil
 from importlib import resources
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from isoform_dominance import _selftest, cli
@@ -175,29 +176,59 @@ def test_the_identifiability_check_can_fail(monkeypatch, capsys, change):
 # --------------------------------------------------------------------------- #
 # the package's own files, missing or broken: one failed check, not a lost report
 # --------------------------------------------------------------------------- #
-def _broken_package_data(monkeypatch, tmp_path, inputs):
-    """Point the self-test's package data at a copy under ``tmp_path`` whose saved inputs
-    are ``inputs`` (bytes), or absent when ``inputs`` is None."""
+def _broken_package_data(monkeypatch, tmp_path, files):
+    """Point the self-test's package data at a copy under ``tmp_path``.  ``files`` maps
+    ``"config"`` or ``"inputs"`` to what to write in that file's place: bytes, a function
+    that returns them, or None to leave the file out; a file it does not name is the
+    package's."""
     data = tmp_path / "data"
     data.mkdir()
-    name = _selftest.IDENTIFIABILITY["config"]
-    (data / name).write_bytes((PACKAGED / name).read_bytes())
-    if inputs is not None:
-        (data / _selftest.IDENTIFIABILITY["inputs"]).write_bytes(inputs)
+    for role in ("config", "inputs"):
+        name = _selftest.IDENTIFIABILITY[role]
+        content = files[role] if role in files else (PACKAGED / name).read_bytes()
+        if callable(content):
+            content = content()
+        if content is not None:
+            (data / name).write_bytes(content)
     monkeypatch.setattr(_selftest, "resources", SimpleNamespace(
         files=lambda package: tmp_path, as_file=resources.as_file))
 
 
-_BROKEN = {"absent": (None, "No such file or directory"),
-           "not JSON": (b'{"format": ', "is not valid JSON"),
-           "not saved inputs": (b'{"format": "something else"}', "is not a saved-inputs file")}
+def _packaged(role, **change):
+    """The package's ``role`` file ("config" or "inputs") as bytes, with ``change`` made to
+    its top-level fields."""
+    doc = json.loads((PACKAGED / _selftest.IDENTIFIABILITY[role]).read_text())
+    return json.dumps(dict(doc, **change)).encode()
+
+
+def _config_sharing_a_transcript():
+    """The package's study config with short's first transcript in long too."""
+    groups = json.loads((PACKAGED / _selftest.IDENTIFIABILITY["config"]).read_text())["groups"]
+    return _packaged("config", groups=dict(groups, long=groups["long"] + groups["short"][:1]))
+
+
+_BROKEN = {"absent": ({"inputs": None}, "No such file or directory"),
+           "not JSON": ({"inputs": b'{"format": '}, "is not valid JSON"),
+           "not saved inputs": ({"inputs": b'{"format": "something else"}'},
+                                "is not a saved-inputs file"),
+           # ValueErrors that are no InputError: of reading the inputs, and of the check of
+           # the config's classes that the analysis makes first
+           "for another gene": ({"inputs": lambda: _packaged("inputs", gene="NTRK2")},
+                                "the saved inputs are for NTRK2 and the config for LEPR"),
+           "a class the comparison lacks": (
+               {"config": lambda: _packaged("config", primary_comparison=["short", "medium"])},
+               "primary_comparison names group(s) not in config['groups']: ['medium']"),
+           "a transcript in two classes": ({"config": _config_sharing_a_transcript},
+                                           "a transcript belongs to one class")}
+_PLAIN_VALUE_ERRORS = ["for another gene", "a class the comparison lacks",
+                       "a transcript in two classes"]
 
 
 @pytest.mark.parametrize("case", sorted(_BROKEN))
 def test_broken_package_data_fails_one_check_and_keeps_the_json(monkeypatch, tmp_path,
                                                                capsys, case):
-    inputs, cause = _BROKEN[case]
-    _broken_package_data(monkeypatch, tmp_path, inputs)
+    files, cause = _BROKEN[case]
+    _broken_package_data(monkeypatch, tmp_path, files)
     rc = cli.main(["selftest", "--json"])
     captured = capsys.readouterr()
     payload = json.loads(captured.out)          # the whole of stdout, so no stray text
@@ -216,8 +247,20 @@ def test_broken_package_data_fails_one_check_and_keeps_the_json(monkeypatch, tmp
     assert payload["combinations"]["stouffer"]["p"] == pytest.approx(0.004419, abs=5e-7)
 
 
+@pytest.mark.parametrize("case", _PLAIN_VALUE_ERRORS)
+def test_some_broken_data_raises_a_value_error_that_is_no_input_error(monkeypatch, tmp_path,
+                                                                      case):
+    # what these cases stand for: were one an InputError, catching InputError alone would
+    # pass it too.  They are raised while the package's files are read, before the analysis
+    _broken_package_data(monkeypatch, tmp_path, _BROKEN[case][0])
+    with pytest.raises(ValueError) as raised:
+        _selftest.identifiability_inputs()
+    assert type(raised.value) is ValueError
+    assert _BROKEN[case][1] in str(raised.value)
+
+
 def test_broken_package_data_keeps_the_human_report(monkeypatch, tmp_path, capsys):
-    _broken_package_data(monkeypatch, tmp_path, None)
+    _broken_package_data(monkeypatch, tmp_path, {"inputs": None})
     assert cli.main(["selftest"]) == 1
     lines = capsys.readouterr().out.splitlines()
     assert sum(ln.startswith("  [OK] ") for ln in lines) == 5
@@ -227,3 +270,18 @@ def test_broken_package_data_keeps_the_human_report(monkeypatch, tmp_path, capsy
     for label in _COMBINATION_LINES.values():
         assert any(re.match(r"\s*%s\s" % re.escape(label), ln) for ln in lines), label
     assert lines[-1] == "FAIL"
+
+
+@pytest.mark.parametrize("fault", [ValueError("a fault in the analysis"),
+                                   np.linalg.LinAlgError("Singular matrix")],
+                         ids=["ValueError", "LinAlgError"])
+def test_a_fault_in_the_analysis_is_no_broken_file(monkeypatch, fault):
+    # only reading the package's files is caught; an error the analysis raises -- numpy's
+    # LinAlgError has been a ValueError since numpy 1.25 -- is a fault in the code, and a
+    # failed check reading "not run" would hide it
+    def analyze(*args, **kwargs):
+        raise fault
+    monkeypatch.setattr(cli, "_analyze", analyze)
+    with pytest.raises(type(fault)) as raised:
+        cli.main(["selftest", "--json"])
+    assert raised.value is fault
