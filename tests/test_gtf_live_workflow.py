@@ -19,7 +19,7 @@ from urllib.error import HTTPError
 import pytest
 
 from isoform_dominance import ensembl
-from test_nightly_workflow import step_script
+from test_nightly_workflow import NO_WORKFLOW, step_script
 
 TESTS = os.path.dirname(os.path.abspath(__file__))
 DATA = pathlib.Path(TESTS) / "data" / "gencode_mini"
@@ -29,7 +29,8 @@ REST = json.loads(gzip.decompress((DATA / "rest116_mini.json.gz").read_bytes()))
 RETIRED_PAGE = "https://www.ensembl.org/help/articles/archives"
 RENAMED = "ENST00009999999"
 
-pytestmark = pytest.mark.skipif(os.name == "nt", reason="runs a POSIX shim on PATH")
+pytestmark = [pytest.mark.skipif(os.name == "nt", reason="runs a POSIX shim on PATH"),
+              NO_WORKFLOW]
 
 
 def _fasta():

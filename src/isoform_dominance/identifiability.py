@@ -784,8 +784,9 @@ def class_coherence(tracks, ids):
     group that happens to be hard to measure, it is two unrelated transcripts that share
     one acceptor, and every precision figure computed for it describes a quantity nobody
     wants.  Across a 49-gene survey three classes came in under 0.05 (TPI1 0.004, whose
-    two members are 374 nt and 2217 nt long; CD44 0.009; DMD 0.038) while the median
-    class sat near 0.7.
+    two members are 374 nt and 2217 nt long; CD44 0.009; DMD 0.038), while the median of
+    the same figure, ``min_jaccard``, over the 74 classes of its primary comparisons that
+    have two or more members was 0.49.
 
     Low coherence is a reason to revisit the grouping, not a verdict: a class can be
     perfectly coherent and still be hard to measure, which is what most of that survey's
@@ -815,10 +816,11 @@ def gls_covariance(A, theta):
     homoskedastic: ``Var(y_c) = E[y_c]``, so the weight is ``W = diag(1/mean)``.
 
     The difference is not cosmetic.  Over 41 estimable genes the homoskedastic factor had
-    a median of 65.0 and a range of 850x; the same genes under Poisson weighting had a
-    median of 16.4 and a range of 157x.  The *ranking* barely moved (Spearman 0.93), so
-    this does not rescue a fixed threshold on the factor -- what it does is put the number
-    on a scale that can be turned into a detectable effect.
+    a median of 65.0 and a range of 850x; the same genes under Poisson weighting with
+    theta = 1 (one expected fragment) per transcript had a median of 16.4 and a range of
+    157x.  The *ranking* barely moved (Spearman 0.93), so this does not rescue a fixed
+    threshold on the factor -- what it does is put the number on a scale that can be
+    turned into a detectable effect.
 
     ``theta`` is the vector of expected fragment counts per transcript.  It is what the
     analysis is trying to estimate, so a plug-in is unavoidable; :func:`analyze` passes a
@@ -1173,7 +1175,7 @@ def _from_files(config, needed, gtf, fasta, supplied, gene_background, species, 
         return {"sequences": {t: got[t][1] for t in needed}, "background": {},
                 "gene_id": None, "gene_background": False, "versions":
                 {t: got[t][0] for t in needed}, "release": release, "source": source,
-                "same_name": None,
+                "same_name": None, "incomplete_3prime": None,
                 "label": "file:%s" % release if release is not None else "file"}
     named = source["gtf"]["ensembl_release"]
     if named is not None and release is not None and int(release) != named:
@@ -1193,6 +1195,7 @@ def _from_files(config, needed, gtf, fasta, supplied, gene_background, species, 
             "background": {t: s for t, s in every.items() if t not in set(needed)},
             "gene_id": gene["id"], "gene_background": gene_background, "versions": versions,
             "release": release, "source": source, "same_name": same_name,
+            "incomplete_3prime": {t["id"]: af.incomplete_3prime(t) for t in gene["Transcript"]},
             "label": "file:%s" % release if release is not None else "file"}
 
 
@@ -1233,6 +1236,38 @@ def _gtf_gene(config, needed, gtf, species):
     same = {r["id"]: r["seq_region_name"] for r in recs
             if r["display_name"] == g["display_name"] and r["id"] != g["id"]}
     return g, same
+
+
+def _check_classes(config):
+    """``config``'s compared classes, its ``primary_comparison``; ``ValueError`` when its
+    classes cannot be compared: no groups, a comparison that does not name two of them or
+    compares one with itself, a transcript in two.  :func:`analyze` checks this before
+    anything else, and the self-test on its packaged config before it runs the analysis."""
+    groups = config["groups"]
+    if not groups:
+        raise ValueError("config['groups'] is empty; nothing to test.")
+    pc = config.get("primary_comparison", list(groups)[:2])
+    if len(pc) < 2:
+        raise ValueError(
+            "primary_comparison must name two isoform groups; got %r" % (pc,))
+    missing = [g for g in pc if g not in groups]
+    if missing:
+        raise ValueError(
+            "primary_comparison names group(s) not in config['groups']: %r" % (missing,))
+    if pc[0] == pc[1]:
+        # the contrast of a class with itself is zero: "identifiable", min |log2FC| 0.0
+        raise ValueError("primary_comparison compares group %r with itself; name two "
+                         "different groups" % (pc[0],))
+    shared = io.shared_transcripts(groups)
+    if shared:
+        # in the two compared classes its +1 and -1 cancel and the contrast silently drops
+        # it; in any two, its column enters the system twice
+        t, gs = sorted(shared.items())[0]
+        raise ValueError("transcript %s is in groups %s%s; a transcript belongs to one class"
+                         % (t, " and ".join('"%s"' % g for g in gs),
+                            " (and %d more transcript(s) are in two groups)"
+                            % (len(shared) - 1) if len(shared) > 1 else ""))
+    return pc
 
 
 def analyze(config, k=DEFAULT_K, sequences=None, *,
@@ -1365,7 +1400,14 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     Returns
     -------
     dict
-        ``groups`` (per-class sequence, read-model and estimability numbers),
+        ``groups`` (per-class sequence, read-model and estimability numbers, and
+        ``incomplete_3prime_only``: with ``gtf``, whether the GTF tags every transcript of
+        the class ``mRNA_end_NF``, so that its last annotated exon may not be its 3'
+        terminal exon and the class may be a fragment of a complete one; None when the
+        transcripts did not come from a GTF -- REST's lookup has no tags, and
+        ``sequences``, saved inputs and ``transcripts_fasta`` alone carry none, so a
+        comparison of a GTF run's report with one of those leaves it out.  It moves no
+        verdict and no figure),
         ``primary_comparison``, ``contrast`` (estimability of ``s_A - s_B``, with
         ``log2_efflen_ratio`` and ``class_mean_efflen`` from :func:`class_efflen_ratio`,
         ``efflen_direction_in_band``, and ``distinguishing_window_position`` per class
@@ -1410,8 +1452,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         estimable but practically not.
     """
     groups = config["groups"]
-    if not groups:
-        raise ValueError("config['groups'] is empty; nothing to test.")
+    pc = _check_classes(config)
     window = int(window or k)
     if decoys and not background_fasta:
         raise ValueError("--decoys names records of a --background-fasta, and none was given")
@@ -1419,25 +1460,6 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             or max_window_records < 0):
         raise ValueError("max_window_records must be an integer >= 0, got %r"
                          % (max_window_records,))
-
-    pc = config.get("primary_comparison", list(groups)[:2])
-    if len(pc) < 2:
-        raise ValueError(
-            "primary_comparison must name two isoform groups; got %r" % (pc,))
-    missing = [g for g in pc if g not in groups]
-    if missing:
-        raise ValueError(
-            "primary_comparison names group(s) not in config['groups']: %r" % (missing,))
-
-    shared = io.shared_transcripts(groups)
-    if shared:
-        # in the two compared classes its +1 and -1 cancel and the contrast silently drops
-        # it; in any two, its column enters the system twice
-        t, gs = sorted(shared.items())[0]
-        raise ValueError("transcript %s is in groups %s%s; a transcript belongs to one class"
-                         % (t, " and ".join('"%s"' % g for g in gs),
-                            " (and %d more transcript(s) are in two groups)"
-                            % (len(shared) - 1) if len(shared) > 1 else ""))
     if window > read_length:
         # no read holds a whole window, so no fragment is informative and every class
         # reads as unmeasurable for a reason that is not the gene's
@@ -1727,6 +1749,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         report[g].update(estimability(A, c, svd=svd))
         report[g]["label"] = "the %s class total" % g
         report[g]["coherence"] = class_coherence(tracks, ids)
+        # what only a GTF says: every model of the class lacks its annotated 3' end
+        end_nf = files["incomplete_3prime"] if files is not None else None
+        report[g]["incomplete_3prime_only"] = (None if end_nf is None else
+                                               bool(ids) and all(end_nf[t] for t in ids))
         class_indicator[g] = c
         rse = gls_relative_se(cov, c, theta) if report[g]["estimable"] else float("inf")
         report[g]["gls_relative_se"] = rse

@@ -307,6 +307,18 @@ them on depth and TPM, the `min |log2FC|` figures also on the number of donors, 
 > cannot. Since 2.6.0 a config lists its clusters by content in both modes, so `_clusters`
 > in a config `annotate` wrote from REST before 2.6.0 can be in another order; its groups and
 > pair are the same.
+>
+> One thing only the GTF can say is whether a model's 3' end was found. GENCODE tags a
+> transcript whose mRNA end was not found `mRNA_end_NF`: its last annotated exon is then not
+> known to be its 3' terminal exon, and is often an internal exon of a complete transcript.
+> `annotate` groups by that exon's acceptor, so a class made only of such models can be a
+> fragment set against a complete class. `annotate --gtf` says so in a NOTE on stderr, naming
+> the class and its transcripts, and writes the config it wrote before (at GENCODE 50, GSK3B's
+> proposed `iso_69aa` is three such models); `identifiability --gtf` gives every class
+> `incomplete_3prime_only`, true or false, gives a similar NOTE for a compared class, and
+> moves no verdict or figure. REST's lookup has no tags, so a run from REST, `--sequences`,
+> `--inputs` or `--transcripts-fasta` alone reports null, and the weekly comparison of REST
+> with the files leaves the key out.
 
 | Layer | Reports | Why it is not the layer above |
 |---|---|---|

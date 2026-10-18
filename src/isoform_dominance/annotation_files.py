@@ -21,6 +21,10 @@ REST at releases 110, 114 and 116 (GENCODE 44, 48 and 50):
    (:func:`isoform_dominance.annotate.cluster_by_terminal_exon`): REST and the GTF list a
    gene's transcripts in different orders.
 
+A transcript record also carries the GTF's tags (``_tags``), which REST's lookup has
+not: :func:`incomplete_3prime` reads them, and
+:func:`isoform_dominance.annotate.transcripts_of` does not.
+
 Ids lose their version.  GENCODE 25-43 write the chrY copy of a pseudoautosomal gene
 under the chrX ids plus ``_PAR_Y``; such records are kept apart (``_par_y``) and are
 neither a candidate gene nor background.  A region is the seqname without ``chr``, and
@@ -50,6 +54,8 @@ _BASIC = b'tag "basic";'
 #: (every single-transcript gene's is), and GENCODE's basic GTF holds tens of thousands.
 MIN_BASIC_TRANSCRIPTS = 100
 PAR_Y = "_PAR_Y"
+#: GENCODE's tag for a model whose mRNA end was not found: its 3' end is not annotated.
+END_NF = "mRNA_end_NF"
 
 
 class AnnotationFileError(io.InputError):
@@ -267,13 +273,14 @@ def _records(lines, keep):
         if t is None:
             t = g["_tx"][tid] = {"id": tid.replace(PAR_Y, ""), "version": None,
                                  "biotype": None, "is_canonical": 0, "Translation": None,
-                                 "Exon": [], "_cds": [], "_versioned": tfull}
+                                 "Exon": [], "_cds": [], "_versioned": tfull, "_tags": []}
             g["Transcript"].append(t)
         if p[2] == "transcript":
             ver = tfull.split(".")[1].split("_")[0] if "." in tfull else None
             t.update(version=int(ver) if ver and ver.isdigit() else None,
                      biotype=a.get("transcript_type") or a.get("transcript_biotype"),
-                     is_canonical=int("Ensembl_canonical" in a.get("tag", ())))
+                     is_canonical=int("Ensembl_canonical" in a.get("tag", ())),
+                     _tags=list(a.get("tag", ())))
             if t["is_canonical"]:
                 g["canonical_transcript"] = tfull.replace(PAR_Y, "")
         elif p[2] == "exon":
@@ -286,6 +293,26 @@ def _records(lines, keep):
             t["Translation"] = {"length": length} if length else None
         del g["_tx"]
     return list(genes.values())
+
+
+def incomplete_3prime(transcript):
+    """Is the 3' end of this :func:`scan` transcript not annotated (:data:`END_NF`)?  Its
+    last annotated exon is then not known to be its 3' terminal exon: it is often an
+    internal exon of a complete transcript."""
+    return END_NF in transcript.get("_tags", ())
+
+
+def incomplete_classes(gene, groups, names):
+    """Of ``names``, the classes of ``groups`` (``{name: [transcript id]}``) every one of
+    whose transcripts in ``gene`` (a :func:`scan` record) is :func:`incomplete_3prime`, as
+    ``{name: [transcript id]}``."""
+    end_nf = {t["id"]: incomplete_3prime(t) for t in gene["Transcript"]}
+    out = {}
+    for name in names:
+        ids = [t.split(".")[0] for t in groups[name]]
+        if ids and all(end_nf.get(t, False) for t in ids):
+            out[name] = ids
+    return out
 
 
 def protein_length(cds, strand):

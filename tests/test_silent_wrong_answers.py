@@ -1,4 +1,4 @@
-"""Two configurations that gave an answer, exit 0, and the answer was wrong.
+"""Configurations that gave an answer, exit 0, and the answer was wrong.
 
 A window longer than the read: no read can hold a whole window, so no fragment is ever
 informative.  The informative fraction fell from 0.119 at window 100 to 0.0 at 101 with
@@ -8,13 +8,16 @@ A transcript in two classes: its +1 and -1 in the contrast cancel when the two a
 compared pair, and in any two its column entered the system twice with the first copy all
 zero.  The CLI then reported a precondition failure -- "A transcript is shorter than
 window=31", naming none -- and exit 2, for transcripts thousands of bases long.
+
+A primary comparison of a class with itself: the contrast is zero, and the run reported the
+class identifiable with a min |log2FC| of 0.0; `extract` wrote a fraction of 0.5 for every donor.
 """
 import json
 import random
 
 import pytest
 
-from isoform_dominance import cli, identifiability
+from isoform_dominance import _selftest, cli, extract, identifiability
 
 
 def _seq(n, seed):
@@ -80,3 +83,30 @@ def test_a_versioned_and_an_unversioned_id_are_one_transcript(tmp_path, capsys):
     argv = _case(tmp_path, {"A": ["A1", "C1.2"], "B": ["B1", "C1"]})
     assert cli.main(argv) == 1
     assert "C1" in _err_line(capsys)
+
+
+def test_a_class_compared_with_itself_is_refused(tmp_path, capsys):
+    argv = _case(tmp_path, {"A": ["A1"], "B": ["B1"]}, primary=("A", "A"))
+    assert cli.main(argv) == 1
+    line = _err_line(capsys)
+    assert line.startswith("config error: ") and "compares group 'A' with itself" in line
+
+
+def test_the_library_refuses_a_class_compared_with_itself():
+    with pytest.raises(ValueError, match="compares group 'A' with itself"):
+        identifiability.analyze({"groups": {"A": ["A1"], "B": ["B1"]},
+                                 "primary_comparison": ["A", "A"]},
+                                sequences=SEQS, background_gene_transcripts=False)
+
+
+def test_extract_writes_no_fraction_for_a_class_compared_with_itself(tmp_path):
+    info = _selftest.generate(str(tmp_path))["GSE228458"]
+    cfg = dict(_selftest.CONFIG, primary_comparison=["short", "short"])
+    out, notes = str(tmp_path / "pd.csv"), []
+    extract.run(cfg, info["quantdir"], info["samplemap"], "GSE228458", out, notes=notes)
+    with open(out) as fh:
+        assert fh.readline().strip().split(",") == ["cohort", "donor", "condition",
+                                                    "short_TPM", "long_TPM"]
+    assert [n for n in notes if "with itself" in n] == [
+        'WARNING: primary_comparison compares group "short" with itself, so no fraction '
+        "column is written; `identifiability` and `stats` refuse such a config"]

@@ -51,17 +51,37 @@ GENCODE = {"gencode.v44.annotation.gtf.gz", "gencode.v44.transcripts.fa.gz",
            "gencode.v50.annotation.gtf.gz", "gencode.v50.transcripts.fa.gz"}
 
 
+def stored_files(base):
+    """Every file under ``base`` but its README, as paths relative to it: the files the
+    README's table must name.  A hidden one (``.DS_Store``, ``._name``) is none."""
+    return {p.relative_to(base).as_posix() for p in base.rglob("*")
+            if p.is_file() and p.name != "README.md"
+            and not any(part.startswith(".") for part in p.relative_to(base).parts)}
+
+
 @pytest.mark.parametrize("folder", ["example/saved", "validation/data"])
 def test_every_file_a_readme_names_is_that_file_and_none_is_unnamed(folder):
     base = ROOT / folder
     table = {k: v for k, v in summarize.sha256_table(base / "README.md").items()
              if k not in GENCODE}
     assert len(table) == 17
-    present = {p.relative_to(base).as_posix() for p in base.rglob("*")
-               if p.is_file() and p.name != "README.md"}
+    present = stored_files(base)
     assert set(table) == present
     for name, sha in sorted(table.items()):
         assert summarize.file_sha256(base / name) == sha, name
+
+
+@pytest.mark.parametrize("folder", ["example/saved", "validation/data"])
+def test_a_hidden_file_is_not_a_stored_file(folder, tmp_path):
+    """A Finder's .DS_Store, or the ._ file it writes beside a file on a foreign volume,
+    is not a file the README must name."""
+    copy = tmp_path / "copy"
+    shutil.copytree(ROOT / folder, copy)
+    for d in [copy] + [p for p in copy.iterdir() if p.is_dir()]:
+        (d / ".DS_Store").write_bytes(b"\0\0\0\1Bud1")
+    (copy / "._README.md").write_bytes(b"\0\5\26\7")
+    assert stored_files(copy) == stored_files(ROOT / folder)
+    assert len(stored_files(copy)) == 17
 
 
 def test_a_changed_stored_file_stops_the_summary(tmp_path):
@@ -82,6 +102,28 @@ def test_every_stored_prediction_is_what_the_package_says_now(computed):
     assert computed["consistency"] == {"rows_compared": 720, "mismatches": []}
     assert computed["panel"]["n"] == 47
     assert sorted(computed["panel"]["left_out"]) == ["EPOR", "PFKL"]
+
+
+def test_the_kallisto_panel_is_computed(computed):
+    """The panel sentence said kallisto had a row for the same genes from the Salmon count;
+    it is the genes with a row in all seven kallisto designs, computed."""
+    p = computed["panel"]
+    _, rows, _ = summarize.load()
+    assert p["kallisto_genes"] == sorted(g for g in rows["kallisto"][0]
+                                         if all(g in d for d in rows["kallisto"]))
+    assert p["kallisto_n"] == len(p["kallisto_genes"]) == 47
+    assert p["kallisto_genes"] == p["genes"]
+    assert "(kallisto has a row for the same 47)" in summarize.render(computed)
+
+
+def test_a_different_kallisto_panel_is_said(computed):
+    s = copy.deepcopy(computed)
+    s["panel"]["kallisto_genes"] = [g for g in s["panel"]["genes"] if g != "CANX"] + ["EPOR"]
+    s["panel"]["kallisto_n"] = len(s["panel"]["kallisto_genes"])
+    text = summarize.render(s)
+    assert "the same" not in text.split("Left out:")[0]
+    assert ("(kallisto has a row in all seven of its designs for 47 genes: not CANX, and "
+            "also EPOR)") in text
 
 
 def test_a_prediction_that_moved_is_named(analysed):
@@ -246,8 +288,9 @@ def quotes(s):
                 % (s3["against_rule"], s3["skewed_designs"])),
         (ident, "reads %+.3f at b = 0" % s4["class total"]["spearman"][u]),
         (ident, "Over %d estimable genes the homoskedastic factor had a median of %.1f and a "
-                "range of %.0fx; the same genes under Poisson weighting had a median of %.1f and "
-                "a range of %.0fx. The *ranking* barely moved (Spearman %.2f)"
+                "range of %.0fx; the same genes under Poisson weighting with theta = 1 (one "
+                "expected fragment) per transcript had a median of %.1f and a range of %.0fx. "
+                "The *ranking* barely moved (Spearman %.2f)"
                 % (v["n_estimable"], v["median_conditioning"], v["conditioning_range"],
                    v["poisson_unit_median"], v["poisson_unit_range"],
                    v["poisson_unit_spearman"])),
@@ -275,6 +318,11 @@ def quotes(s):
         # validation/README.md, outside the generated block
         (vreadme, "the genes with a row in all seven Salmon designs, %d of the %d"
                   % (s["panel"]["n"], v["n_genes"])),
+        # said only while it is so: a kallisto panel of other genes has no such sentence
+        (vreadme, "kallisto has a row for the same %d in all seven" % s["panel"]["kallisto_n"]
+                  if s["panel"]["kallisto_genes"] == s["panel"]["genes"] else
+                  "kallisto has a row in all seven of its designs for %d genes"
+                  % s["panel"]["kallisto_n"]),
         (vreadme, "**Row 1** holds %d genes: %s." % (good["n"], ", ".join(good["genes"]))),
         (vreadme, "The %d genes with conditioning above 10 had no clearly larger error at "
                   "uniform coverage than the %d at or below it (median RMSE %.3f against %.3f, "
@@ -316,11 +364,34 @@ def quotes(s):
     low = v["classes_under_0_05_min_jaccard"]
     tpi1 = s["genes"]["TPI1"]["structural"]["transcript_lengths"][low[0]["class"]]
     out.append((ident, "Across a %d-gene survey %s classes came in under 0.05 (%s %.3f, whose two "
-                       "members are %d nt and %d nt long; %s %.3f; %s %.3f)"
+                       "members are %d nt and %d nt long; %s %.3f; %s %.3f), while the median "
+                       "of the same figure, ``min_jaccard``, over the %d classes of its "
+                       "primary comparisons that have two or more members was %.2f"
                 % (v["n_genes"], WORD[len(low)], low[0]["gene"], low[0]["min_jaccard"],
                    *sorted(tpi1), low[1]["gene"], low[1]["min_jaccard"], low[2]["gene"],
-                   low[2]["min_jaccard"])))
+                   low[2]["min_jaccard"], v["n_classes_with_pairs"], v["median_min_jaccard"])))
     return out
+
+
+def test_the_survey_gives_the_median_coherence_of_the_classes_with_pairs(computed, analysed):
+    """class_coherence's docstring quoted "the median class sat near 0.7", which no
+    computation gave; the median min_jaccard of the primary-comparison classes with two or
+    more members is computed instead, from the survey's own coherence figures."""
+    v = computed["survey"]
+    js = sorted(j for a in analysed.values() for j in a["coherence"].values() if j is not None)
+    assert v["n_classes_with_pairs"] == len(js) == 74
+    assert v["median_min_jaccard"] == (js[36] + js[37]) / 2
+    assert round(v["median_min_jaccard"], 4) == 0.4925
+    assert sum(len(a["coherence"]) for a in analysed.values()) == 98
+
+
+def test_the_poisson_figures_are_at_theta_one(computed):
+    """gls_covariance's docstring gives the Poisson-weighted factor at theta = 1 per
+    transcript (summarize.poisson_unit_factor): 16.40, 156.6x and 0.930, where the design's
+    expected counts as theta give 353.74, 116.8x and 0.922."""
+    v = computed["survey"]
+    assert (round(v["poisson_unit_median"], 2), round(v["poisson_unit_range"], 1),
+            round(v["poisson_unit_spearman"], 3)) == (16.40, 156.6, 0.930)
 
 
 def test_every_quoted_figure_is_the_computed_one(computed):

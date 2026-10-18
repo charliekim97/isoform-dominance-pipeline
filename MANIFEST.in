@@ -1,0 +1,7 @@
+graft tests
+graft example
+graft validation
+graft scripts
+graft docs
+include CHANGELOG.md CITATION.cff paper.md paper.bib mkdocs.yml
+global-exclude *.py[cod] .DS_Store

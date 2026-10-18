@@ -48,6 +48,13 @@ def test_primary_pair_requires_two_groups():
         io.primary_pair({"groups": {"only": ["ENST1"]}, "primary_comparison": ["only"]})
 
 
+def test_primary_pair_requires_two_different_groups():
+    # stats compared each donor's class with itself: every ratio 1, P NaN
+    with pytest.raises(ValueError, match="compares group 'a' with itself"):
+        io.primary_pair({"groups": {"a": ["ENST1"], "b": ["ENST2"]},
+                         "primary_comparison": ["a", "a"]})
+
+
 def test_single_group_extract_still_writes(tmp_path):
     cfg = {"groups": {"only": ["ENST1"]}, "primary_comparison": ["only"]}
     sm = tmp_path / "sm.csv"; sm.write_text("donor,condition\nd1,control\n")

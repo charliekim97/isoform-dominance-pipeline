@@ -331,6 +331,15 @@ def _file_notes(cfg, res, gtf):
                      "release %s: the groups may name transcripts whose sequence has changed, "
                      "and the gene may have transcripts they do not name. `annotate --gtf` "
                      "proposes groups from it." % (rel, gtf, file_rel))
+    for g in res["primary_comparison"]:
+        if res["groups"][g].get("incomplete_3prime_only"):
+            notes.append(
+                "%s: --gtf %s tags every one of its transcripts mRNA_end_NF (%s), whose 3' "
+                "end was not found. The last annotated exon of such a model may not be its "
+                "3' terminal exon -- it is often an internal exon of a complete transcript "
+                "-- so the class may be a fragment of a complete one rather than an isoform "
+                "class of its own. The verdict and figures are of the sequence as annotated."
+                % (g, gtf, ", ".join(t.split(".")[0] for t in cfg["groups"][g])))
     was = cfg.get("annotation_source") or {}
     if was.get("sha256") and was["sha256"] != head["sha256"]:
         notes.append("the config was proposed from %s (sha256 %s...), not from this --gtf "

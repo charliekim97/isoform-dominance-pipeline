@@ -35,13 +35,16 @@ versioning.
   `validation/data` and the installed package, checks every file against the SHA-256 its
   README names, and recomputes every simulation figure the README, the CLI, the docstrings and
   `simulate_reads.py`'s docstring quote (the comments of `run_simulation.py` are not checked),
-  with the four-row comparison of issue #2 against the v2.1.1
-  unique-k-mer gate (`validation/summary.json`, and the generated block of
-  `validation/README.md`). Every figure is over one panel, the 47 genes with a row in all seven
-  Salmon designs (PFKL and EPOR are left out). It also checks that the package still predicts
-  for each gene what every one of the 720 stored rows recorded; when it does not, the stored
-  comparison no longer describes the code that ships. `tests/test_validation.py` holds the
-  files, that check, the summary and every quoted figure to it; CI runs no quantifier.
+  with the four-row comparison of issue #2 against the v2.1.1 unique-k-mer gate
+  (`validation/summary.json`, and the generated block of `validation/README.md`). Every figure
+  is over one panel, the 47 genes with a row in all seven Salmon designs (PFKL and EPOR are
+  left out). It also checks that the package still predicts for each gene what every one of
+  the 720 stored rows recorded; when it does not, the stored comparison no longer describes
+  the code that ships. `tests/test_validation.py` holds the files, that check, the summary and
+  every quoted figure to it; CI runs no quantifier. The README's panel sentence counts
+  kallisto's panel too, the genes with a row in all seven kallisto designs (`summary.json`:
+  `panel.kallisto_genes`, `panel.kallisto_n`), and says "the same" only when they are the
+  Salmon panel's genes; on the stored outputs they are the same 47.
 - **The harness reads the stored inputs bundle**: `validation/run_simulation.py` and
   `simulate_reads.py` take `--inputs validation/data/sweep116.json.gz` in place of a folder of
   per-gene files (`--rundir`, still accepted), read as it is: the simulator draws each gene's
@@ -62,11 +65,69 @@ versioning.
   functions `identifiability --inputs` runs (`cli._saved_sequences`, `cli._analyze`). It
   checks the verdict, `identifiable`, and the contrast's min |log2FC|, 0.1290 within 0.0005
   (0.12896 at conditioning 2.747). One more line in the output and one more check in
-  `selftest --json`; the other checks and the reference P values do not move.
+  `selftest --json`; the other checks and the reference P values do not move. When the files
+  it reads from the package cannot be opened (`OSError`), are not a config and saved inputs
+  for it (`InputError`, or another `ValueError` from reading them, such as inputs saved for
+  another gene), or hold a config whose classes `identifiability` refuses (no groups, a
+  `primary_comparison` that does not name two different ones, a transcript in two classes;
+  `identifiability._check_classes`, which `analyze` runs first), that check alone fails, with
+  the cause in its message and in an `error` field (`verdict`, `min_resolvable_log2fc` and
+  `conditioning_factor` null); the other checks, the cohort combinations and `--json` are
+  printed as before, with exit status 1. An error of the analysis itself, numpy's
+  `LinAlgError` (a `ValueError` since numpy 1.25) among them, still stops the self-test with
+  its traceback (`tests/test_selftest.py`).
 - CI tests Python 3.14 too.
 - **A JOSS draft PDF of `paper.md`** (`.github/workflows/draft-pdf.yml`, the
   openjournals draft action): built when `paper.md`, `paper.bib` or the workflow changes on
   `main` or in a pull request, or by hand, and kept as an artifact.
+- **`--gtf` says when a class is made only of models whose 3' end was not found.** GENCODE
+  tags such a transcript `mRNA_end_NF`; its last annotated exon is not known to be its 3'
+  terminal exon, and is often an internal exon of a complete transcript, so a class of such
+  models alone, which `annotate` made from that exon's acceptor, can be a fragment set against
+  a complete class. `annotate --gtf` prints a NOTE on stderr for each class of the proposed
+  comparison every one of whose transcripts is so tagged, naming the class and its
+  transcripts; the config and `annotate --json` are byte for byte what they were, from the GTF
+  and from REST. `identifiability --gtf` gives every class of `groups`
+  `incomplete_3prime_only` (true or false), with a similar NOTE for a class of the primary
+  comparison; it is null when the transcripts did not come from a GTF (REST's lookup has no
+  tags; `--sequences`, `--inputs`, `--transcripts-fasta` alone), and no verdict or figure
+  moves. The GTF records of `annotation_files.scan` carry each transcript's tags (`_tags`),
+  which `annotate.transcripts_of` does not read. On the GENCODE 50 extract GSK3B's proposed
+  `iso_69aa` is three such models against `iso_400aa`, which has none; STK11's `iso_433aa`
+  holds one of twelve and is not marked (`tests/test_incomplete_3prime.py`). The comparisons
+  of a GTF report with a REST, FASTA-only or saved-inputs one
+  (`tests/test_gtf_identifiability.py`, and the weekly job's `report()` in
+  `.github/workflows/ensembl-nightly.yml`) leave the key out, as they leave out the other
+  thing only a GTF says, where a same-name gene lies; `tests/test_saved_identifiability.py`
+  holds it null on every saved input.
+- **The simulation harness is run end to end without Salmon** (`tests/test_harness_smoke.py`):
+  `run_simulation.py run` on LEPR and TGFB1, three replicates at `--depth-scale 0.04` (the
+  smaller classes expect 129 and 59 fragments), with only the `salmon` command stubbed to
+  write `quant.sf` with each transcript's `NumReads` the fragments the simulator drew from it,
+  `aux_info/meta_info.json` and `lib_format_counts.json`, so the simulator subprocess,
+  `_quantify_salmon`'s reading of those files and `summarise` all run: two rows, each with
+  bias and RMSE 0, and a stub one fragment off gives both an error. A replicate simulated in
+  two processes at `PYTHONHASHSEED` 0 and 1 is the same truth and, decompressed, the same
+  reads; the harness runs the simulator as a subprocess, where an order that rests on the
+  hash seed would show. What the simulation computes and the Salmon path are unchanged.
+- **The sdist holds what its tests read** (`MANIFEST.in`): `tests/` with its data,
+  `example/` (`config.json`, the two sample maps the README's commands name, and `saved/`),
+  `validation/`, `scripts/`, `docs/`, and `CHANGELOG.md`, `CITATION.cff`, `paper.md`,
+  `paper.bib` and `mkdocs.yml`. It held the test modules and none of `tests/data/`,
+  `example/` or `validation/`, so its tests could not run. `.github/` is left out, and the
+  three test modules that read a workflow (`test_nightly_workflow`, `test_gtf_live_workflow`,
+  `test_draft_pdf_workflow`) skip, saying why, when the workflow is absent from an sdist (a
+  folder with `PKG-INFO`); in a checkout they run, and a missing workflow fails them. A CI
+  job, `sdist`, builds the sdist, installs it from the unpacked folder with its `dev` extras,
+  runs its tests there and prints pytest's summary line, skips included. The wheel's
+  contents are unchanged.
+- **A test that the package calls none of its own deprecated aliases**
+  (`tests/test_no_deprecated_calls.py`): `identifiability.analyze` on a saved input,
+  `identifiability --json` on another and the self-test run with every `DeprecationWarning`
+  attributed to a module of this package made an error, and only those. Under the floor job's
+  matplotlib 3.7 and pyparsing 3.3, matplotlib warns about pyparsing's old names while it
+  draws a figure, which is no call of ours, so making every `DeprecationWarning` an error
+  would fail there.
 
 ### Changed
 - **The "counting-noise floor" is renamed the unique-read counting SE (best transcript per
@@ -90,6 +151,21 @@ versioning.
   docs' front page now say it the same (`tests/test_titles.py`).
 
 ### Fixed
+- **A `primary_comparison` that compares a class with itself is refused.** With the same group
+  named twice, `identifiability` compared the class with itself, a contrast of zero, and
+  reported it `identifiable` with a min |log2FC| of 0.0 and exit status 0; `stats` compared
+  each donor's class with itself, every ratio 1, and reported P as NaN; and `extract` wrote a
+  fraction of 0.5 for every donor. `identifiability` and `stats` now refuse the config, naming
+  the group: `identifiability` with a `config error:` line and exit status 1, and
+  `io.primary_pair`, which `stats` calls, with a `ValueError`, as each did for a comparison
+  naming fewer than two groups. `extract`, which writes every group's TPMs whatever the
+  comparison, writes no fraction column for it and says why in a WARNING
+  (`tests/test_silent_wrong_answers.py`, `tests/test_edge.py`).
+- **The tests that list a folder leave out hidden files**: the listings of
+  `src/isoform_dominance/data`, `example/saved`, `validation/data` and
+  `tests/data/v260_outputs` skip a name beginning with `.` (a Finder's `.DS_Store`, the `._`
+  file beside a file on a foreign volume), at any depth in the folders listed recursively.
+  Every other comparison is as it was.
 - **`extract`'s `<out>.index.json` is standard JSON whatever `meta_info.json` holds.** It was
   written with `json.dump` alone, so a hand-edited or damaged `aux_info/meta_info.json` with
   `NaN` or `Infinity` in a count (`num_valid_targets`, `num_decoy_targets`), which Python's
@@ -132,6 +208,17 @@ versioning.
   published one (the manuscript is under review), and describes the Wilcoxon test as the
   README does: exact only with no zero difference and no tie (and n <= 50), otherwise an
   exhaustive permutation test at n <= 13 and the normal approximation above.
+- **Two docstring figures say what they were computed from.** `gls_covariance`'s Poisson-
+  weighted factor over the 41 estimable genes (median 16.4, range 157x, Spearman 0.93 with
+  the homoskedastic factor) is at theta = 1, one expected fragment, per transcript
+  (`summarize.poisson_unit_factor`: 16.40, 156.6x, 0.930); with the design's expected counts
+  as theta it is 353.74, 116.8x and 0.922, so the sentence now names theta = 1.
+  `class_coherence`'s "the median class sat near 0.7" was no computed figure: the median
+  `min_jaccard`, the figure of the three classes it quotes, over the 74 primary-comparison
+  classes of the 49 genes with two or more members is 0.49 (0.4925; their median
+  `median_jaccard` is 0.8178), which `validation/summarize.py`'s survey now computes
+  (`n_classes_with_pairs`, `median_min_jaccard`) and `tests/test_validation.py` holds the
+  docstring to.
 - `simulate_reads.py`'s docstring gives the confound on the panel: the not-estimable genes'
   median gene is 3.9-fold deeper (49,980 against 12,966 fragments) and their smaller class
   8.8-fold (2,611 against 298), where it said 4-8x and 343.

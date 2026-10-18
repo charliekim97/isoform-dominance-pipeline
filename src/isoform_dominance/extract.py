@@ -100,7 +100,7 @@ def missing_transcripts(config, found, cohort):
 def write_perdonor(config, rows, cohort, out):
     groups = config["groups"]
     pc = config.get("primary_comparison", list(groups)[:2])
-    has_pair = len(pc) == 2
+    has_pair = len(pc) == 2 and pc[0] != pc[1]      # a class against itself is 0.5 always
     a, b = (pc[0], pc[1]) if has_pair else (None, None)
     with open(out, "w", newline="") as f:
         w = csv.writer(f)
@@ -174,6 +174,11 @@ def run(config, quantdir, samplemap, cohort, out, allow_mixed_index=False, notes
         notes.append("WARNING: transcript %s is in groups %s; its TPM is added to \"%s\" "
                      "only, the group the config lists last; `identifiability` refuses such "
                      "a config" % (tid, ", ".join('"%s"' % g for g in gs), gs[-1]))
+    pc = config.get("primary_comparison", list(config["groups"])[:2])
+    if len(pc) >= 2 and pc[0] == pc[1]:
+        notes.append("WARNING: primary_comparison compares group \"%s\" with itself, so no "
+                     "fraction column is written; `identifiability` and `stats` refuse such "
+                     "a config" % (pc[0],))
     prov = index_scope.index_provenance(quants)
     if prov["mixed"]:
         which = index_scope.mixed_index_message(prov)

@@ -317,8 +317,11 @@ jobs:
               bg = dict(res["background"], same_name_copies=[
                   {k: c[k] for k in ("gene_id", "gene_name", "transcripts")}
                   for c in res["background"]["same_name_copies"]])
-              return res, json.dumps(dict(res, annotation=None, background=bg),
-                                     sort_keys=True)
+              # the GTF's tags: REST's lookup has none, so its report says null
+              groups = {g: {k: v for k, v in r.items() if k != "incomplete_3prime_only"}
+                        for g, r in res["groups"].items()}
+              return res, json.dumps(dict(res, annotation=None, background=bg,
+                                          groups=groups), sort_keys=True)
 
           for gene in ("LEPR", "CD99", "FOXO1"):
               a, b = "%s/%s.rest.json" % (OUT, gene), "%s/%s.gtf.json" % (OUT, gene)
