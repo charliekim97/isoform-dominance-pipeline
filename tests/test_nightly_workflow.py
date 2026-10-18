@@ -19,7 +19,12 @@ WORKFLOW = os.path.join(os.path.dirname(__file__), os.pardir, ".github", "workfl
                         "ensembl-nightly.yml")
 TESTS = os.path.dirname(os.path.abspath(__file__))
 
-pytestmark = pytest.mark.skipif(os.name == "nt", reason="runs a POSIX shim on PATH")
+#: the sdist leaves .github/ out; in the repository these tests run
+NO_WORKFLOW = pytest.mark.skipif(
+    not os.path.exists(WORKFLOW),
+    reason=".github/workflows/ensembl-nightly.yml is not here (the sdist leaves .github/ out)")
+pytestmark = [pytest.mark.skipif(os.name == "nt", reason="runs a POSIX shim on PATH"),
+              NO_WORKFLOW]
 
 
 def step_script(name):

@@ -5,7 +5,13 @@ Read with regular expressions, as the other workflow and metadata tests read the
 import pathlib
 import re
 
+import pytest
+
 WORKFLOW = pathlib.Path(__file__).resolve().parents[1] / ".github" / "workflows" / "draft-pdf.yml"
+#: the sdist leaves .github/ out; in the repository these tests run
+pytestmark = pytest.mark.skipif(
+    not WORKFLOW.exists(),
+    reason=".github/workflows/draft-pdf.yml is not here (the sdist leaves .github/ out)")
 PATHS = ["paper.md", "paper.bib", ".github/workflows/draft-pdf.yml"]
 
 

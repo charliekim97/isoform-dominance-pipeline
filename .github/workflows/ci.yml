@@ -76,6 +76,33 @@ jobs:
       - run: isoform-dominance --version && isoform-dominance selftest
         working-directory: ${{ runner.temp }}
 
+  sdist:
+    name: test the source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # what a packager runs: the sdist's own tests against the package installed from it,
+      # outside the checkout. MANIFEST.in decides what is in it; a file a test reads that
+      # is left out fails here. .github/ is left out, and the tests that read a workflow
+      # skip, saying so
+      - run: python -m pip install --upgrade build
+      - run: python -m build --sdist
+      - name: unpack the sdist
+        run: |
+          tar -xzf dist/*.tar.gz -C "$RUNNER_TEMP"
+          echo "SDIST=$(ls -d "$RUNNER_TEMP"/isoform_dominance-*)" >> "$GITHUB_ENV"
+      - run: pip install "${SDIST}[dev]"
+      - name: run the sdist's tests
+        working-directory: ${{ env.SDIST }}
+        shell: bash
+        run: |
+          python -c "import isoform_dominance as m; print(m.__file__)"
+          pytest -q -rs -p no:cacheprovider 2>&1 | tee "$RUNNER_TEMP/sdist-pytest.txt"
+          echo "::notice::sdist tests: $(tail -n 1 "$RUNNER_TEMP/sdist-pytest.txt")"
+
   lint:
     runs-on: ubuntu-latest
     steps:
