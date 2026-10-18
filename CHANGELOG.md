@@ -35,13 +35,16 @@ versioning.
   `validation/data` and the installed package, checks every file against the SHA-256 its
   README names, and recomputes every simulation figure the README, the CLI, the docstrings and
   `simulate_reads.py`'s docstring quote (the comments of `run_simulation.py` are not checked),
-  with the four-row comparison of issue #2 against the v2.1.1
-  unique-k-mer gate (`validation/summary.json`, and the generated block of
-  `validation/README.md`). Every figure is over one panel, the 47 genes with a row in all seven
-  Salmon designs (PFKL and EPOR are left out). It also checks that the package still predicts
-  for each gene what every one of the 720 stored rows recorded; when it does not, the stored
-  comparison no longer describes the code that ships. `tests/test_validation.py` holds the
-  files, that check, the summary and every quoted figure to it; CI runs no quantifier.
+  with the four-row comparison of issue #2 against the v2.1.1 unique-k-mer gate
+  (`validation/summary.json`, and the generated block of `validation/README.md`). Every figure
+  is over one panel, the 47 genes with a row in all seven Salmon designs (PFKL and EPOR are
+  left out). It also checks that the package still predicts for each gene what every one of
+  the 720 stored rows recorded; when it does not, the stored comparison no longer describes
+  the code that ships. `tests/test_validation.py` holds the files, that check, the summary and
+  every quoted figure to it; CI runs no quantifier. The README's panel sentence counts
+  kallisto's panel too, the genes with a row in all seven kallisto designs (`summary.json`:
+  `panel.kallisto_genes`, `panel.kallisto_n`), and says "the same" only when they are the
+  Salmon panel's genes; on the stored outputs they are the same 47.
 - **The harness reads the stored inputs bundle**: `validation/run_simulation.py` and
   `simulate_reads.py` take `--inputs validation/data/sweep116.json.gz` in place of a folder of
   per-gene files (`--rundir`, still accepted), read as it is: the simulator draws each gene's
@@ -62,7 +65,17 @@ versioning.
   functions `identifiability --inputs` runs (`cli._saved_sequences`, `cli._analyze`). It
   checks the verdict, `identifiable`, and the contrast's min |log2FC|, 0.1290 within 0.0005
   (0.12896 at conditioning 2.747). One more line in the output and one more check in
-  `selftest --json`; the other checks and the reference P values do not move.
+  `selftest --json`; the other checks and the reference P values do not move. When the files
+  it reads from the package cannot be opened (`OSError`), are not a config and saved inputs
+  for it (`InputError`, or another `ValueError` from reading them, such as inputs saved for
+  another gene), or hold a config whose classes `identifiability` refuses (no groups, a
+  `primary_comparison` that does not name two different ones, a transcript in two classes;
+  `identifiability._check_classes`, which `analyze` runs first), that check alone fails, with
+  the cause in its message and in an `error` field (`verdict`, `min_resolvable_log2fc` and
+  `conditioning_factor` null); the other checks, the cohort combinations and `--json` are
+  printed as before, with exit status 1. An error of the analysis itself, numpy's
+  `LinAlgError` (a `ValueError` since numpy 1.25) among them, still stops the self-test with
+  its traceback (`tests/test_selftest.py`).
 - CI tests Python 3.14 too.
 - **A JOSS draft PDF of `paper.md`** (`.github/workflows/draft-pdf.yml`, the
   openjournals draft action): built when `paper.md`, `paper.bib` or the workflow changes on
@@ -148,31 +161,11 @@ versioning.
   naming fewer than two groups. `extract`, which writes every group's TPMs whatever the
   comparison, writes no fraction column for it and says why in a WARNING
   (`tests/test_silent_wrong_answers.py`, `tests/test_edge.py`).
-- **A broken package file fails one self-test check, not the self-test.** When the files the
-  self-test's `identifiability` check reads from the package could not be opened (`OSError`),
-  were not a config and saved inputs (`InputError`, or another `ValueError` from reading them,
-  such as inputs saved for another gene), or held a config whose classes `identifiability`
-  refuses (no groups, a `primary_comparison` that does not name two different ones, a
-  transcript in two classes), the self-test stopped, with one `error:` line from `cli.main`
-  for an `OSError` or an `InputError` and a traceback for any other `ValueError`: stdout was
-  empty, and the five other checks and `selftest --json` were lost. The check is now recorded
-  as failed, with the cause in its message and in an `error` field (its `verdict`,
-  `min_resolvable_log2fc` and `conditioning_factor` null); the other checks, the cohort
-  combinations and `--json` are printed as before, and the exit status is 1, as it was. The
-  classes are checked as the config is read, by the function `analyze` runs first
-  (`identifiability._check_classes`); an error of the analysis itself, numpy's `LinAlgError`
-  (a `ValueError` since numpy 1.25) among them, is a fault in the code and still stops the
-  self-test with its traceback (`tests/test_selftest.py`).
 - **The tests that list a folder leave out hidden files**: the listings of
   `src/isoform_dominance/data`, `example/saved`, `validation/data` and
   `tests/data/v260_outputs` skip a name beginning with `.` (a Finder's `.DS_Store`, the `._`
   file beside a file on a foreign volume), at any depth in the folders listed recursively.
   Every other comparison is as it was.
-- **`validation/README.md` counts kallisto's panel.** Its panel sentence said kallisto had a
-  row for "the same" genes with the Salmon panel's count. `summarize.py` now computes the
-  genes with a row in all seven kallisto designs (`summary.json`: `panel.kallisto_genes`,
-  `panel.kallisto_n`), says "the same" only when they are the Salmon panel's genes, and names
-  the difference otherwise. On the stored outputs they are the same 47.
 - **`extract`'s `<out>.index.json` is standard JSON whatever `meta_info.json` holds.** It was
   written with `json.dump` alone, so a hand-edited or damaged `aux_info/meta_info.json` with
   `NaN` or `Infinity` in a count (`num_valid_targets`, `num_decoy_targets`), which Python's
