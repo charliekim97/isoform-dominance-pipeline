@@ -1,7 +1,7 @@
 graft tests
-graft example/saved
+graft example
 graft validation
 graft scripts
 graft docs
 include CHANGELOG.md CITATION.cff paper.md paper.bib mkdocs.yml
-global-exclude __pycache__ *.py[cod] .DS_Store
+global-exclude *.py[cod] .DS_Store

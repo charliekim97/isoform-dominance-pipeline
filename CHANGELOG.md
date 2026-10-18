@@ -98,14 +98,16 @@ versioning.
   reads; the harness runs the simulator as a subprocess, where an order that rests on the
   hash seed would show. What the simulation computes and the Salmon path are unchanged.
 - **The sdist holds what its tests read** (`MANIFEST.in`): `tests/` with its data,
-  `example/saved/`, `validation/`, `scripts/`, `docs/`, and `CHANGELOG.md`, `CITATION.cff`,
-  `paper.md`, `paper.bib` and `mkdocs.yml`. It held the test modules and none of
-  `tests/data/`, `example/saved/` or `validation/`, so its tests could not run. `.github/` is
-  left out, and the three test modules that read a workflow (`test_nightly_workflow`,
-  `test_gtf_live_workflow`, `test_draft_pdf_workflow`) skip, saying why, when it is absent; in
-  the repository they run. A CI job, `sdist`, builds the sdist, installs it from the unpacked
-  folder with its `dev` extras, runs its tests there and prints pytest's summary line, skips
-  included. The wheel's contents are unchanged.
+  `example/` (`config.json`, the two sample maps the README's commands name, and `saved/`),
+  `validation/`, `scripts/`, `docs/`, and `CHANGELOG.md`, `CITATION.cff`, `paper.md`,
+  `paper.bib` and `mkdocs.yml`. It held the test modules and none of `tests/data/`,
+  `example/` or `validation/`, so its tests could not run. `.github/` is left out, and the
+  three test modules that read a workflow (`test_nightly_workflow`, `test_gtf_live_workflow`,
+  `test_draft_pdf_workflow`) skip, saying why, when the workflow is absent from an sdist (a
+  folder with `PKG-INFO`); in a checkout they run, and a missing workflow fails them. A CI
+  job, `sdist`, builds the sdist, installs it from the unpacked folder with its `dev` extras,
+  runs its tests there and prints pytest's summary line, skips included. The wheel's
+  contents are unchanged.
 - **A test that the package calls none of its own deprecated aliases**
   (`tests/test_no_deprecated_calls.py`): `identifiability.analyze` on a saved input,
   `identifiability --json` on another and the self-test run with every `DeprecationWarning`

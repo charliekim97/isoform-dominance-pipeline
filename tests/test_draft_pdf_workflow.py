@@ -7,10 +7,12 @@ import re
 
 import pytest
 
-WORKFLOW = pathlib.Path(__file__).resolve().parents[1] / ".github" / "workflows" / "draft-pdf.yml"
-#: the sdist leaves .github/ out; in the repository these tests run
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+WORKFLOW = ROOT / ".github" / "workflows" / "draft-pdf.yml"
+#: the sdist (the folder with PKG-INFO) leaves .github/ out; in a checkout these tests run,
+#: and a workflow that is not there fails them rather than skipping them
 pytestmark = pytest.mark.skipif(
-    not WORKFLOW.exists(),
+    (ROOT / "PKG-INFO").exists() and not WORKFLOW.exists(),
     reason=".github/workflows/draft-pdf.yml is not here (the sdist leaves .github/ out)")
 PATHS = ["paper.md", "paper.bib", ".github/workflows/draft-pdf.yml"]
 

@@ -19,9 +19,11 @@ WORKFLOW = os.path.join(os.path.dirname(__file__), os.pardir, ".github", "workfl
                         "ensembl-nightly.yml")
 TESTS = os.path.dirname(os.path.abspath(__file__))
 
-#: the sdist leaves .github/ out; in the repository these tests run
+#: the sdist (the folder with PKG-INFO) leaves .github/ out; in a checkout these tests run,
+#: and a workflow that is not there fails them rather than skipping them
+IN_SDIST = os.path.exists(os.path.join(TESTS, os.pardir, "PKG-INFO"))
 NO_WORKFLOW = pytest.mark.skipif(
-    not os.path.exists(WORKFLOW),
+    IN_SDIST and not os.path.exists(WORKFLOW),
     reason=".github/workflows/ensembl-nightly.yml is not here (the sdist leaves .github/ out)")
 pytestmark = [pytest.mark.skipif(os.name == "nt", reason="runs a POSIX shim on PATH"),
               NO_WORKFLOW]
