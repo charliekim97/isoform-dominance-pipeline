@@ -1240,9 +1240,14 @@ def _gtf_gene(config, needed, gtf, species):
 
 def _check_classes(config):
     """``config``'s compared classes, its ``primary_comparison``; ``ValueError`` when its
-    classes cannot be compared: no groups, a comparison that does not name two of them or
-    compares one with itself, a transcript in two.  :func:`analyze` checks this before
-    anything else, and the self-test on its packaged config before it runs the analysis."""
+    classes cannot be compared: groups or a comparison of the wrong shape
+    (:func:`isoform_dominance.io.groups_shape_error`, the sentence ``io.load_config`` gives
+    the CLI), no groups, a comparison that does not name two of them or compares one with
+    itself, a transcript in two.  :func:`analyze` checks this before anything else, and the
+    self-test on its packaged config before it runs the analysis."""
+    wrong = io.groups_shape_error(config)
+    if wrong:
+        raise ValueError(wrong)
     groups = config["groups"]
     if not groups:
         raise ValueError("config['groups'] is empty; nothing to test.")

@@ -75,14 +75,65 @@ def open_bytes(path):
 def load_config(path, need_groups=True):
     """A config written by ``annotate`` or by hand: a JSON object, with a ``groups`` object
     mapping group names to transcript ids unless ``need_groups`` is false (``qc`` reads
-    only ``contamination_qc``)."""
+    only ``contamination_qc``).  With ``need_groups`` the groups and ``primary_comparison``
+    are held to :func:`groups_shape_error`, and a config that fails it is an
+    :class:`InputError` naming the file and the place."""
     cfg = load_json(path, "config")
     if not isinstance(cfg, dict):
         raise InputError("config %s is not a JSON object" % path)
     if need_groups and not isinstance(cfg.get("groups"), dict):
         raise InputError("config %s has no \"groups\" object mapping group names to "
                          "transcript ids; `annotate` writes one" % path)
+    if need_groups:
+        wrong = groups_shape_error(cfg)
+        if wrong:
+            raise InputError("config %s: %s" % (path, wrong))
     return cfg
+
+
+def _shown(value):
+    """``value`` as the config would write it, cut short when long."""
+    try:
+        text = json.dumps(value, ensure_ascii=False)
+    except (TypeError, ValueError):
+        text = repr(value)
+    return text if len(text) <= 60 else text[:57] + "..."
+
+
+def groups_shape_error(config):
+    """What is wrong with the shape of ``config``'s classes and comparison, as a sentence
+    that starts with the place (``group "<name>"`` or ``primary_comparison``), or None.
+
+    ``groups`` maps each group name to a non-empty list (or, from Python, tuple) of
+    transcript ids, each a non-empty string; ``primary_comparison``, when present, is a
+    list (or tuple) of group names, each a string.  Through 2.8.0 nothing checked this: a
+    class given as a string was read one character at a time as transcript ids, an empty
+    class gave a verdict, and a comparison given as a string was read as its letters.  How
+    many groups the comparison names, whether it names one twice and whether they exist is
+    checked where the comparison is used (:func:`primary_pair`, and ``identifiability``)."""
+    groups = config.get("groups")
+    if not isinstance(groups, dict):
+        return "groups is %s, not an object mapping group names to transcript ids" % (
+            _shown(groups))
+    for name, ids in groups.items():
+        place = "group %s" % _shown(name)
+        if not isinstance(ids, (list, tuple)):
+            return "%s is %s, not a list of transcript ids" % (place, _shown(ids))
+        if not ids:
+            return "%s lists no transcript; a group lists one or more transcript ids" % place
+        for t in ids:
+            if not (isinstance(t, str) and t):
+                return ("%s lists %s, which is not a transcript id: a transcript id is a "
+                        "non-empty string" % (place, _shown(t)))
+    if "primary_comparison" not in config:
+        return None
+    pc = config["primary_comparison"]
+    if not isinstance(pc, (list, tuple)):
+        return "primary_comparison is %s, not a list of group names" % _shown(pc)
+    for g in pc:
+        if not isinstance(g, str):
+            return "primary_comparison lists %s, which is not a group name" % _shown(g)
+    return None
 
 
 def file_sha256(path, chunk=1 << 20):

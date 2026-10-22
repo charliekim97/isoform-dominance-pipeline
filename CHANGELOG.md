@@ -27,6 +27,37 @@ versioning.
   status 1, which sends the user to a config that is not at fault. It now keeps its
   traceback, as the self-test's has since 2.8.0. Under numpy 1.24, the declared floor, it was
   never caught (`tests/test_cli.py`).
+- **A config whose classes or comparison have the wrong shape is refused, naming the
+  place.** 2.8.0 checked only that a config is a JSON object with a `groups` object. One
+  rule, `io.groups_shape_error`, now holds every group to a non-empty list of transcript ids,
+  each a non-empty string, and `primary_comparison`, when present, to a list of group names,
+  each a string. `io.load_config`, which `identifiability`, `extract` and `stats` read the
+  config with, refuses a config that breaks it with one line naming the file and the group or
+  `primary_comparison` (`error: config <path>: group "A" lists no transcript; ...`) and exit
+  status 1; `identifiability.analyze` raises a `ValueError` with the same sentence, a tuple
+  being as good as a list there; the self-test's check of its packaged config fails as one
+  check. `qc`, which reads only `contamination_qc`, is not held to it. How many groups the
+  comparison names, a group named twice and a group the config lacks are checked where they
+  were. Every config in the repository passes (`tests/test_config_shape.py`). Accepted by
+  2.8.0 and refused now:
+  - a group with no transcript (`[]`), whether or not it is one of the two compared.
+    `identifiability` gave a verdict (`weakly_identifiable`, exit 0) for an empty compared
+    class, `extract` wrote it as 0 TPM and a fraction of 0 for every donor, and `stats` ran;
+  - a group given as a string (`"A": "A1"`): `identifiability` read it one character at a
+    time as the transcript ids `A` and `1` and asked Ensembl for them, `extract` counted the
+    characters as missing transcripts with a WARNING, and `stats` ran;
+  - a transcript id that is not a string (`[5]`): an `AttributeError` traceback from
+    `identifiability` and `extract`; `stats` ran;
+  - an empty transcript id (`[""]`): `identifiability` asked Ensembl for it, `extract`
+    counted it as a missing transcript with a WARNING, and `stats` ran;
+  - `primary_comparison` null or a number: a `TypeError` traceback from all three;
+  - `primary_comparison` a string: read as its letters, so that `"AB"` compared groups `A`
+    and `B` (`identifiability` gave a verdict and exit 0, `extract` wrote `A_fraction`); a
+    longer string got no fraction column from `extract` and a missing-column error from
+    `stats`;
+  - a `primary_comparison` entry that is not a string.
+  `stats` reads no transcript id, and refuses a config with a group of the wrong shape all
+  the same: the config is the one `extract` and `identifiability` read.
 
 ## [2.8.0] - 2026-10-18
 
