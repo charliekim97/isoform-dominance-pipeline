@@ -25,6 +25,17 @@ versioning.
   page, from the README: the same text, with the README's URLs of the figure and of the
   documentation pages made relative to `docs/` again. `tests/test_docs_index.py` fails while
   the committed page is not what the script writes from the README in hand.
+- **A documentation site workflow** (`.github/workflows/docs.yml`): on a pull request or a
+  push to `main` that touches `docs/`, `mkdocs.yml`, the README, `scripts/make_docs_index.py`
+  or the workflow, and by hand, it builds the four pages with `mkdocs build --strict` (mkdocs
+  1.6.1, not a dev dependency), which fails on a broken link -- the build of 2.8.0's pages
+  stopped with two such warnings -- and uploads the site as the Pages artifact. A second job
+  deploys it to GitHub Pages, from a push to or a manual run on `main` of the public
+  repository only, so a pull request or a private mirror builds and stops there; only that
+  job may write to Pages, and only it is in the `pages` concurrency group, so a pull
+  request's build never waits on, or cancels, a deployment. Nothing is pushed to a branch.
+  `tests/test_docs_workflow.py` holds the workflow to this, and skips in the sdist, which
+  leaves `.github/` out. The built `site/` is ignored by git.
 
 ### Fixed
 - **A numerical fault in `identifiability` is no longer reported as a config error.** numpy's
