@@ -815,12 +815,18 @@ def gls_covariance(A, theta):
     multiplier of the BLUE only under ``Var(y) = sigma^2 I``.  Fragment counts are not
     homoskedastic: ``Var(y_c) = E[y_c]``, so the weight is ``W = diag(1/mean)``.
 
-    The difference is not cosmetic.  Over 41 estimable genes the homoskedastic factor had
-    a median of 65.0 and a range of 850x; the same genes under Poisson weighting with
-    theta = 1 (one expected fragment) per transcript had a median of 16.4 and a range of
-    157x.  The *ranking* barely moved (Spearman 0.93), so this does not rescue a fixed
-    threshold on the factor -- what it does is put the number on a scale that can be
-    turned into a detectable effect.
+    The difference is not cosmetic, but it is not in the medians either: the two factors
+    are on different scales.  Over 41 estimable genes the homoskedastic factor had a median
+    of 65.0 and a range of 850x.  The size of the Poisson-weighted one is set by the scale
+    of theta -- over the same genes a median of 16.4 with theta = 1 (one expected fragment)
+    per transcript, and of 353.74 with the design's expected fragment counts as theta -- so
+    the two medians do not compare.  What does not depend on that scale is the spread and
+    the order: multiplying theta by s for every transcript multiplies every gene's figure
+    by sqrt(s), and at any such scale the range is 157x against 850x and the ranking barely
+    moves (Spearman 0.93 with the homoskedastic factor).  With the design's expected
+    counts, which differ from one transcript to another, they are 116.8x and 0.922.  So
+    this does not rescue a fixed threshold on the factor -- what it does is put the number
+    on a scale that can be turned into a detectable effect.
 
     ``theta`` is the vector of expected fragment counts per transcript.  It is what the
     analysis is trying to estimate, so a plug-in is unavoidable; :func:`analyze` passes a

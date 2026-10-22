@@ -59,6 +59,16 @@ versioning.
   `stats` reads no transcript id, and refuses a config with a group of the wrong shape all
   the same: the config is the one `extract` and `identifiability` read.
 
+### Documented
+- **`gls_covariance`'s docstring no longer sets two medians of different scales side by
+  side.** It put the homoskedastic factor's median (65.0) beside the Poisson-weighted one's
+  (16.4), but the size of the second is set by the scale of theta: 16.4 at theta = 1 per
+  transcript, 353.74 with the design's expected fragment counts. It now says so, and gives
+  what does not depend on that scale: multiplying theta by one factor for every transcript
+  multiplies every gene's figure by its square root, so the range (157x against 850x) and
+  the ranking (Spearman 0.93) stay; with the design's expected counts they are 116.8x and
+  0.922. No figure changed; `tests/test_validation.py` computes the new ones too.
+
 ## [2.8.0] - 2026-10-18
 
 ### Added

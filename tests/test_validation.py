@@ -287,12 +287,15 @@ def quotes(s):
         (ident, "ran against it under %d of %d skews with Salmon"
                 % (s3["against_rule"], s3["skewed_designs"])),
         (ident, "reads %+.3f at b = 0" % s4["class total"]["spearman"][u]),
+        # gls_covariance: the two medians are not set side by side, as theta sets the scale
         (ident, "Over %d estimable genes the homoskedastic factor had a median of %.1f and a "
-                "range of %.0fx; the same genes under Poisson weighting with theta = 1 (one "
-                "expected fragment) per transcript had a median of %.1f and a range of %.0fx. "
-                "The *ranking* barely moved (Spearman %.2f)"
-                % (v["n_estimable"], v["median_conditioning"], v["conditioning_range"],
-                   v["poisson_unit_median"], v["poisson_unit_range"],
+                "range of %.0fx." % (v["n_estimable"], v["median_conditioning"],
+                                     v["conditioning_range"])),
+        (ident, "over the same genes a median of %.1f with theta = 1 (one expected fragment) "
+                "per transcript" % v["poisson_unit_median"]),
+        (ident, "at any such scale the range is %.0fx against %.0fx and the ranking barely "
+                "moves (Spearman %.2f with the homoskedastic factor)"
+                % (v["poisson_unit_range"], v["conditioning_range"],
                    v["poisson_unit_spearman"])),
         (ident, "over a %d-gene survey the median gene sat at %.1f against a default tau of "
                 "10.0, so the default rejects %.0f%% of what it"
@@ -392,6 +395,50 @@ def test_the_poisson_figures_are_at_theta_one(computed):
     v = computed["survey"]
     assert (round(v["poisson_unit_median"], 2), round(v["poisson_unit_range"], 1),
             round(v["poisson_unit_spearman"], 3)) == (16.40, 156.6, 0.930)
+
+
+def test_the_poisson_factor_takes_its_scale_from_theta(analysed):
+    """What gls_covariance's docstring says of theta's scale, computed: theta = s for every
+    transcript gives sqrt(s) times the figure at theta = 1, so the same range and ranking;
+    the design's expected fragment counts, which differ by transcript, give another median,
+    range and ranking."""
+    import math
+    import statistics
+
+    import numpy as np
+    ident = summarize.I
+
+    def factor(A, c, theta):
+        cov = ident.gls_covariance(A, np.asarray(theta, dtype=float))
+        return math.sqrt(float(c @ cov @ c))
+    genes, _, _ = summarize.load()
+    have = sorted(g for g in genes if analysed[g]["poisson_unit_factor"] is not None)
+    cond = [analysed[g]["structural"]["conditioning_factor"] for g in have]
+    d = summarize.DESIGN
+    design = {}
+    for g in have:
+        cfg, conf, rest = summarize._split(genes[g])
+        groups = {k: [t.split(".")[0] for t in v] for k, v in cfg["groups"].items()}
+        pc = cfg["primary_comparison"]
+        ids = [t for v in groups.values() for t in v] + sorted(rest)
+        seqs = dict(conf, **rest)
+        A, _ = ident.compatibility_matrix(
+            {t: ident.kmer_track(seqs[t], ident.DEFAULT_K) for t in ids}, ids)
+        c = np.array([1.0 if t in groups[pc[0]] else -1.0 if t in groups[pc[1]] else 0.0
+                      for t in ids])
+        assert factor(A, c, [4.0] * len(ids)) == pytest.approx(
+            2.0 * analysed[g]["poisson_unit_factor"], rel=1e-9)
+        design[g] = factor(A, c, [ident.expected_informative_reads(
+            1.0, d["tpm"], len(seqs[t]), depth=d["depth"], mean_efflen=d["mean_efflen"])
+            for t in ids])
+    got = [design[g] for g in have]
+    median, spread = statistics.median(got), max(got) / min(got)
+    rho = summarize.H.spearman(cond, got)
+    assert (round(median, 2), round(spread, 1), round(rho, 3)) == (353.74, 116.8, 0.922)
+    text = text_of(ROOT / "src" / "isoform_dominance" / "identifiability.py")
+    assert ("and of %.2f with the design's expected fragment counts as theta" % median) in text
+    assert ("With the design's expected counts, which differ from one transcript to "
+            "another, they are %.1fx and %.3f." % (spread, rho)) in text
 
 
 def test_every_quoted_figure_is_the_computed_one(computed):
