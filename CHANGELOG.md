@@ -82,6 +82,21 @@ versioning.
   figure's raw file and the pages' views on GitHub, on `main`), and a test refuses a relative
   link in the README. `docs/index.md` had drifted from the README into a v2.1-era page (the
   `identify` line still read "k-mer uniqueness"); it is now generated from it.
+- **`docs/api.md` lists the whole public API, with the signatures the code has.** Of the
+  110 public functions and classes of `annotate`, `annotation_files`, `identifiability`,
+  `ensembl`, `extract`, `stats`, `contamination`, `io` and `index_scope` -- a function or
+  class a module defines, without a leading underscore -- 58 had no entry, among them every
+  exception class, `ensembl`'s request functions (the module had no section) and the
+  read-model and GLS functions of `identifiability`, and 14 entries gave a signature the
+  code no longer has (`ensembl.resolve_server`'s keyword-only `timeout`, `retries` and
+  `retry_wait`, `extract.extract`'s `found_out`, `annotate.build_config`'s and `run`'s
+  `**retry`, among others). Each is now one entry line, `module.name` and
+  `inspect.signature` as the code gives it, under its module's heading, with the
+  per-class `incomplete_3prime_only` key of the report and the errors of
+  `io.groups_shape_error` and `io.primary_pair` where they belong; the five functions with
+  no docstring are described from their code. `tests/test_api_docs.py` holds every public
+  name to one entry with the code's signature, and every `module.name` the page writes in
+  code to a name the module has. The `cli` module's functions are said to be internal.
 
 ## [2.8.0] - 2026-10-18
 
