@@ -97,6 +97,27 @@ versioning.
   no docstring are described from their code. `tests/test_api_docs.py` holds every public
   name to one entry with the code's signature, and every `module.name` the page writes in
   code to a name the module has. The `cli` module's functions are said to be internal.
+- **The NTRK2 walkthrough and the example-genes page run offline, on inputs in the
+  repository, and show what the commands print.** Both showed v2.1-era output that the CLI
+  no longer prints (`primary_comparison distinguishable by short reads: True`, k-mer counts
+  without the gene background), needed the network, and named isoforms' functions without
+  a source. They now run on `example/saved/` (GENCODE 44 and 50), say to run them in a clone
+  of the repository, and name classes by protein length and transcript id. The walkthrough
+  shows NTRK2 at GENCODE 50: the `annotate --gtf` proposal, `identifiability` with and
+  without `--min-log2fc 0.5` (exit status 0 and 3), what the command says of its verdict on
+  standard error, quoted, and the unique k-mers counted between the two classes alone
+  (`--no-gene-background`: 6793 and 5639, the counts the old page showed), with the same
+  verdict. The example-genes page is one table of LEPR, NTRK2, NTRK3 and FLT1 at both
+  releases (proposed comparison, verdict, the contrast's min |log2FC| and conditioning, exit
+  status at `--min-log2fc 0.5`), and short notes on NTRK3's proposal changing between the
+  releases and on proposals decided by a tie (FLT1, LEPR). `tests/test_docs_examples.py`
+  runs every block with every socket refused and compares its standard output line by line
+  (an `annotate --gtf` block with `annotate.run` returning the config that command wrote,
+  as the GTF is not in the repository), checks each quotation against the standard error
+  of a command on the page, and recomputes the table. The README's `annotate` block is now
+  that command's standard output on GENCODE 50, checked the same way; it had other lines,
+  in another order, with labels the command does not print. The README's description of the
+  example-genes page no longer names an isoform's function.
 
 ## [2.8.0] - 2026-10-18
 

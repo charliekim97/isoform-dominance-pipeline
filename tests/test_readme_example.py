@@ -4,8 +4,10 @@ The `identifiability` block runs the saved LEPR inputs of GENCODE 50 (Ensembl 11
 `example/saved/`: every line it shows is the command's stdout, run here with every socket
 refused, and it exits 0; with `--min-log2fc 0.1` the same run exits 3.  The command is read
 from the README and run from the repository root with the paths as written, because the
-header line repeats the `--inputs` path as given.  The `annotate` block's transcript counts
-are the saved config's.
+header line repeats the `--inputs` path as given.  The `annotate` block is what `annotate
+--gtf` printed on GENCODE 50: it runs with `annotate.run` returning the config that command
+wrote, `example/saved/LEPR.gencode50.config.json`, as the docs' examples run
+(`tests/test_docs_examples.py`).
 """
 import json
 import pathlib
@@ -16,6 +18,7 @@ import socket
 import pytest
 
 from isoform_dominance import cli
+from test_docs_examples import bash_block, run_command
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
@@ -66,11 +69,12 @@ def test_every_line_of_the_identifiability_block_is_what_the_command_prints(
     assert "EFFECT SIZE: |log2FC| %.3f NOT resolved" % float(m.group(1)) in capsys.readouterr().out
 
 
-def test_the_annotate_block_shows_the_saved_config():
+def test_the_annotate_block_is_what_the_command_printed(offline, monkeypatch, capsys):
     block = next(b for b in _blocks() if b.startswith("isoform-dominance annotate --gene LEPR"))
-    shown = dict(re.findall(r"^#\s+(iso_\w+)\s*:\s*(\d+) transcripts", block, re.M))
-    cfg = json.loads(CONFIG.read_text())
-    assert {g: int(n) for g, n in shown.items()} == {g: len(v) for g, v in cfg["groups"].items()}
-    canonical = re.search(r"^#\s+(iso_\w+)\s*:.*canonical\)", block, re.M).group(1)
-    assert [c["transcripts"] for c in cfg["_clusters"] if c["contains_canonical"]] == [
-        cfg["groups"][canonical]]
+    argv, shown, status = bash_block(block)
+    assert argv[argv.index("--gtf") + 1] == "gencode.v50.annotation.gtf.gz"
+    monkeypatch.chdir(ROOT)
+    out, _, code = run_command(argv, monkeypatch, capsys)
+    assert (out, code) == (shown, status)
+    assert {"  %s: %d transcript%s" % (g, len(v), "" if len(v) == 1 else "s")
+            for g, v in json.loads(CONFIG.read_text())["groups"].items()} <= set(shown)
