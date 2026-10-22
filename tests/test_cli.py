@@ -183,6 +183,24 @@ def test_annotate_cli_offline(tmp_path, monkeypatch):
     assert json.load(open(out))["gene"] == "FAKE"
 
 
+def test_annotate_says_one_transcript_in_the_singular(tmp_path, monkeypatch, capsys):
+    # FLT1's alternative class at GENCODE 50 is one transcript; 2.8.0 printed
+    # "iso_733aa: 1 transcripts".  The config and --json are the saved config, unchanged
+    saved = os.path.join(os.path.dirname(__file__), os.pardir, "example", "saved",
+                         "FLT1.gencode50.config.json")
+    with open(saved, encoding="utf-8") as f:
+        cfg = json.load(f)
+    assert {g: len(v) for g, v in cfg["groups"].items()} == {"iso_733aa": 1, "iso_1338aa": 6}
+    monkeypatch.setattr(annotate, "run", lambda *a, **k: cfg)
+    argv = ["annotate", "--gene", "FLT1", "--out", str(tmp_path / "flt1.json")]
+    assert cli.main(argv) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert "  iso_733aa: 1 transcript" in out
+    assert "  iso_1338aa: 6 transcripts" in out
+    assert cli.main(argv + ["--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == cfg
+
+
 @pytest.mark.parametrize("sub", ["annotate", "identifiability"])
 def test_a_read_timeout_is_a_reported_network_failure_not_a_traceback(
         sub, tmp_path, monkeypatch, capsys):

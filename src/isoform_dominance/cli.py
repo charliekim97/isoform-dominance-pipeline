@@ -159,7 +159,7 @@ def cmd_annotate(a):
         return EXIT_OK
     print("Proposed groups for %s -> %s" % (a.gene, a.out))
     for g, ids in cfg["groups"].items():
-        print("  %s: %d transcripts" % (g, len(ids)))
+        print("  %s: %d transcript%s" % (g, len(ids), "" if len(ids) == 1 else "s"))
     print("  primary_comparison:", cfg["primary_comparison"])
     print("  REVIEW _proposed/_clusters and rename groups before use.")
     return EXIT_OK

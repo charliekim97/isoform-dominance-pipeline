@@ -58,6 +58,8 @@ versioning.
   - a `primary_comparison` entry that is not a string.
   `stats` reads no transcript id, and refuses a config with a group of the wrong shape all
   the same: the config is the one `extract` and `identifiability` read.
+- **`annotate` says "1 transcript"**, not "1 transcripts", for a class of one transcript
+  (FLT1's `iso_733aa`). The config and `annotate --json` are unchanged.
 
 ### Documented
 - **`gls_covariance`'s docstring no longer sets two medians of different scales side by
