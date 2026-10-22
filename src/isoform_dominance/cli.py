@@ -32,6 +32,8 @@ import os
 import sys
 import zlib
 
+import numpy as np
+
 from . import (__version__, annotate, contamination, ensembl, extract, identifiability,
                index_scope, io, stats)
 
@@ -389,6 +391,10 @@ def cmd_identifiability(a):
         return _bad_url(e)
     except ensembl.TRANSIENT as e:
         return _net_fail(e)
+    except np.linalg.LinAlgError:
+        # a ValueError since numpy 1.25, and no config error: a numerical fault in the
+        # analysis is one in the code, and keeps its traceback (as in the self-test)
+        raise
     except ValueError as e:
         print("config error: %s" % e, file=sys.stderr)
         return 1

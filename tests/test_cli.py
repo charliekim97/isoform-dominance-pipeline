@@ -281,3 +281,27 @@ def test_a_network_oserror_is_not_mistaken_for_a_file_error(tmp_path, monkeypatc
     monkeypatch.setattr(identifiability, "analyze", boom)
     with pytest.raises(OSError, match="no filename here"):
         cli.main(["identify", "--config", cfg, "--sequences", sq])
+
+
+def test_a_numerical_fault_in_the_analysis_is_no_config_error(monkeypatch):
+    # numpy's LinAlgError has been a ValueError since numpy 1.25, and 2.8.0 caught it with
+    # the config errors: `config error: Singular matrix`, exit 1.  A fault in the analysis
+    # is one in the code, and keeps its traceback, as the self-test's does.  On the saved
+    # inputs, with no request
+    import numpy as np
+    import urllib.request
+
+    def refuse(req, *a, **k):
+        raise AssertionError("network request %s" % req.full_url)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    fault = np.linalg.LinAlgError("Singular matrix")
+
+    def analyze(*args, **kwargs):
+        raise fault
+    monkeypatch.setattr(cli, "_analyze", analyze)
+    saved = os.path.join(os.path.dirname(__file__), os.pardir, "example", "saved")
+    with pytest.raises(np.linalg.LinAlgError) as raised:
+        cli.main(["identifiability",
+                  "--config", os.path.join(saved, "LEPR.gencode50.config.json"),
+                  "--inputs", os.path.join(saved, "LEPR.gencode50.inputs.json")])
+    assert raised.value is fault

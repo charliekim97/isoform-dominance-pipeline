@@ -20,6 +20,14 @@ versioning.
 
 ## [Unreleased]
 
+### Fixed
+- **A numerical fault in `identifiability` is no longer reported as a config error.** numpy's
+  `LinAlgError` has been a `ValueError` since numpy 1.25, and the `except ValueError` around
+  the analysis caught it: a singular matrix ended as `config error: Singular matrix` and exit
+  status 1, which sends the user to a config that is not at fault. It now keeps its
+  traceback, as the self-test's has since 2.8.0. Under numpy 1.24, the declared floor, it was
+  never caught (`tests/test_cli.py`).
+
 ## [2.8.0] - 2026-10-18
 
 ### Added
