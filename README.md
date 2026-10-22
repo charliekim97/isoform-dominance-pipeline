@@ -20,7 +20,7 @@ stats     per-donor TPM    → paired Wilcoxon, per cohort + stratified combinat
 qc        marker TPM       → contamination control (is the signal a cell-type artifact?)
 ```
 
-![example output](docs/example_output.png)
+![example output](https://raw.githubusercontent.com/charliekim97/isoform-dominance-pipeline/main/docs/example_output.png)
 
 *Bundled self-test: short LEPR isoform (LepRa) predominates over the long isoform (LepRb) in
 control human choroid plexus, in each of two independent cohorts (5/5 and 6/6 donors). The
@@ -509,9 +509,11 @@ from a gene symbol to a reviewed isoform-group proposal (presented for review, n
 final), and the whole thing is a scriptable Python CLI with a download-free self-test, meant to
 ship alongside a manuscript.
 
-More documentation: a step-by-step [NTRK2 walkthrough](docs/tutorial_NTRK2.md), a
-[gallery of further example genes](docs/example_genes.md) (NTRK2/NTRK3 kinase
-truncations and the FLT1 soluble-decoy receptor), and an [API reference](docs/api.md).
+More documentation: a step-by-step
+[NTRK2 walkthrough](https://github.com/charliekim97/isoform-dominance-pipeline/blob/main/docs/tutorial_NTRK2.md), a
+[gallery of further example genes](https://github.com/charliekim97/isoform-dominance-pipeline/blob/main/docs/example_genes.md)
+(NTRK2/NTRK3 kinase truncations and the FLT1 soluble-decoy receptor), and an
+[API reference](https://github.com/charliekim97/isoform-dominance-pipeline/blob/main/docs/api.md).
 
 ## Statistical notes
 

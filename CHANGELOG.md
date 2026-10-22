@@ -20,6 +20,12 @@ versioning.
 
 ## [Unreleased]
 
+### Added
+- **`scripts/make_docs_index.py`** writes `docs/index.md`, the documentation site's front
+  page, from the README: the same text, with the README's URLs of the figure and of the
+  documentation pages made relative to `docs/` again. `tests/test_docs_index.py` fails while
+  the committed page is not what the script writes from the README in hand.
+
 ### Fixed
 - **A numerical fault in `identifiability` is no longer reported as a config error.** numpy's
   `LinAlgError` has been a `ValueError` since numpy 1.25, and the `except ValueError` around
@@ -70,6 +76,12 @@ versioning.
   multiplies every gene's figure by its square root, so the range (157x against 850x) and
   the ranking (Spearman 0.93) stay; with the design's expected counts they are 116.8x and
   0.922. No figure changed; `tests/test_validation.py` computes the new ones too.
+- **The README's links work on PyPI, and the docs' front page is the README.** The figure
+  and the links to the three documentation pages were relative paths, which PyPI resolves
+  against pypi.org: four broken links on the project page. They are absolute URLs now (the
+  figure's raw file and the pages' views on GitHub, on `main`), and a test refuses a relative
+  link in the README. `docs/index.md` had drifted from the README into a v2.1-era page (the
+  `identify` line still read "k-mer uniqueness"); it is now generated from it.
 
 ## [2.8.0] - 2026-10-18
 
