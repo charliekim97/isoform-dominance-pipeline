@@ -109,7 +109,7 @@ def groups_shape_error(config):
     list (or tuple) of group names, each a string.  Through 2.8.0 nothing checked this: a
     class given as a string was read one character at a time as transcript ids, an empty
     class gave a verdict, and a comparison given as a string was read as its letters.  How
-    many groups the comparison names, whether it names one twice and whether they exist is
+    many groups the comparison names, whether it names one twice and whether they exist are
     checked where the comparison is used (:func:`primary_pair`, and ``identifiability``)."""
     groups = config.get("groups")
     if not isinstance(groups, dict):

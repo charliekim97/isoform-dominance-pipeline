@@ -94,14 +94,17 @@ versioning.
   link in the README. `docs/index.md` had drifted from the README into a v2.1-era page (the
   `identify` line still read "k-mer uniqueness"); it is now generated from it.
 - **`docs/api.md` lists the whole public API, with the signatures the code has.** Of the
-  110 public functions and classes of `annotate`, `annotation_files`, `identifiability`,
-  `ensembl`, `extract`, `stats`, `contamination`, `io` and `index_scope` -- a function or
-  class a module defines, without a leading underscore -- 58 had no entry, among them every
-  exception class, `ensembl`'s request functions (the module had no section) and the
-  read-model and GLS functions of `identifiability`, and 14 entries gave a signature the
-  code no longer has (`ensembl.resolve_server`'s keyword-only `timeout`, `retries` and
-  `retry_wait`, `extract.extract`'s `found_out`, `annotate.build_config`'s and `run`'s
-  `**retry`, among others). Each is now one entry line, `module.name` and
+  109 public functions and classes 2.8.0 has in `annotate`, `annotation_files`,
+  `identifiability`, `ensembl`, `extract`, `stats`, `contamination`, `io` and `index_scope`
+  -- a function or class a module defines, without a leading underscore -- 57 had no entry,
+  among them every exception class, `ensembl`'s request functions (the module had no
+  section) and the read-model and GLS functions of `identifiability`. Seven entries lacked
+  parameters the code has (`ensembl.resolve_server`'s keyword-only `timeout`, `retries` and
+  `retry_wait`, `extract.extract`'s `found_out`, `annotate.fetch_transcripts`' `retries` and
+  `retry_wait`, `annotate.build_config`'s and `run`'s `**retry`, `io.file_sha256`'s `chunk`,
+  `index_scope.fasta_copies`' `versions`), and seven more wrote a default otherwise than the
+  code does (`block=BLOCK`, `30_000_000`, double quotes). Each of the 110, with this round's
+  `io.groups_shape_error`, is now one entry line, `module.name` and
   `inspect.signature` as the code gives it, under its module's heading, with the
   per-class `incomplete_3prime_only` key of the report and the errors of
   `io.groups_shape_error` and `io.primary_pair` where they belong; the five functions with
