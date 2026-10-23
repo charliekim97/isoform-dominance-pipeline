@@ -119,22 +119,20 @@ In `~/.claude/settings.json` or `.claude/settings.local.json`:
 
 ## 5. Open items
 
-Resolved and no longer open: `selftest --json` and the self-test printing all three
-cohort combinations (f36a8f1), and the list of false or overstated claims in `paper.md`
-that `PAPER-CLAIMS-091126.md` recorded.
-
 What is open, and in which round it is to be closed, is in `ROADMAP-PKG-092926.md`
-(kept outside this repository, beside the audit `AUDIT-POST240-092926.md` it rests on).
-Among them: `stats.py` still writes an empty `resolution_floor_P` for the two
-`COMBINED_*` combination rows (R4); `--background-fasta` records do not enter the
-estimability layer, and identical sequences in the Ensembl gene background are still
-counted as competitors (R2); the README and paper rewrite (R5).
+(kept outside this repository). As of 2.9.0:
 
-`docs/example_genes.md` shows an output format
-(`primary_comparison distinguishable by short reads: True`) that the current CLI
-does not emit, and k-mer counts computed under v2.1 defaults (strand-aware,
-no gene background). Both defaults have since flipped. Regenerate against live
-Ensembl before citing those numbers.
+- The gate that decides whether 3.0 makes the abundance estimand the default
+  (`validation/README.md`, "The abundance estimand, and what decides whether it becomes
+  the default") has not been run. It is run once, as that section says, and graded by
+  `validation/gate_3_0.py`. The gate's text and its predictions,
+  `validation/gate_3_0_predictions.json`, are fixed: do not edit or regenerate either,
+  whatever the code computes later. If a later change of the code moves a prediction,
+  `test_the_gate_grades_against_predictions_fixed_with_it` fails; change that test, not
+  the file.
+- `fragment` is the default estimand until the gate passes; `--estimand fragment` stays
+  in 3.0 whatever the gate says.
+- `paper.md` is about 2,300 words, above the 750-1750 JOSS asks for.
 
 JOSS submission is gated on public history of more than six months: the repository was
 created 2026-06-12T19:52Z, so the earliest eligible date is 2026-12-13.
