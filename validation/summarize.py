@@ -256,10 +256,9 @@ LENGTH_SUMMARIES = {
 }
 
 
-def poisson_unit_factor(entry):
-    """``sqrt(c'(A'WA)^+ c)`` of the class contrast with ``W = diag(1 / A theta)`` at
-    ``theta = 1`` per transcript, the windows at k = 31: the Poisson-weighted counterpart
-    of the conditioning factor that ``gls_covariance``'s docstring compares it with."""
+def _poisson_factor(entry, theta_of):
+    """``sqrt(c'(A'WA)^+ c)`` of the class contrast with ``W = diag(1 / A theta)``, the
+    windows at k = 31, and ``theta`` of each transcript ``theta_of(its sequence)``."""
     cfg, conf, rest = _split(entry)
     groups = {g: [t.split(".")[0] for t in v] for g, v in cfg["groups"].items()}
     pc = cfg["primary_comparison"]
@@ -268,14 +267,35 @@ def poisson_unit_factor(entry):
     A, _ = I.compatibility_matrix({t: I.kmer_track(seqs[t], I.DEFAULT_K) for t in ids}, ids)
     c = np.array([1.0 if t in groups[pc[0]] else -1.0 if t in groups[pc[1]] else 0.0
                   for t in ids])
-    cov = I.gls_covariance(A, np.ones(len(ids)))
+    cov = I.gls_covariance(A, np.array([float(theta_of(seqs[t])) for t in ids]))
     return math.sqrt(float(c @ cov @ c))
+
+
+def poisson_unit_factor(entry):
+    """The Poisson-weighted counterpart of the conditioning factor that
+    ``gls_covariance``'s docstring compares it with, at ``theta = 1`` per transcript."""
+    return _poisson_factor(entry, lambda seq: 1.0)
+
+
+def design_fragments(seq):
+    """The expected fragments of a transcript at the simulated design (:data:`DESIGN`):
+    ``identifiability.expected_informative_reads`` with every fragment counted."""
+    return I.expected_informative_reads(1.0, DESIGN["tpm"], len(seq), depth=DESIGN["depth"],
+                                        mean_efflen=DESIGN["mean_efflen"])
+
+
+def poisson_design_factor(entry):
+    """The same factor with the design's expected fragment counts as ``theta``
+    (:func:`design_fragments`), which differ from one transcript to another with its
+    length: the other figure ``gls_covariance``'s docstring gives."""
+    return _poisson_factor(entry, design_fragments)
 
 
 def analyse(genes):
     """What the package says about each gene: ``{gene: {"old_gate", "structural",
-    "coherence", "counting_min_resolvable_log2fc", "poisson_unit_factor"}}``.  The slow
-    part of :func:`summarize`, and a function of the sequence alone."""
+    "coherence", "counting_min_resolvable_log2fc", "poisson_unit_factor",
+    "poisson_design_factor"}}``.  The slow part of :func:`summarize`, and a function of the
+    sequence alone."""
     out = {}
     for gene in sorted(genes):
         s, res = structural(genes[gene])
@@ -285,7 +305,9 @@ def analyse(genes):
                           for c in res["primary_comparison"]},
             "counting_min_resolvable_log2fc":
                 res["unique_read_counting_se"]["min_resolvable_log2fc"],
-            "poisson_unit_factor": poisson_unit_factor(genes[gene]) if s["estimable"] else None}
+            "poisson_unit_factor": poisson_unit_factor(genes[gene]) if s["estimable"] else None,
+            "poisson_design_factor":
+                poisson_design_factor(genes[gene]) if s["estimable"] else None}
     return out
 
 
@@ -432,6 +454,7 @@ def summarize(data=DATA, analysed=None):
     have = sorted(g for g in genes if structure[g]["estimable"])
     cond = sorted(structure[g]["conditioning_factor"] for g in have)
     unit = {g: analysed[g]["poisson_unit_factor"] for g in have}
+    at_design = {g: analysed[g]["poisson_design_factor"] for g in have}
     coherence = sorted((j, g, c) for g in sorted(genes)
                        for c, j in analysed[g]["coherence"].items() if j is not None)
     lengths = [len(s) for g in genes.values() for s in g["sequences"].values()]
@@ -444,6 +467,11 @@ def summarize(data=DATA, analysed=None):
               "poisson_unit_range": max(unit.values()) / min(unit.values()),
               "poisson_unit_spearman": H.spearman([structure[g]["conditioning_factor"]
                                                    for g in have], [unit[g] for g in have]),
+              "poisson_design_median": statistics.median(at_design.values()),
+              "poisson_design_range": max(at_design.values()) / min(at_design.values()),
+              "poisson_design_spearman": H.spearman(
+                  [structure[g]["conditioning_factor"] for g in have],
+                  [at_design[g] for g in have]),
               "classes_under_0_05_min_jaccard": [{"gene": g, "class": c, "min_jaccard": j}
                                                  for j, g, c in coherence if j < 0.05],
               # over the primary-comparison classes with two or more members, the others
@@ -636,7 +664,8 @@ def render(s):
       "transcripts, the shortest %d nt. The contrast is estimable "
       "for %d; their conditioning factor: median %s, range %.0fx, above %g for %.0f%%. "
       "The Poisson-weighted factor at theta = 1 per transcript: median %s, range %.0fx, "
-      "Spearman %s with the conditioning factor. Classes whose least similar pair of "
+      "Spearman %s with the conditioning factor; with the design's expected fragment "
+      "counts as theta: median %s, range %sx, Spearman %s. Classes whose least similar pair of "
       "transcripts shares under 5%% of windows: %s; over the %d classes of the primary "
       "comparisons with two or more transcripts, the median share of the least similar "
       "pair: %s. TPI1's unique-read counting min |log2FC|: %s."
@@ -644,6 +673,8 @@ def render(s):
          v["n_estimable"], _f(v["median_conditioning"], 1), v["conditioning_range"], TAU,
          100 * v["fraction_over_tau"], _f(v["poisson_unit_median"], 1),
          v["poisson_unit_range"], _f(v["poisson_unit_spearman"], 2),
+         _f(v["poisson_design_median"], 2), _f(v["poisson_design_range"], 1),
+         _f(v["poisson_design_spearman"], 3),
          ", ".join("%s %s %s" % (x["gene"], x["class"], _f(x["min_jaccard"], 3))
                    for x in v["classes_under_0_05_min_jaccard"]),
          v["n_classes_with_pairs"], _f(v["median_min_jaccard"], 2),

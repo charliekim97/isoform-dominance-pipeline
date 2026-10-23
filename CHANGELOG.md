@@ -139,7 +139,9 @@ versioning.
   what does not depend on that scale: multiplying theta by one factor for every transcript
   multiplies every gene's figure by its square root, so the range (157x against 850x) and
   the ranking (Spearman 0.93) stay; with the design's expected counts they are 116.8x and
-  0.922. No figure changed; `tests/test_validation.py` computes the new ones too.
+  0.922. No figure changed. `validation/summarize.py` computes the new ones too, into
+  `summary.json` (`survey.poisson_design_*`) and the block of `validation/README.md`, and
+  `tests/test_validation.py` holds the docstring to them.
 - **The README's links work on PyPI, and the docs' front page is the README.** The figure
   and the links to the three documentation pages were relative paths, which PyPI resolves
   against pypi.org: four broken links on the project page. They are absolute URLs now (the

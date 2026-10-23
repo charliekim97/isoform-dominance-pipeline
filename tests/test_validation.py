@@ -297,6 +297,11 @@ def quotes(s):
                 "moves (Spearman %.2f with the homoskedastic factor)"
                 % (v["poisson_unit_range"], v["conditioning_range"],
                    v["poisson_unit_spearman"])),
+        (ident, "and of %.2f with the design's expected fragment counts as theta"
+                % v["poisson_design_median"]),
+        (ident, "With the design's expected counts, which differ from one transcript to "
+                "another, they are %.1fx and %.3f."
+                % (v["poisson_design_range"], v["poisson_design_spearman"])),
         (ident, "over a %d-gene survey the median gene sat at %.1f against a default tau of "
                 "10.0, so the default rejects %.0f%% of what it"
                 % (v["n_genes"], v["median_conditioning"], 100 * v["fraction_over_tau"])),
@@ -388,20 +393,23 @@ def test_the_survey_gives_the_median_coherence_of_the_classes_with_pairs(compute
     assert sum(len(a["coherence"]) for a in analysed.values()) == 98
 
 
-def test_the_poisson_figures_are_at_theta_one(computed):
+def test_the_poisson_figures_are_at_theta_one_and_at_the_design(computed):
     """gls_covariance's docstring gives the Poisson-weighted factor at theta = 1 per
-    transcript (summarize.poisson_unit_factor): 16.40, 156.6x and 0.930, where the design's
-    expected counts as theta give 353.74, 116.8x and 0.922."""
+    transcript (summarize.poisson_unit_factor): 16.40, 156.6x and 0.930; and with the
+    design's expected counts as theta (summarize.poisson_design_factor): 353.74, 116.8x and
+    0.922."""
     v = computed["survey"]
     assert (round(v["poisson_unit_median"], 2), round(v["poisson_unit_range"], 1),
             round(v["poisson_unit_spearman"], 3)) == (16.40, 156.6, 0.930)
+    assert (round(v["poisson_design_median"], 2), round(v["poisson_design_range"], 1),
+            round(v["poisson_design_spearman"], 3)) == (353.74, 116.8, 0.922)
 
 
 def test_the_poisson_factor_takes_its_scale_from_theta(analysed):
-    """What gls_covariance's docstring says of theta's scale, computed: theta = s for every
-    transcript gives sqrt(s) times the figure at theta = 1, so the same range and ranking;
-    the design's expected fragment counts, which differ by transcript, give another median,
-    range and ranking."""
+    """What gls_covariance's docstring says of theta's scale, computed here apart from
+    summarize: theta = s for every transcript gives sqrt(s) times the figure at theta = 1,
+    so the same range and ranking; the design's expected fragment counts, which differ by
+    transcript, give the figures summarize.poisson_design_factor gives."""
     import math
     import statistics
 
@@ -431,14 +439,11 @@ def test_the_poisson_factor_takes_its_scale_from_theta(analysed):
         design[g] = factor(A, c, [ident.expected_informative_reads(
             1.0, d["tpm"], len(seqs[t]), depth=d["depth"], mean_efflen=d["mean_efflen"])
             for t in ids])
+        assert design[g] == pytest.approx(analysed[g]["poisson_design_factor"], rel=1e-12)
     got = [design[g] for g in have]
     median, spread = statistics.median(got), max(got) / min(got)
     rho = summarize.H.spearman(cond, got)
     assert (round(median, 2), round(spread, 1), round(rho, 3)) == (353.74, 116.8, 0.922)
-    text = text_of(ROOT / "src" / "isoform_dominance" / "identifiability.py")
-    assert ("and of %.2f with the design's expected fragment counts as theta" % median) in text
-    assert ("With the design's expected counts, which differ from one transcript to "
-            "another, they are %.1fx and %.3f." % (spread, rho)) in text
 
 
 def test_every_quoted_figure_is_the_computed_one(computed):
