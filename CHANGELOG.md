@@ -109,6 +109,18 @@ versioning.
   lacks, leaving a table of one header line, and now writes the table without a fraction
   column and says so too, as it has since 2.8.0 for a group compared with itself
   (`tests/test_config_shape.py`, `tests/test_edge.py`, `tests/test_silent_wrong_answers.py`).
+- **The EFFECT SIZE line says why each estimand is not resolved.** Through 2.8.0 it said every
+  estimand flagged `beyond_linear` was "beyond the linearisation limit, relative SE > 0.3",
+  those with no figure at all among them, whose relative SE is infinite: NTRK2 at GENCODE 50,
+  none of whose class totals or contrast is estimable, read
+  `(iso_477aa, iso_822aa, the contrast beyond the linearisation limit, relative SE > 0.3)` in
+  the walkthrough. The line now names them by what holds: not estimable; estimable, but with
+  no finite figure (`finite_se` false); beyond the linearisation limit, for a finite figure
+  past it. The footnote that explains a starred figure (`* first-order figure past the
+  linearisation limit ...`, on standard error) is printed only when a figure is starred; it
+  was printed for NTRK2, whose figures are all `n/a`. `--json` and the exit status are
+  unchanged, and `beyond_linear` is still true for an infinite relative SE
+  (`tests/test_beyond_linear.py`).
 - **`annotate` says "1 transcript"**, not "1 transcripts", for a class of one transcript
   (FLT1's `iso_733aa`). The config and `annotate --json` are unchanged.
 

@@ -62,7 +62,7 @@ isoform-dominance identifiability --config example/saved/NTRK2.gencode50.config.
 #   effective length: iso_477aa 6232 bp vs iso_822aa 7940 bp (mean per transcript), log2 ratio -0.35
 #   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_477aa median 0.24 [0.05-0.99], 360 positions over 22 transcript(s); iso_822aa median 0.04 [0.04-1.00], 39 positions over 12 transcript(s)
 #   unique-read counting SE (best transcript per class) on log2 ratio: 0.347 per donor, min resolvable |log2FC| 0.680 at n=1
-#   EFFECT SIZE: |log2FC| 0.500 NOT resolved at this design (iso_477aa, iso_822aa, the contrast beyond the linearisation limit, relative SE > 0.3)
+#   EFFECT SIZE: |log2FC| 0.500 NOT resolved at this design (iso_477aa, iso_822aa, the contrast not estimable)
 #   VERDICT: not_identifiable
 # exit status 3
 ```
