@@ -3,10 +3,11 @@
 CI runs no quantifier, so ``run_simulation.py run`` is driven here with only the ``salmon``
 command intercepted: the stub writes the files Salmon writes -- ``quant.sf`` with each
 transcript's ``NumReads`` the number of fragments the simulator drew from it, read back from
-the FASTQ, ``aux_info/meta_info.json`` and ``lib_format_counts.json`` -- and everything else
-is the harness's own: the simulator as a subprocess, ``_quantify_salmon``'s reading of those
-files, and ``summarise``.  A quantifier that returns the truth has no error, so every row's
-bias and RMSE is 0.
+the FASTQ, an ``EffectiveLength`` and the ``TPM`` those give, ``aux_info/meta_info.json`` and
+``lib_format_counts.json`` -- and everything else is the harness's own: the simulator as a
+subprocess, ``_quantify_salmon``'s reading of those files, ``summarise`` and
+``summarise_tpm``.  A quantifier that returns the truth has no error, so every row's bias and
+RMSE is 0, the TPM rows' too (to the six places ``quant.sf`` gives TPM).
 
 The harness runs the simulator as a subprocess, so an order that depends on Python's hash
 seed would show only between processes; ``test_validation_harness`` compares two runs in
@@ -16,6 +17,7 @@ within one environment; nothing is claimed across numpy versions.
 """
 import collections
 import gzip
+import hashlib
 import importlib.util
 import json
 import os
@@ -95,12 +97,17 @@ class SalmonStub:
             first = entry["config"]["groups"][entry["config"]["primary_comparison"][0]][0]
             n[first.split(".")[0]] += self.bump
         os.makedirs(os.path.join(out, "aux_info"))
+        # an effective length that is not the simulator's max(1, L - 199), as Salmon's is not:
+        # the TPM truth must take the quantifier's own
+        listed = [(t, s) for entry in self.sources.values() for t, s in entry["sequences"].items()]
+        eff = {t: max(1.0, len(s) - 180.0) for t, s in listed}
+        rate = {t: n[t.split(".")[0]] / eff[t] for t, _ in listed}
+        scale = 1e6 / sum(rate.values())
         with open(os.path.join(out, "quant.sf"), "w") as f:
             f.write("Name\tLength\tEffectiveLength\tTPM\tNumReads\n")
-            for entry in self.sources.values():
-                for t, s in entry["sequences"].items():
-                    f.write("%s\t%d\t%.3f\t%.6f\t%.3f\n" % (t, len(s), max(1.0, len(s) - 200.0),
-                                                           0.0, n[t.split(".")[0]]))
+            for t, s in listed:
+                f.write("%s\t%d\t%.3f\t%.6f\t%.3f\n" % (t, len(s), eff[t], rate[t] * scale,
+                                                       n[t.split(".")[0]]))
         total = sum(_fragments(r1).values())
         with open(os.path.join(out, "aux_info", "meta_info.json"), "w") as f:
             json.dump({"salmon_version": "stub", "percent_mapped": 100.0,
@@ -132,6 +139,16 @@ def test_a_quantifier_that_returns_the_truth_has_no_error(tmp_path, monkeypatch,
         assert r["n"] == REPLICATES, r
         assert (r["bias"], r["rmse"]) == (0.0, 0.0), r
         assert r["realised_sd"] > 0                    # the truth itself varies
+    # the TPM rows: no error but the six places of quant.sf, and the abundance prediction
+    tpm = res["genes_tpm"]
+    assert sorted(r["gene"] for r in tpm) == sorted(GENES)
+    for r in tpm:
+        assert r["n"] == REPLICATES, r
+        assert abs(r["bias"]) < 1e-6 and r["rmse"] < 1e-6, r
+        assert r["realised_sd"] > 0 and r["predicted_se"] > 0
+    assert res["effective_length_taken_from"] == {}
+    assert res["design"]["genes_simulated"] == sorted(GENES)
+    assert res["design"]["inputs_sha256"] == hashlib.sha256(two_genes.read_bytes()).hexdigest()
     assert res["salmon"] == {"version": "stub", "kallisto_version": None,
                              "percent_mapped_min": 100.0, "library_type": "ISF"}
     assert res["design"]["depth_scale"] == DEPTH
@@ -143,9 +160,11 @@ def test_a_quantifier_that_returns_the_truth_has_no_error(tmp_path, monkeypatch,
 
 
 def test_a_quantifier_one_fragment_off_has_an_error(tmp_path, monkeypatch, two_genes):
-    rows = _run(tmp_path, monkeypatch, two_genes, bump=1)["genes"]
-    assert len(rows) == 2
+    res = _run(tmp_path, monkeypatch, two_genes, bump=1)
+    rows, tpm = res["genes"], res["genes_tpm"]
+    assert len(rows) == 2 and len(tpm) == 2
     assert all(r["bias"] > 0 and r["rmse"] > 0 for r in rows)
+    assert all(r["bias"] > 1e-4 and r["rmse"] > 1e-4 for r in tpm)
 
 
 # --------------------------------------------------------------------------- #
