@@ -800,8 +800,16 @@ def cmd_extract(a):
 
 
 def cmd_stats(a):
-    res = stats.run(io.load_config(a.config), a.condition, _kv(a.perdonor), a.out,
-                    n_boot=a.n_boot, seed=a.seed)
+    cfg = io.load_config(a.config)
+    try:
+        io.primary_pair(cfg)
+    except ValueError as e:
+        # a comparison that is not of two groups, names a group the config lacks or names one
+        # group twice: one line naming the config, as for its shape.  Through 2.8.0 fewer than
+        # two groups and one group twice were tracebacks, more than two were read as the first
+        # two, and a group the config lacks was refused by the table, for its missing column
+        raise io.InputError("config %s: %s" % (a.config, e)) from None
+    res = stats.run(cfg, a.condition, _kv(a.perdonor), a.out, n_boot=a.n_boot, seed=a.seed)
     if a.json:
         _emit(res)
         return EXIT_OK

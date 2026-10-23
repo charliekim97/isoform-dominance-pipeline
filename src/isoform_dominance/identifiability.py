@@ -1248,20 +1248,20 @@ def _check_classes(config):
     """``config``'s compared classes, its ``primary_comparison``; ``ValueError`` when its
     classes cannot be compared: groups or a comparison of the wrong shape
     (:func:`isoform_dominance.io.groups_shape_error`, the sentence ``io.load_config`` gives
-    the CLI), no groups, a comparison that does not name two of them or compares one with
-    itself, a transcript in two.  :func:`analyze` checks this before anything else, and the
+    the CLI), no groups, a comparison that does not name exactly two of them or compares one
+    with itself, a transcript in two.  :func:`analyze` checks this before anything else, and the
     self-test on its packaged config before it runs the analysis."""
     wrong = io.groups_shape_error(config)
     if wrong:
-        raise ValueError(wrong)
+        raise ValueError(wrong)             # among them a config with no group
     groups = config["groups"]
-    if not groups:
-        raise ValueError("config['groups'] is empty; nothing to test.")
-    pc = config.get("primary_comparison", list(groups)[:2])
-    if len(pc) < 2:
+    pc = io._comparison(config)
+    if len(pc) != 2:
+        # three or more: through 2.8.0 the contrast was of the first two, and every class
+        # named went into the verdict and the exit status
         raise ValueError(
             "primary_comparison must name two isoform groups; got %r" % (pc,))
-    missing = [g for g in pc if g not in groups]
+    missing = list(dict.fromkeys(g for g in pc if g not in groups))
     if missing:
         raise ValueError(
             "primary_comparison names group(s) not in config['groups']: %r" % (missing,))
@@ -1462,8 +1462,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         whose only unique sequence is a handful of junction k-mers is structurally
         estimable but practically not.
     """
+    pc = _check_classes(config)             # first: a config with no groups is a ValueError
     groups = config["groups"]
-    pc = _check_classes(config)
     window = int(window or k)
     if decoys and not background_fasta:
         raise ValueError("--decoys names records of a --background-fasta, and none was given")

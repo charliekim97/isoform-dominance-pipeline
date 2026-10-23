@@ -24,8 +24,8 @@ The config object passed throughout is a plain dict (loaded from JSON via
 }
 ```
 
-Each group lists one or more transcript ids, and `primary_comparison`, when present, is a
-list of group names (`io.groups_shape_error`). `annotate` also writes `ensembl_release`,
+A config names one group or more; each lists one or more transcript ids, and
+`primary_comparison`, when present, is a list of group names (`io.groups_shape_error`). `annotate` also writes `ensembl_release`,
 the Ensembl release the groups were proposed from. It is optional, so configs written
 before 2.3.0 still load, but `identifiability` reports a verdict without it as not
 reproducible.
@@ -478,7 +478,9 @@ donor has any of them, as every class total would be zero.
 Writes `extract`'s rows to the per-donor CSV `out` and returns `out`: `cohort, donor,
 condition`, a `<group>_TPM` column per group, and `<A>_fraction`, `A / (A + B)` for the two
 groups of `primary_comparison` (without one, the first two groups; `NA` when both are zero),
-left out unless the comparison names two different groups.
+left out unless the comparison names exactly two different groups of the config;
+`extract.run` warns when it names a group the config lacks, other than two groups, or one
+group twice.
 
 **`extract.quant_copies(config, prov, quants)`**
 Same-name copies among the targets of each index the cohort was quantified against. Only
@@ -634,17 +636,22 @@ Open a text file for reading, gunzipping it when `io.is_gzip`, whatever its name
 The same as `open_text`, for bytes.
 
 **`io.load_config(path, need_groups=True)`**
-Load a config JSON; `io.InputError` (a `ValueError`) if it is not JSON, not an object, or, unless `need_groups` is false (`qc`), has no `groups` object or fails `io.groups_shape_error`: then the message is `config <path>: ` and that sentence, which names the group or `primary_comparison` at fault. `identifiability`, `extract` and `stats` read the config here.
+Load a config JSON; `io.InputError` (a `ValueError`) if it is not JSON, not an object, or, unless `need_groups` is false (`qc`), has no `groups` object or fails `io.groups_shape_error`: then the message is `config <path>: ` and that sentence, which names `groups`, the group or `primary_comparison` at fault. `identifiability`, `extract` and `stats` read the config here.
 
 **`io.groups_shape_error(config)`**
 What is wrong with the shape of a config's groups and comparison, as a sentence that starts
-with the place (`group "<name>"` or `primary_comparison`), or None: each group must be a
-non-empty list (from Python, a tuple too) of transcript ids, each a non-empty string, and
-`primary_comparison`, when present, a list (or tuple) of group names, each a string. Since
-2.9.0; through 2.8.0 a group given as a string was read one character at a time as
-transcript ids, an empty group gave a verdict, and a comparison given as a string was read
-as its letters. How many groups the comparison names, a group named twice and a group the
-config lacks are checked by `io.primary_pair` and `identifiability.analyze`.
+with the place (`groups`, `group "<name>"` or `primary_comparison`), or None: `groups` must
+name one group or more, each group a non-empty list of transcript ids, each a non-empty
+string with no white space, and `primary_comparison`, when present, a list of group names,
+each a string. From Python a list may be any collection that is not a string or a mapping
+(a tuple, a set, an array), but a comparison has an order and so is no set. Since 2.9.0;
+through 2.8.0 a group given as a string was read one character at a time as transcript ids,
+an empty group gave a verdict, an id with a space was read as it stood (unless a version
+followed it), a group given as an object was read as its keys, and a comparison given as a
+string was read as its letters. That the comparison names exactly two groups, both the
+config's and not one twice, is checked by `io.primary_pair` (for `stats`) and
+`identifiability.analyze`; `extract` writes no fraction column for another comparison, and
+says so.
 
 **`io.file_sha256(path, chunk=1048576)`**
 Hex SHA-256 of a file's bytes, read `chunk` bytes (1 MiB) at a time.
@@ -663,9 +670,12 @@ Read a `donor,condition[,SRR]` CSV to `{donor: condition}`; `io.InputError` with
 
 **`io.primary_pair(config)`**
 The two groups named in `primary_comparison`, `(gA, gB)`; without one, the config's first
-two groups. A `ValueError` when it names fewer than two groups, or a group of the config
-twice; a group the config lacks is left to the per-donor table's reading, which names the missing
-column. `stats` reads the pair here.
+two groups. A `ValueError` when it does not name exactly two groups (through 2.8.0 a third
+and later were ignored), names a group the config lacks (through 2.8.0 left to the
+per-donor table, which named the missing column) or names one group twice, as
+`identifiability` refuses such a comparison, and for a set, which has no order. `stats`
+reads the pair here, and the CLI refuses such a config in one `error: config <path>: ...`
+line before reading a table.
 
 **`io.save_inputs(path, captured, config, release, version, background_fasta=None, decoys=None, max_window_records=None, annotation_source=None)`**
 Write the sequence an `identifiability` run used (`captured`, from `analyze(..., inputs_out=...)`) with the release it came from, as `"format": "isoform-dominance/inputs/1"` (`io.INPUTS_FORMAT`), and return the document. `analysis` records the `k`, `window`, `canonical` and `gene_background` of the run, `max_window_records` when it had a FASTA, and `keep_duplicates` when it had a background, gene or FASTA, none of which the config holds; `sequence_sources` gives each id's `"supplied"`, `"fetched:<release>"` or `"file:<release>"`, and `release` is recorded only when every sequence came from it. A run on local files records them as `annotation_source` (the report's `annotation.source`). `versions` gives each sequence's versioned id where the run knew it, and a rerun passes it on, so `background.fasta_other_versions` survives `--inputs`. A `background_fasta` and a `decoys` file are recorded by path, size and SHA-256, not copied. The gene background is saved whole, copies of configured transcripts included, so that a rerun with `--keep-duplicates` can count them. `gene_id` is the gene the background was fetched as, or the config's `gene_id`. Backs `--save-inputs`.

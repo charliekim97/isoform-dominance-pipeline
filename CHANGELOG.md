@@ -50,19 +50,24 @@ versioning.
   record the `--gtf` gives, ended as `config error: ...`, which sends the user to a config
   that is not at fault. `main` now says it in its one `error:` line, as for every other
   command; the exit status is 1, as it was (`tests/test_cli.py`).
-- **A config whose classes or comparison have the wrong shape is refused, naming the
-  place.** 2.8.0 checked only that a config is a JSON object with a `groups` object. One
-  rule, `io.groups_shape_error`, now holds every group to a non-empty list of transcript ids,
-  each a non-empty string, and `primary_comparison`, when present, to a list of group names,
-  each a string. `io.load_config`, which `identifiability`, `extract` and `stats` read the
-  config with, refuses a config that breaks it with one line naming the file and the group or
-  `primary_comparison` (`error: config <path>: group "A" lists no transcript; ...`) and exit
-  status 1; `identifiability.analyze` raises a `ValueError` with the same sentence, a tuple
-  being as good as a list there; the self-test's check of its packaged config fails as one
-  check. `qc`, which reads only `contamination_qc`, is not held to it. How many groups the
-  comparison names, a group named twice and a group the config lacks are checked where they
-  were. Every config in the repository passes (`tests/test_config_shape.py`). Accepted by
-  2.8.0 and refused now:
+- **A config whose classes or comparison have the wrong shape is refused, naming the place.**
+  2.8.0 checked only that a config is a JSON object with a `groups` object. One rule,
+  `io.groups_shape_error`, now holds `groups` to one group or more, every group to a non-empty
+  list of transcript ids, each a non-empty string with no white space, and
+  `primary_comparison`, when present, to a list of group names, each a string.
+  `io.load_config`, which `identifiability`, `extract` and `stats` read the config with,
+  refuses a config that breaks it with one line naming the file and the place
+  (`error: config <path>: group "A" lists no transcript; ...`) and exit status 1;
+  `identifiability.analyze` raises a `ValueError` with the same sentence, as it now does for a
+  config with no `groups` at all (a `KeyError` through 2.8.0); the self-test's check of its
+  packaged config fails as one check. From Python a list may still be any collection 2.8.0
+  read -- a tuple, a set, an array -- but not a mapping, and a comparison, which has an order,
+  not a set. `qc`, which reads only `contamination_qc`, is not held to it. Every config in the
+  repository passes (`tests/test_config_shape.py`). Accepted by 2.8.0 and refused now:
+  - no group (`"groups": {}`): `identifiability` said
+    `config error: config['groups'] is empty`; with a `primary_comparison`, `extract` raised a
+    `KeyError` after one header line and `stats` ran on the per-donor table it was given, and
+    without one `extract` wrote a table of no class (exit 0) and `stats` gave a traceback;
   - a group with no transcript (`[]`), whether or not it is one of the two compared.
     `identifiability` gave a verdict (`weakly_identifiable`, exit 0) for an empty compared
     class, `extract` wrote it as 0 TPM and a fraction of 0 for every donor, and `stats` ran;
@@ -73,6 +78,11 @@ versioning.
     `identifiability` and `extract`; `stats` ran;
   - an empty transcript id (`[""]`): `identifiability` asked Ensembl for it, `extract`
     counted it as a missing transcript with a WARNING, and `stats` ran;
+  - an id with white space (`"A1 "`): `identifiability` asked Ensembl for it, and `extract`
+    counted it as a missing transcript with a WARNING. With a version (`"A1.1 "`) all three
+    read it up to the dot, as if it had no white space; it is refused now too;
+  - a group given as an object (`"A": {"A1": 1}`): all three read its keys as the transcript
+    ids;
   - `primary_comparison` null or a number: a `TypeError` traceback from all three;
   - `primary_comparison` a string: read as its letters, so that `"AB"` compared groups `A`
     and `B` (`identifiability` gave a verdict and exit 0, `extract` wrote `A_fraction`); a
@@ -81,6 +91,24 @@ versioning.
   - a `primary_comparison` entry that is not a string.
   `stats` reads no transcript id, and refuses a config with a group of the wrong shape all
   the same: the config is the one `extract` and `identifiability` read.
+- **A comparison is of two groups, and `stats` and `extract` check it as `identifiability`
+  does.** Through 2.8.0 a `primary_comparison` of fewer than two groups, or of one group
+  twice, was a `ValueError` traceback from `stats`; one that names a group the config lacks
+  reached the per-donor table, which was refused for a missing column -- a column the config
+  never named; and one of three or more groups was read as its first two, by `stats` and
+  `extract` with nothing said (`extract` wrote no fraction column) and by `identifiability`
+  with every class it names in the verdict and the exit status, so that with `--min-log2fc` a
+  third class could turn exit status 0 into 3 with no estimand named as not resolved.
+  `identifiability` now refuses three or more groups as it refused fewer than two
+  (`config error: primary_comparison must name two isoform groups; got ['A', 'B', 'C']`), and
+  `stats` refuses each of these before it reads a table, in one line naming the config
+  (`error: config <path>: primary_comparison names group(s) not in config['groups']: ['medium']`),
+  exit status 1; `io.primary_pair` raises its `ValueError` for each, and for a set, which has
+  no order (2.8.0: `TypeError`). `extract` writes no fraction column for a comparison of other
+  than two groups and now says so in a WARNING; it raised a `KeyError` for a group the config
+  lacks, leaving a table of one header line, and now writes the table without a fraction
+  column and says so too, as it has since 2.8.0 for a group compared with itself
+  (`tests/test_config_shape.py`, `tests/test_edge.py`, `tests/test_silent_wrong_answers.py`).
 - **`annotate` says "1 transcript"**, not "1 transcripts", for a class of one transcript
   (FLT1's `iso_733aa`). The config and `annotate --json` are unchanged.
 

@@ -11,6 +11,10 @@ window=31", naming none -- and exit 2, for transcripts thousands of bases long.
 
 A primary comparison of a class with itself: the contrast is zero, and the run reported the
 class identifiable with a min |log2FC| of 0.0; `extract` wrote a fraction of 0.5 for every donor.
+
+A primary comparison of three classes: the contrast was of the first two, and the third class
+went into the verdict and, with ``--min-log2fc``, the exit status -- 3 where the two compared
+classes and their contrast resolve the effect, with no estimand named as not resolved.
 """
 import json
 import random
@@ -90,6 +94,16 @@ def test_a_class_compared_with_itself_is_refused(tmp_path, capsys):
     assert cli.main(argv) == 1
     line = _err_line(capsys)
     assert line.startswith("config error: ") and "compares group 'A' with itself" in line
+
+
+def test_a_comparison_of_three_classes_is_refused(tmp_path, capsys):
+    groups = {"A": ["A1"], "B": ["B1"], "C": ["C1"]}
+    assert cli.main(_case(tmp_path, groups) + ["--min-log2fc", "0.5"]) == cli.EXIT_OK
+    capsys.readouterr()
+    argv = _case(tmp_path, groups, primary=("A", "B", "C")) + ["--min-log2fc", "0.5"]
+    assert cli.main(argv) == 1
+    assert _err_line(capsys) == ("config error: primary_comparison must name two isoform "
+                                 "groups; got ['A', 'B', 'C']")
 
 
 def test_the_library_refuses_a_class_compared_with_itself():

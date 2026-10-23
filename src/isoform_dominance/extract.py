@@ -97,11 +97,22 @@ def missing_transcripts(config, found, cohort):
             "warning": warning}
 
 
+def _fraction_pair(config):
+    """The two groups of the fraction column, or None: ``primary_comparison`` (without one,
+    the first two groups) when it names exactly two different groups the config has.  A
+    class against itself is 0.5 always, and a group the config lacks has no total."""
+    groups = config["groups"]
+    pc = io._comparison(config)
+    if len(pc) == 2 and pc[0] != pc[1] and all(g in groups for g in pc):
+        return pc[0], pc[1]
+    return None
+
+
 def write_perdonor(config, rows, cohort, out):
     groups = config["groups"]
-    pc = config.get("primary_comparison", list(groups)[:2])
-    has_pair = len(pc) == 2 and pc[0] != pc[1]      # a class against itself is 0.5 always
-    a, b = (pc[0], pc[1]) if has_pair else (None, None)
+    pair = _fraction_pair(config)
+    has_pair = pair is not None
+    a, b = pair if has_pair else (None, None)
     with open(out, "w", newline="") as f:
         w = csv.writer(f)
         head = ["cohort", "donor", "condition"] + ["%s_TPM" % g for g in groups]
@@ -174,8 +185,19 @@ def run(config, quantdir, samplemap, cohort, out, allow_mixed_index=False, notes
         notes.append("WARNING: transcript %s is in groups %s; its TPM is added to \"%s\" "
                      "only, the group the config lists last; `identifiability` refuses such "
                      "a config" % (tid, ", ".join('"%s"' % g for g in gs), gs[-1]))
-    pc = config.get("primary_comparison", list(config["groups"])[:2])
-    if len(pc) >= 2 and pc[0] == pc[1]:
+    pc = io._comparison(config)
+    missing = list(dict.fromkeys(g for g in pc if g not in config["groups"]))
+    if missing:
+        # through 2.8.0 a KeyError, and a table of one header line
+        notes.append("WARNING: primary_comparison names %s, which the config's groups do not "
+                     "have, so no fraction column is written; `identifiability` and `stats` "
+                     "refuse such a config" % ", ".join('"%s"' % g for g in missing))
+    elif "primary_comparison" in config and len(pc) != 2:
+        # through 2.8.0 no fraction column, and nothing said
+        notes.append("WARNING: primary_comparison names %d group(s), not two, so no fraction "
+                     "column is written; `identifiability` and `stats` refuse such a config"
+                     % len(pc))
+    elif len(pc) == 2 and pc[0] == pc[1]:
         notes.append("WARNING: primary_comparison compares group \"%s\" with itself, so no "
                      "fraction column is written; `identifiability` and `stats` refuse such "
                      "a config" % (pc[0],))
