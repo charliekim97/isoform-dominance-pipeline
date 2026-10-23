@@ -11,12 +11,15 @@ versioning.
 > are left in place as a matter of policy: they are never retagged, replaced or deleted.
 > Nothing in this or any later version alters that record's files. The
 > `extract` aggregation behaviour those results depend on — transcript-to-group mapping
-> and per-donor TPM summation — is unchanged through 2.5.0, and the bundled self-test still
+> and per-donor TPM summation — is unchanged through 2.9.0, and the bundled self-test still
 > reproduces the same reference numbers. 2.4.0 adds two refusals to `extract` where 2.3.0
 > wrote a table: a cohort quantified against more than one Salmon index, and a config none
 > of whose transcripts is in any donor's `quant.sf`. 2.4.1 counts an index with Salmon's
 > decoys and one without as two, and writes the rows in 2.1.1's order again (2.4.0 sorted
-> them by donor name).
+> them by donor name). 2.8.0 writes no fraction column for a group compared with itself,
+> and 2.9.0 none for a comparison naming a group the config lacks; 2.9.0 refuses a config
+> whose groups have the wrong shape (none, an empty one, one given as a string or an object,
+> an id that is not a non-empty string without white space).
 
 ## [Unreleased]
 
@@ -34,8 +37,12 @@ versioning.
   repository only, so a pull request or a private mirror builds and stops there; only that
   job may write to Pages, and only it is in the `pages` concurrency group, so a pull
   request's build never waits on, or cancels, a deployment. Nothing is pushed to a branch.
-  `tests/test_docs_workflow.py` holds the workflow to this, and skips in the sdist, which
-  leaves `.github/` out. The built `site/` is ignored by git.
+  `mkdocs.yml` makes the strict build fail on a link to an anchor a page lacks, an absolute
+  link, a link to no file of the site and a page left out of the nav, which mkdocs 1.6 only
+  logs by default. `tests/test_docs_workflow.py` holds the workflow and these settings to
+  this, and skips in the sdist, which leaves `.github/` out. The built `site/` is ignored by
+  git. `CONTRIBUTING.md` says how to remake the front page and build the site, and lists the
+  CI as it is (Python 3.10–3.14, the sdist's tests, the site and the draft PDF).
 
 ### Fixed
 - **A numerical fault in `identifiability` is no longer reported as a config error.** numpy's
@@ -174,7 +181,9 @@ versioning.
   runs every block with every socket refused and compares its standard output line by line
   (an `annotate --gtf` block with `annotate.run` returning the config that command wrote,
   as the GTF is not in the repository), checks each quotation against the standard error
-  of a command on the page, and recomputes the table. The README's `annotate` block is now
+  of a command on the page, and recomputes the table, under the header the page gives it;
+  a code block it would not run (a `~~~` fence, an indented block) and a command line
+  without the ` \` that joins it to the next fail it. The README's `annotate` block is now
   that command's standard output on GENCODE 50, checked the same way; it had other lines,
   in another order, with labels the command does not print. The README's description of the
   example-genes page no longer names an isoform's function.

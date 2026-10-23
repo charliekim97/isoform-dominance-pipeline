@@ -20,7 +20,7 @@ isoform-dominance annotate --gene NTRK2 --gtf gencode.v50.annotation.gtf.gz \
 # exit status 0
 ```
 
-The GTF is not in the repository. The config this command wrote is
+The GTF is not in the repository. The config this command wrote is kept as
 `example/saved/NTRK2.gencode50.config.json`, and `example/saved/README.md` says how it and the
 saved sequence were made. A class is the protein-coding transcripts that share a 3'
 terminal-exon splice acceptor, named by the length of its representative protein; the

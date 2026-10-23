@@ -30,7 +30,7 @@ from isoform_dominance import annotate, cli
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SAVED = ROOT / "example" / "saved"
 #: the pages, and the most lines each may run to
-PAGES = {"docs/tutorial_NTRK2.md": 128, "docs/example_genes.md": 90}
+PAGES = {"docs/tutorial_NTRK2.md": 128, "docs/example_genes.md": 92}
 
 
 def text_of(page):
@@ -43,10 +43,15 @@ def fenced(text):
 
 
 def bash_block(body):
-    """``(argv, the standard output shown, the exit status shown)`` of a bash block."""
+    """``(argv, the standard output shown, the exit status shown)`` of a bash block.  Every
+    line of the command but its last ends with `` \\``, as a shell needs to read one command."""
     lines = body.rstrip("\n").split("\n")
     first = next(i for i, x in enumerate(lines) if x.startswith("#"))
-    command = " ".join(x.rstrip("\\").strip() for x in lines[:first])
+    assert first, body
+    assert all(x.endswith(" \\") for x in lines[:first - 1]), lines[:first]
+    assert not lines[first - 1].endswith("\\"), lines[:first]
+    command = " ".join(x[:-1].strip() if x.endswith("\\") else x.strip()
+                       for x in lines[:first])
     shown = lines[first:]
     assert all(x == "#" or x.startswith("# ") for x in shown), shown
     m = re.fullmatch(r"# exit status (\d+)", shown[-1])
@@ -114,6 +119,18 @@ def test_every_block_is_one_of_the_two_kinds():
     assert {lang for _, _, lang, _ in BLOCKS} == {"bash", "python"}
     for _, _, lang, body in BLOCKS:
         bash_block(body) if lang == "bash" else python_block(body)
+
+
+@pytest.mark.parametrize("page", sorted(PAGES))
+def test_every_code_block_is_one_the_tests_run(page):
+    # a block the tests do not find is a block nothing checks: a ~~~ fence, a fence with
+    # more to its info string than a language, or an indented block
+    text = text_of(page)
+    lines = text.split("\n")
+    assert not [x for x in lines if x.lstrip().startswith("~~~")]
+    assert len([x for x in lines if x.startswith("```")]) == 2 * len(fenced(text))
+    outside = re.sub(r"^```.*?^```[ \t]*$", "", text, flags=re.M | re.S).split("\n")
+    assert [x for x in outside if x.startswith(("    ", "\t")) and x.strip()] == []
 
 
 @pytest.mark.parametrize("page,i,lang,body", BLOCKS,
@@ -200,7 +217,12 @@ def row(gene, n, monkeypatch, capsys):
                       else float("inf")), str(status)]
 
 
+HEAD = ["Gene", "GENCODE (Ensembl)", "Proposed comparison (transcripts)", "Verdict",
+        "Contrast min \\|log2FC\\|", "Contrast conditioning",
+        "Exit status, `--min-log2fc 0.5`"]
+
+
 def test_the_table_is_what_the_saved_inputs_give(offline, monkeypatch, capsys):
     head, rows = table(text_of("docs/example_genes.md"))
-    assert len(head) == 7
+    assert head == HEAD                     # the columns are in the order row() gives them
     assert rows == [row(g, n, monkeypatch, capsys) for g in GENES for n in (44, 50)]

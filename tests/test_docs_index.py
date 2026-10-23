@@ -61,7 +61,9 @@ def test_the_check_finds_a_relative_link():
 
 def test_the_front_page_is_the_readme_as_the_script_writes_it():
     made = _script().index_text(README.read_text(encoding="utf-8"))
-    assert INDEX.read_text(encoding="utf-8") == made
+    assert INDEX.read_text(encoding="utf-8") == made, (
+        "docs/index.md is not the README as scripts/make_docs_index.py writes it: run "
+        "`python scripts/make_docs_index.py` after editing the README")
 
 
 def test_the_front_page_links_the_files_beside_it():

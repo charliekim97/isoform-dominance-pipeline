@@ -99,6 +99,29 @@ def test_nothing_is_pushed_to_a_branch():
     assert len(re.findall(r"^\s+pages: write$", text, re.M)) == 1
 
 
+def test_no_key_is_given_twice():
+    # a YAML reader keeps the last of two equal keys, and these tests read the first
+    text = _text()
+    top = re.findall(r"^([\w-]+):", text, re.M)
+    jobs = re.findall(r"^  ([\w-]+):", _block(text, "jobs", 0), re.M)
+    assert sorted(top) == ["jobs", "name", "on"], top
+    assert jobs == ["build", "deploy"]
+    for name in jobs:
+        keys = re.findall(r"^    ([\w-]+):", _job(name), re.M)
+        assert len(keys) == len(set(keys)), (name, keys)
+
+
+def test_the_strict_build_fails_on_every_link_mkdocs_can_check():
+    # without these mkdocs 1.6 only logs a link to an anchor a page lacks, and the strict
+    # build passes
+    conf = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    block = re.search(r"^validation:\n((?:  .*\n)+)", conf, re.M)
+    assert block, "mkdocs.yml has no validation block"
+    assert dict(re.findall(r"^  (\w+): (\w+)$", block.group(1), re.M)) == {
+        "omitted_files": "warn", "absolute_links": "warn", "unrecognized_links": "warn",
+        "anchors": "warn"}
+
+
 def test_the_site_has_the_four_pages_and_is_not_committed():
     nav = re.findall(r"^\s+- .*?:\s*(\S+\.md)\s*$",
                      (ROOT / "mkdocs.yml").read_text(encoding="utf-8"), re.M)

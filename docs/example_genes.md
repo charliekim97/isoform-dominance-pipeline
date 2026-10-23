@@ -4,7 +4,8 @@ LEPR, NTRK2, NTRK3 and FLT1, each at GENCODE 44 (Ensembl 110) and GENCODE 50 (En
 from the configs `annotate --gtf` proposed and the sequence `identifiability --save-inputs`
 saved, both kept in `example/saved/` (its README says how they were made). Run the commands
 in a clone of the repository, from its root: `example/saved/` is not part of the installed
-package, and none of them makes a network request.
+package, and none of them makes a network request. The `annotate` command below reads
+GENCODE 50's GTF as well, which is not in the repository.
 
 Each row is `isoform-dominance identifiability --config example/saved/<gene>.gencode<N>.config.json
 --inputs example/saved/<gene>.gencode<N>.inputs.json` at the default design: the proposed
@@ -36,8 +37,8 @@ goes from 0 to 3. At GENCODE 44 `iso_617aa` was itself chosen by a tie (below).
 
 ## FLT1, and proposals decided by a tie
 
-At both releases FLT1's alternative class is one transcript, and so are two other clusters.
-`annotate` says so on standard error:
+At both releases FLT1's alternative class is one transcript, and so are two other clusters,
+and `annotate` says so:
 
 ```bash
 isoform-dominance annotate --gene FLT1 --gtf gencode.v50.annotation.gtf.gz \
@@ -49,6 +50,8 @@ isoform-dominance annotate --gene FLT1 --gtf gencode.v50.annotation.gtf.gz \
 #   REVIEW _proposed/_clusters and rename groups before use.
 # exit status 0
 ```
+
+The config it wrote is kept as `example/saved/FLT1.gencode50.config.json`. On standard error:
 
 > NOTE: iso_733aa was chosen by a tie. 2 other cluster(s) have as many transcripts (1):
 > 687 aa at acceptor 28390104, 665 aa at acceptor 28389632. The rule is the non-canonical

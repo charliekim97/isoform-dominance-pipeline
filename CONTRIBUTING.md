@@ -31,15 +31,22 @@ pip install -e ".[dev]"
 pytest -q          # all tests are offline and must pass
 ```
 
+`docs/index.md`, the documentation site's front page, is made from the README: after
+editing the README, run `python scripts/make_docs_index.py` (`tests/test_docs_index.py`
+fails until the two agree). To build the site as CI does, `pip install "mkdocs==1.6.1"` and
+`mkdocs build --strict`.
+
 ## Submitting changes
 
 1. Fork the repository and create a branch for your change.
 2. Add or update tests; the suite must stay green and offline (no network in tests).
 3. Keep the public CLI behaviour backward-compatible, or note the break clearly.
 4. Open a pull request describing the change and the motivation. CI must pass: tests
-   on Python 3.10–3.13 (Linux) and 3.12 (macOS, Windows), tests at the declared dependency
-   floors, an install from the built wheel, `ruff`, the committed docs example, and a
-   check that no commit credits an AI assistant.
+   on Python 3.10–3.14 (Linux) and 3.12 (macOS, Windows), tests at the declared dependency
+   floors, an install from the built wheel, the source distribution's own tests, `ruff`,
+   the committed docs example, and a check that no commit credits an AI assistant; and,
+   when the documentation or the paper changes, the strict build of the documentation site
+   and the JOSS draft PDF.
 
 ## Scope
 
