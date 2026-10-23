@@ -387,6 +387,129 @@ def quotes(s):
     return out
 
 
+def test_the_gate_grades_against_predictions_fixed_with_it(computed):
+    """The 3.0 gate grades against gate_3_0_predictions.json, written with it on 2026-10-23:
+    the bytes its SHA-256 names, the 7 genes of the primary set and the 39 of S1, and the
+    predictions this code gives, which the README rounds for the primary set.  A later change
+    of the code that moves a prediction fails here; the gate still grades against the file."""
+    import hashlib
+    import math
+    path = VALIDATION / "gate_3_0_predictions.json"
+    text = text_of(VALIDATION / "README.md")
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert "`gate_3_0_predictions.json` beside this file" in text and sha in text
+    frozen = json.loads(path.read_text(encoding="utf-8"))
+    assert list(frozen["primary"]) == computed["survey"]["estimable_as_abundance_only"]
+    assert list(frozen["control"]) == computed["S1"]["genes"]
+    assert frozen["design"] == computed["designs"]["predicted_at"]
+    for part in ("primary", "control"):
+        for gene, se in frozen[part].items():
+            now = computed["genes"][gene]["structural"]["abundance"]["min_resolvable_log2fc"]
+            assert math.isfinite(se) and se == pytest.approx(now / 1.96, rel=1e-9), gene
+    assert ("For the primary set they are %s, rounded here"
+            % ", ".join("%s %.3f" % (g, se) for g, se in frozen["primary"].items())
+            ).replace(", VEGFA", " and VEGFA") in text
+    # the sets graded are the file's, named in the text as they were on the day
+    assert ("The 7 genes of the file's `primary` (%s: on 2026-10-23 the genes whose contrast is "
+            "estimable as abundance and not as fragment totals)"
+            % ", ".join(frozen["primary"])) in text
+    assert "The 39 genes of the file's `control` (S1's on 2026-10-23)" in text
+
+
+def test_the_gate_says_its_predictions_are_of_a_nearby_functional(monkeypatch):
+    """The predictions are of the abundance with window positions as lengths.  With
+    L - 199, near the effective length summed TPM divides by, in their place, none of the
+    primary set's contrasts is estimable in the window system: the gate quotes the range of
+    the residuals and the gene with the largest."""
+    import numpy as np
+    ident = summarize.I
+    frozen = json.loads((VALIDATION / "gate_3_0_predictions.json").read_text(encoding="utf-8"))
+    genes, _, _ = summarize.load()
+    window = ident.DEFAULT_K
+    original = ident._coefficients
+
+    def fragment_lengths(name, c, n_positions):
+        if name != "abundance":
+            return original(name, c, n_positions)
+        length = np.asarray(n_positions, dtype=float) + window - 1
+        return original(name, c, np.maximum(1.0, length - 199.0))
+    monkeypatch.setattr(ident, "_coefficients", fragment_lengths)
+    residual = {}
+    for gene in frozen["primary"]:
+        cfg, conf, rest = summarize._split(genes[gene])
+        res = ident.analyze(cfg, sequences=conf, background_sequences=rest,
+                            background_gene_transcripts=False, **summarize.DESIGN)
+        c = res["estimands"]["abundance"]["contrast"]
+        assert not c["estimable"], gene
+        residual[gene] = c["residual"]
+    low, high = min(residual.values()), max(residual.values())
+    assert max(residual, key=residual.get) == "VEGFA"
+    text = text_of(VALIDATION / "README.md")
+    assert ("none of the 7 contrasts is estimable in the window system (residual %.0e to %.0e, "
+            "VEGFA's the largest)" % (low, high)).replace("e-0", "e-") in text
+
+
+def test_the_gate_quotes_the_stored_errors_and_the_abundance_predictions(computed):
+    """The 3.0 gate of validation/README.md quotes the stored Salmon runs and its fixed
+    predictions: SMN2 and VEGFA of its stop rule, both of the primary set; the three
+    predictions past the linearisation limit and how S1 graded such predictions; and the
+    thresholds of the primary set and of the control, against S1."""
+    import math
+    _, rows, _ = summarize.load()
+    uniform = rows["salmon"][summarize.UNIFORM]
+    frozen = json.loads((VALIDATION / "gate_3_0_predictions.json").read_text(encoding="utf-8"))
+    only = list(frozen["primary"])
+    assert {"SMN2", "VEGFA"} <= set(only)
+    text = text_of(VALIDATION / "README.md")
+
+    def se(gene):
+        return frozen["primary"].get(gene, frozen["control"].get(gene))
+    smn2, vegfa = uniform["SMN2"], uniform["VEGFA"]
+    # what makes them the stop rule: each already failed with NumReads
+    assert abs(smn2["bias"]) > se("SMN2") and smn2["realised_sd"] > se("SMN2")
+    assert abs(vegfa["bias"]) > se("VEGFA") and vegfa["realised_sd"] < se("VEGFA")
+    assert ("SMN2 (|bias| %.3f, SD %.3f, against a predicted SE of %.3f)"
+            % (abs(smn2["bias"]), smn2["realised_sd"], se("SMN2"))) in text
+    assert "VEGFA (|bias| %.3f against %.3f)" % (abs(vegfa["bias"]), se("VEGFA")) in text
+    # the other five of the primary set met the standard with NumReads
+    for gene in set(only) - {"SMN2", "VEGFA"}:
+        r = uniform[gene]
+        assert abs(r["bias"]) < se(gene) and r["realised_sd"] < se(gene), gene
+    assert ("5 of the 7 met the abundance standard with `NumReads` although their fragment "
+            "contrast is not estimable") in text
+
+    # past the linearisation limit: the relative SE on the natural-log scale, by which the
+    # CLI stars a figure; and S1's predictions past it, which S1 graded all the same
+    ident = summarize.I
+    rse = {gene: se(gene) * math.log(2) for gene in only}
+    for gene in only:
+        assert ident.min_resolvable_log2fc(rse[gene], 1) == pytest.approx(1.96 * se(gene))
+    past = sorted((g for g in only if rse[g] > ident.LINEARISATION_LIMIT), key=rse.get)
+    assert ("%s, %s and %s, at a relative SE of %.3f, %.3f and %.3f on the natural-log scale "
+            "against the limit of %.1f" % (*past, *(rse[g] for g in past),
+                                           ident.LINEARISATION_LIMIT)) in text
+    s1 = computed["S1"]
+    s1_past = sum(computed["genes"][g]["structural"]["beyond_linear"] for g in s1["genes"])
+    assert ("as S1 graded its %d genes, %d of whose predictions are past the limit too"
+            % (s1["n"], s1_past)) in text
+    assert "TNFRSF1B's predicted SE, %.3f log2" % se("TNFRSF1B") in text
+
+    # the thresholds: of the primary set against S1's standard, and of the control
+    k = summarize.UNIFORM
+    assert s1["abs_bias_over_predicted_se"][k] == 0
+    assert ("every one of the 7 has a |bias| below its predicted SE, at least 6 of the 7 a "
+            "replicate SD below it") in text
+    assert ("where no |bias| reached the predicted SE and the SD stayed below it for %d"
+            % s1["realised_sd_under_predicted_se"][k]) in text
+    assert ("a |bias| below the predicted SE for at least 38, and an SD below it for at least "
+            "%d, the fewest any design of S1 gave with `NumReads`"
+            % min(s1["realised_sd_under_predicted_se"])) in text
+    met = (sum(abs(uniform[g]["bias"]) < se(g) for g in s1["genes"]),
+           sum(uniform[g]["realised_sd"] < se(g) for g in s1["genes"]))
+    assert ("Against the abundance predictions, `NumReads` at uniform coverage met them for "
+            "%d and %d" % met) in text
+    assert met[0] >= 38 and met[1] >= min(s1["realised_sd_under_predicted_se"])
+
 def test_the_survey_gives_the_median_coherence_of_the_classes_with_pairs(computed, analysed):
     """class_coherence's docstring quoted "the median class sat near 0.7", which no
     computation gave; the median min_jaccard of the primary-comparison classes with two or

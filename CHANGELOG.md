@@ -179,6 +179,23 @@ versioning.
   precision figures not yet checked against a quantifier's TPM; it had called the class total
   an abundance while the code tested the fragment count. `validation/summarize.py` computes
   where the two estimands part on the survey panel, and the README quotes it.
+- **What decides whether the abundance estimand becomes the default is fixed before any run
+  that could decide it.** `validation/README.md` sets the gate for 3.0 on 2026-10-23: the
+  simulation repeated and quantified as stored, with the class ratio of summed TPM, against
+  the ratio summed TPM would read had Salmon given every fragment to the transcript it was
+  drawn from (the fragments written, over Salmon's own effective lengths), so that only how
+  Salmon apportions the fragments is measured; predictions fixed in
+  `validation/gate_3_0_predictions.json`, which later code does not change, and said to be of
+  a nearby functional (window positions as lengths); first the 7 genes estimable as abundance
+  only, at uniform coverage, each with a |bias| below its predicted SE and 6 of the 7 a
+  replicate SD below it; a stop if SMN2 or VEGFA, whose `NumReads` error already exceeded the
+  abundance prediction, has a |bias| or an SD at or above its predicted SE; predictions past
+  the linearisation limit (SMN2, VEGFA, TNFRSF1B) graded by the same first-order SE, as S1
+  graded its own; then the 39 genes of S1 as a control, a |bias| below the predicted SE for
+  at least 38 and an SD below it for at least 31. One run; a second counts only to correct a
+  named kind of fault in the harness. It says what a pass can show at a flat truth: the
+  precision figures, not that estimability as abundance is what makes the 7 recoverable.
+  `--estimand fragment` stays in 3.0 whatever the outcome.
 - **The README's provenance note runs to 2.9.0, as the CHANGELOG's does**, and the code block
   of its offline section is no longer inside a quotation, which the documentation site
   rendered as inline code.

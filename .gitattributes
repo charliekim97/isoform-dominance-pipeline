@@ -3,5 +3,7 @@ tests/data/** -text
 # saved inputs and stored outputs compared byte for byte: never convert their line endings
 example/saved/** -text
 validation/data/** -text
+# the predictions the 3.0 gate grades against, held to the SHA-256 validation/README.md gives
+validation/gate_3_0_predictions.json -text
 # the self-test's saved inputs, compared byte for byte with example/saved
 src/isoform_dominance/data/** -text
