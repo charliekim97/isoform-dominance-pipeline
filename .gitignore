@@ -19,3 +19,5 @@ results/
 .claude/settings.local.json.bak-*
 # the extract-order fixture keeps its quant.sf files in a quant/ folder
 !tests/data/extract_order/quant/
+# the documentation site, built by mkdocs
+site/

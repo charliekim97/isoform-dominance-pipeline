@@ -1,6 +1,7 @@
 # isoform-dominance
 
 [![CI](https://github.com/charliekim97/isoform-dominance-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/charliekim97/isoform-dominance-pipeline/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/isoform-dominance)](https://pypi.org/project/isoform-dominance/)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20672051.svg)](https://doi.org/10.5281/zenodo.20672051)
@@ -8,29 +9,38 @@
 **Is this functional isoform-class comparison measurable by short reads? Group-level identifiability, quantification and testing from bulk RNA-seq**
 
 Most isoform analyses stumble on two things: deciding *which transcripts form a functional
-group*, and knowing whether short reads can even *tell the groups apart*. `isoform-dominance`
+class*, and knowing whether short reads can resolve the classes at all. `isoform-dominance`
 handles both, then quantifies and tests the comparison end-to-end:
 
 ```
 annotate  gene symbol      → proposed isoform groups        (Ensembl, by 3' terminal exon)
-identify  config           → are the groups distinguishable by short reads? (k-mer uniqueness)
+identify  config           → is the class contrast estimable, and how precisely?
 extract   Salmon quant.sf  → per-donor isoform-group TPM
-stats     per-donor TPM    → paired Wilcoxon, per cohort + combined, + figure
+stats     per-donor TPM    → paired Wilcoxon, per cohort + stratified combination, + figure
 qc        marker TPM       → contamination control (is the signal a cell-type artifact?)
 ```
 
-![example output](docs/example_output.png)
+![example output](example_output.png)
 
 *Bundled self-test: short LEPR isoform (LepRa) predominates over the long isoform (LepRb) in
-control human choroid plexus across two independent cohorts; combined n = 11, P = 1×10⁻³.*
+control human choroid plexus, in each of two independent cohorts (5/5 and 6/6 donors). The
+pooled figure (n = 11, P = 1×10⁻³) is reported alongside the stratified combinations — see
+[Statistical notes](#statistical-notes) for why the stratified ones are the numbers to quote.*
 
 ---
 
 ## Install
 
 ```bash
-pip install -e ".[dev]"        # from a clone
+pip install isoform-dominance          # released version
 isoform-dominance --version
+```
+
+From a clone, for development:
+
+```bash
+pip install -e ".[dev]"
+pytest -q
 ```
 
 ## Verify it works (no downloads, seconds)
@@ -39,7 +49,7 @@ isoform-dominance --version
 isoform-dominance selftest
 # or: pytest -q
 ```
-reproduces the reference LEPR result (5/5, 6/6, combined n=11 P=9.8e-4) on a clean machine.
+reproduces the LEPR reference result (5/5, 6/6, combined n=11 P=9.8e-4) on a clean machine.
 
 ## What makes it more than a quantifier
 
@@ -48,10 +58,49 @@ protein-coding transcripts from Ensembl, clusters them by their 3' terminal-exon
 acceptor (the alternative last exon that defines functional isoform classes), and proposes a
 comparison you review and rename.
 ```bash
-isoform-dominance annotate --gene LEPR --out config.json
-#   iso_896aa : 7 transcripts   (short / LepRa)
-#   iso_1165aa: 2 transcripts   (long / LepRb, canonical)
+isoform-dominance annotate --gene LEPR --gtf gencode.v50.annotation.gtf.gz \
+    --out LEPR.gencode50.config.json
+# Proposed groups for LEPR -> LEPR.gencode50.config.json
+#   iso_1165aa: 2 transcripts
+#   iso_896aa: 7 transcripts
+#   primary_comparison: ['iso_896aa', 'iso_1165aa']
+#   REVIEW _proposed/_clusters and rename groups before use.
+# exit status 0
 ```
+That is its standard output on GENCODE 50 (Ensembl 116), from the GTF; without `--gtf` it
+reads Ensembl's REST API. The config it wrote is `example/saved/LEPR.gencode50.config.json`.
+Review it: the proposal is a function of the annotation release too. The alternative class
+is the one with the most transcripts, and transcript counts are what a new release changes
+most. Across six Ensembl releases from 110 to 116, 30 of the 84 genes in a 109-gene survey
+that had two classes at every one were proposed a different pair at some release. LEPR up to
+release 115 was proposed the 1165 aa class against a 906 aa class of two transcripts,
+because the 896 aa class also had two and ties go to the longer protein; release 116 added
+five transcripts to the 896 aa class. When a proposal is decided by such a tie, `annotate`
+says so on stderr and lists the tied clusters in the config under `_proposal.tied_with`;
+at release 116, 39 of the survey's 100 proposals were ties.
+
+The rule, and what it leans on: the canonical class is the cluster that holds Ensembl's
+canonical transcript (failing one, the longest representative protein), and the alternative
+the non-canonical cluster with the most transcripts, a tie going to the longer
+representative protein and then to the lower acceptor coordinate (recorded in every config
+as `_proposal.alternative_rule`). A transcript count is a count of annotation, not of
+use. Since release 115 nearly every
+transcript GENCODE added to the survey's genes comes from TAGENE, its pipeline for
+long-read data — all 1,122 that release 115 added and 1,128 of the 1,211 that 116 added —
+so a cluster's count can grow with the long-read evidence for it, with no change in what the
+class is, and the proposed alternative moves with it. The rule is kept as it is, because
+changing it would change the survey's 30 of 84 above; take the proposal as a starting point
+and check that the alternative class is the one you mean to compare.
+
+Clusters are keyed on the exact acceptor coordinate, so a transcript whose annotated
+acceptor is a base off its class's is a cluster of its own. `--acceptor-tolerance N` makes
+one class of the acceptors within N bp of a cluster's first (lowest) one, with no chaining,
+and lists what it merged under `_clusters` (`merged_acceptors`, `acceptor_span`). The
+default is 0, the exact coordinate, so every config and figure quoted here is unchanged.
+Replayed on the release series' 654 proposals (109 genes at releases 110 and 112 to 116),
+N = 3 changes 24 of them in six genes, TSC1 among them, and N = 6, 10 and 20 change 46, 55
+and 77, so a tolerance stays something to ask for.
+
 A symbol can name more than one gene on the reference chromosomes, and Ensembl's
 `lookup/symbol` returns one of them without saying so: for pseudoautosomal genes such as
 CD99 and SHOX the chrY copy, for HERC3 the newer of two genes of that name. `annotate` looks
@@ -60,28 +109,286 @@ identical sequences, and a GENCODE FASTA lists chrX first — and says so; on an
 stops and lists them, and `--gene-id` picks one. The config records `gene_id`, and
 `identifiability` fetches the gene background by it.
 
-**2. Identifiability guardrail (`identify`).** Short reads can only quantify an isoform group
-that has *unique* sequence. This checks per-group unique k-mers and **refuses to pretend** a
-group is measurable when it isn't.
+**2. Identifiability guardrail (`identify`).** A short-read quantifier apportions fragments
+by solving a linear inverse problem; a class total is recoverable only when it is an
+*estimable* function of that system. This checks the condition directly, on the class-collapsed
+system, and reports the smallest fold change the stated design can resolve for each class total
+and for the contrast between them. Ask it for the effect size you need:
+
 ```bash
-isoform-dominance identifiability --config config.json
-#   [OK] iso_896aa : 3399 unique k-mers
-#   [OK] iso_1165aa: 5369 unique k-mers
-#   primary_comparison distinguishable by short reads: True
+isoform-dominance identifiability --config example/saved/LEPR.gencode50.config.json \
+    --inputs example/saved/LEPR.gencode50.inputs.json --min-log2fc 0.5
+# Identifiability (window=31, canonical k-mers)
+#   annotation: Ensembl release 116; sequence from saved inputs (release 116, example/saved/LEPR.gencode50.inputs.json)
+#   background: 9 same-gene transcript(s)
+#   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
+#   [identifiable] iso_1165aa: min |log2FC| 0.064; class 5369 unique k-mers; best transcript 5399 bp in 1 block(s), ~1072 informative reads; conditioning 3.62
+#   [identifiable] iso_896aa: min |log2FC| 0.216; class 356 unique k-mers; best transcript 208 bp in 2 block(s), ~63 informative reads; conditioning 115.05
+#   contrast iso_896aa vs iso_1165aa: min |log2FC| 0.234; identifiable, conditioning 117.68
+#   effective length: iso_896aa 5103 bp vs iso_1165aa 8072 bp (mean per transcript), log2 ratio -0.66
+#   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_896aa median 0.07 [0.05-0.12], 372 positions over 7 transcript(s); iso_1165aa median 0.67 [0.51-0.84], 10738 positions over 2 transcript(s)
+#   unique-read counting SE (best transcript per class) on log2 ratio: 0.187 per donor, min resolvable |log2FC| 0.366 at n=1
+#   EFFECT SIZE: |log2FC| 0.500 resolved by both class totals and the contrast at this design
+#   VERDICT: identifiable
+# exit status 0; with --min-log2fc 0.1 the same run reports NOT resolved and exits 3
 ```
+
+This example is a counterexample to the skew direction the command states (see below):
+iso_896aa is the shorter class but is distinguished at its 5' end (median 0.07), and in the
+simulation its bias ran against that direction under 5 of the 6 skews.
+
+The block is that command's standard output (its NOTEs go to stderr), run in a clone of this
+repository with no network: `example/saved/` holds the LEPR config `annotate --gtf` proposes
+from GENCODE 50 (Ensembl 116) and the sequence `--save-inputs` saved from the same files, the
+nine configured transcripts and the nine other transcripts of the gene, and its README says
+how they were made. `tests/test_readme_example.py` runs the command with every socket refused
+and compares each line; a live run against another release gives other transcript and k-mer
+counts, as the annotation moves. Read the `min |log2FC|` figures first:
+they are what the verdict and the exit status are built on. `conditioning` is a diagnostic.
+Without `--min-log2fc` the verdict falls back to `--tau` on the conditioning factor, which has
+no calibrated value — the same run then reads `weakly_identifiable` — and the command says on
+stderr that the verdict is a screening flag, not the exit status.
+
+`effective length` and `distinguishing windows` say how exposed the comparison is to
+positional coverage skew, which none of the figures above models (see *It bounds spread, not
+accuracy* below). In simulation, Salmon split ambiguous fragments between the classes by
+effective length under skew, so the class effective-length ratio tracked the size of the error
+and, with the direction of the skew, its sign. Positions are fractions of each transcript's own length, 0 at
+the 5' end, because skew acts on each molecule in its own coordinates. When the classes differ
+at least 1.23-fold (|log2 ratio| >= 0.3) the command says on stderr which class each direction
+of skew tends to inflate, with the evidence: in a 49-gene simulation (monotone positional skew)
+Salmon's error took the 5' direction for 35–36 of the 39 genes above that ratio and the 3'
+direction for 30–32, where at uniform coverage the 5' direction held for 19 of 39 and the 3' for
+20. kallisto, on the same reads, took the 5' direction for 34–36 and the 3' for 29–33, but it has
+no bias model and leaned to the longer class at uniform coverage too, 32 of 39 (the 5' direction
+7): its 3' figures are no evidence of the skew, and only the 5' ones turn toward it. No other
+quantifier, gene panel or form of skew was tested, and below that ratio nothing was measured, so
+nothing is said.
+
+Exit codes: **0** no `--min-log2fc` given, or it is resolved · **3** `--min-log2fc` given and
+not resolved at the stated design · **2** precondition failure: a transcript shorter than
+`--window` has no windows, so the gene total itself is not estimable · **1** config or
+network error. The structural verdict is never the exit status: it changes with the
+annotation release the transcripts came from, so it is reported in the output and in the
+`--json` report (`verdict`, with `gene_total` and `effect_resolvable` beside it). Every
+`--json` is standard JSON: a figure that is not finite is `null`, never `NaN` or `Infinity`,
+and `estimable` or `finite_se` beside it says why.
+
+> **Why not just count unique k-mers?** Because that proxy — used by this package up to
+> v2.1.1 — is wrong in both directions. A class whose only unique sequence is the ~30 k-mers
+> spanning one splice junction *passes* while yielding a handful of usable fragments. A class nested inside another owns no unique k-mer at all and *fails*, yet its
+> total is still an estimable function of the system: the containing class is pinned by its own
+> unique sequence, so the nested class's indicator lies in the row space. That is an algebraic
+> fact about the design matrix — **not** a claim that "the EM will work it out", since an EM
+> returns numbers for a non-identifiable model just as readily. Both cases are regression-tested
+> in `tests/test_identifiability_model.py`.
+
+**What it checks, in three layers** — all from sequence and the stated design, before any read is
+quantified (the read model depends on the read length, paired or single ends and the
+fragment-length distribution, the `min |log2FC|` figures on the mean fragment length, and all of
+them on depth and TPM, the `min |log2FC|` figures also on the number of donors, so `--depth` or
+`--tpm` can change the verdict):
+
+> **Pass `--background-fasta`.** The default background is the gene's own remaining
+> transcripts, which is better than comparing the configured classes alone but still
+> blind to pseudogenes, paralogues and homologous loci elsewhere in the index. A
+> quantifier resolves fragments against the *whole* index, so any claim about what it
+> can separate should be judged against the transcript FASTA the index was built from
+> (without the genome decoys). Whether the default should require it was settled by a rule
+> posted before the code ([#3](https://github.com/charliekim97/isoform-dominance-pipeline/issues/3)):
+> on the 100 two-class configs `annotate` proposes at Ensembl 116 for a 109-gene panel, the
+> whole-index background, GENCODE 50's 644,292 reference-chromosome transcripts, changed the
+> exit status at `--min-log2fc 0.5` of none (10 would have made the flag required), the
+> verdict of one (SDHA, to `not_identifiable`), and the contrast's min |log2FC| by a median
+> 0.003 (ACO2 the most, 3.8 to 8.6). A close paralogue can still decide the answer: SMN1's
+> classes are `weakly_identifiable` against the gene's own transcripts and
+> `not_identifiable` once SMN2's are columns. A record that holds a configured transcript's window found
+> in at most M records of the FASTA (`--max-window-records M`, default 20) becomes a column
+> of the compatibility system, as a transcript of the gene background is, so a competitor
+> found once gives one answer whether it comes from the FASTA or from
+> `--background-sequences`; a record longer than 1 Mb never does. Every window of the
+> system that a record left out holds — a repeat's, a low-complexity stretch's, a genome
+> record's — is dropped from every layer, so the system is the one with every record a
+> column less the rows that touch a left-out record, and its answer is never more
+> optimistic than that one's. The scan is streamed one record at a time, so its memory is set
+> by the longest record, not by the file: one 20 Mb record took about 125 MB resident,
+> 10,000 records of 2 kb about 47 MB (the whole process, Python and numpy included). It
+> reads a window only where a 16-nt seed of it matches the configured transcripts, which
+> gives the answer reading every window gives: a synthetic 210 Mb FASTA took 3.0 s plain
+> and 4.7 s gzipped, against 132 s for the 2.4.1 scan (measured 2026-10-02); the FASTA is
+> read twice, once for the columns' windows and once for the windows of the records added.
+> M bounds the system: on synthetic FASTAs in which 1,000 and 3,000 records carried a
+> diverged copy of a repeat in the configured transcripts, 35 and 25 records joined, 840
+> and 2,501 were left out, 270 and 272 of 7,262 configured windows were dropped, and each
+> run took under 2 s and 90 MB, where one column per record that shares a window had taken
+> 6.7 s and 0.5 GB, and 56 s and 2.7 GB. On the panel above a run added a median 56.5 records
+> (at most 928), dropped a median 0.4% of the configured transcripts' windows (at most 21%,
+> SDHA), and took a median 46 s and at most 1.3 GB, four runs at once on four cores. A NOTE
+> says how many configured windows were dropped. Salmon's default index keeps one of identical sequences, so a background
+> sequence — the gene's, `--background-sequences` or a FASTA record — with a configured
+> transcript's sequence is not counted, and one with the
+> sequence of another background sequence is counted once: in GENCODE v50's
+> reference-chromosome FASTA, all 382 chrY transcripts of the 18 protein-coding genes on
+> both chrX and chrY are such records. Where the index keeps the copy's name rather than the
+> configured transcript's, `extract` cannot count those reads, and the command says how to
+> avoid that. For an index built with Salmon's `--keepDuplicates`, pass
+> `--keep-duplicates`. For a decoy-aware index, pass its transcript FASTA, or its gentrome
+> with `--decoys decoys.txt`: Salmon sets aside only the reads that map better to a decoy
+> than to any transcript, so a decoy competes for no read the transcripts explain as well,
+> while judged against the genome every window inside an exon would lose its uniqueness. A
+> record longer than 1 Mb read without `--decoys` is named in a NOTE and left out, so every
+> exon window it holds is dropped: a gentrome without `--decoys` gives the most
+> conservative answer, not a wrong one.
+
+> **Pin the release.** The verdict is a function of the annotation release. Rebuilt with
+> `--ensembl-release` against six Ensembl releases from 110 (GENCODE 44, July 2023) to 116,
+> a 109-gene survey went from 2,005 transcripts to 4,396, nearly all of it in the last two
+> releases, where GENCODE added transcripts from long-read data through its TAGENE
+> pipeline: protein-coding ones at 115, protein-coding and nonsense-mediated-decay ones at
+> 116. Of the 100 comparisons `annotate` proposes at release 116, 38 could not be posed
+> at 110 at all, because one of the two classes had no protein-coding transcript there; of the
+> 62 that could, 11 change verdict between the two. NTRK3's is `identifiable` at every one of
+> those releases before 116 and `not_identifiable` at 116. The exit status moves too: at
+> `--min-log2fc 1.0` it changes across the six for 13 of the 62. `annotate` records
+> the release it fetched from as `ensembl_release`, and `identifiability` prints it in its
+> header and carries it in the `--json` report, beside `fetched_release`, the release any
+> sequence was fetched from in that run. Both commands take `--ensembl-release N`: without
+> it they read the release `rest.ensembl.org` serves — 116, the last one Ensembl publishes
+> on its REST API; later releases are on the new Ensembl platform only, which has none —
+> and with it they read release N from Ensembl's REST archive, after checking that the
+> server reports N. A config annotated against release 110 is re-run against 110 with
+> `identifiability --config config.json --ensembl-release 110`, and the command names that
+> flag when the two differ. Archives do not last: none from release 104 or earlier
+> answered on 2026-09-24, and 111's timed out for most of that day. For a verdict that has
+> to outlive them, add `--save-inputs run.json`, which writes the sequence the run used,
+> the release it came from and the k, window and k-mer convention it was built at;
+> `identifiability --config config.json --inputs run.json` then repeats the run with no
+> request at all. The file holds the gene, not one grouping of it: a rerun pools its
+> class and background sequence and splits it again by the config in hand, so a class the
+> config has narrowed still has the transcripts it dropped in the background, where a
+> live run puts them, and a transcript moved the other way is used rather than refused.
+> `--background-fasta` and `--decoys` are not copied into that file, but their SHA-256 is,
+> and a rerun given neither or another file says so, as does one at another k or window.
+> The `--json` report names both files by SHA-256 too. A verdict quoted
+> without a release is not a reproducible claim.
+
+> **Offline, from GENCODE files.** REST serves release 116 and nothing later, so an index
+> built from GENCODE 51 or a later release can be matched only by that release's own files;
+> the same files serve any release offline. Take the comprehensive
+> `gencode.vN.annotation.gtf.gz` and the `gencode.vN.transcripts.fa.gz` of the same N -- not
+> the `basic` GTF, and not `pc_transcripts` -- of the release the index was built from (the
+> GENCODE-to-Ensembl table is at https://www.gencodegenes.org/human/releases.html: 44 is
+> Ensembl 110, 48 is 114, 50 is 116):
+>
+> ```bash
+> isoform-dominance annotate --gene LEPR --gtf gencode.v50.annotation.gtf.gz --out lepr.json
+> isoform-dominance identifiability --config lepr.json --gtf gencode.v50.annotation.gtf.gz \
+>     --transcripts-fasta gencode.v50.transcripts.fa.gz --min-log2fc 0.5
+> ```
+>
+> Neither makes a request. `annotate --gtf` writes the config REST gives at that release,
+> with the release the GTF's header names and an `annotation_source` block naming the file by
+> SHA-256. On the 109-gene survey panel the configs this reads from GENCODE 44, 48 and 50
+> equal the ones it writes from REST at releases 110, 114 and 116 for every gene, and the
+> sequence it reads from the transcript FASTA is REST's cDNA byte for byte (2,005, 2,066 and
+> 4,396 transcripts); for LEPR, CD99, NTRK2, NTRK3, FLT1, SMN1 and HLA-A the
+> `identifiability` reports from the files and from REST's sequence (release 116) are the
+> same but for where the sequence came from. `scripts/parity/` repeats the comparison, the
+> tests hold it on a seven-gene extract, and a weekly job holds the extract to live REST 116. `identifiability --gtf --transcripts-fasta` takes the gene's
+> transcripts from the GTF and their sequence from the FASTA, and the gene background goes
+> the way a fetched one does, so a background the two give alike gives one report. A
+> basic GTF is refused, as is a FASTA that lacks a transcript of the gene or holds one at
+> another version: each leaves out or changes what the index holds. Where it differs from
+> REST: a symbol is matched exactly first, and only then ignoring case, with a NOTE (REST
+> always ignores case); a symbol whose every gene lies off the reference chromosomes is not
+> in the comprehensive GTF, which holds those chromosomes only, and is refused (REST finds it
+> and refuses it too, naming where it lies); a GTF that tags none of the gene's transcripts
+> `Ensembl_canonical` is said in a NOTE, as the canonical class then falls back to the
+> longest protein. For a config with no `gene_id`, `identifiability` takes the one GTF gene
+> that holds every configured transcript, where REST takes the symbol's gene; every
+> configured transcript must be in the gene, where REST needs one; and a transcript of the
+> gene the FASTA lacks stops the run, where REST would leave a transcript with no cDNA out. With `--background-fasta`, `--gtf` also says
+> what a gene of the same name in the index is -- a reference-chromosome gene such as the
+> chrY copy of CD99, which is no index-scope problem, or one the GTF does not hold, a copy
+> off the reference chromosomes or of another release -- where a GENCODE header alone
+> cannot. Since 2.6.0 a config lists its clusters by content in both modes, so `_clusters`
+> in a config `annotate` wrote from REST before 2.6.0 can be in another order; its groups and
+> pair are the same.
+>
+> One thing only the GTF can say is whether a model's 3' end was found. GENCODE tags a
+> transcript whose mRNA end was not found `mRNA_end_NF`: its last annotated exon is then not
+> known to be its 3' terminal exon, and is often an internal exon of a complete transcript.
+> `annotate` groups by that exon's acceptor, so a class made only of such models can be a
+> fragment set against a complete class. `annotate --gtf` says so in a NOTE on stderr, naming
+> the class and its transcripts, and writes the config it wrote before (at GENCODE 50, GSK3B's
+> proposed `iso_69aa` is three such models); `identifiability --gtf` gives every class
+> `incomplete_3prime_only`, true or false, gives a similar NOTE for a compared class, and
+> moves no verdict or figure. REST's lookup has no tags, so a run from REST, `--sequences`,
+> `--inputs` or `--transcripts-fasta` alone reports null, and the weekly comparison of REST
+> with the files leaves the key out.
+
+| Layer | Reports | Why it is not the layer above |
+|---|---|---|
+| Sequence uniqueness | unique k-mers, bases covered, block structure | judged against a background — the gene's other transcripts by default, the whole index with `--background-fasta` — not just the configured classes |
+| Read model | `informative_fraction`, `expected_informative_reads`, unique-read counting SE (best transcript per class) of the log2 ratio | informativeness is scored on the **sequenced ends**, not the fragment: a unique region between the two sequenced ends is never observed |
+| Estimability | row-space residual, rank, and `min_resolvable_log2fc` from the Poisson-weighted GLS covariance, for each class total **and** their contrast; the structural conditioning factor as a diagnostic | a full-rank system with a near-degenerate contrast passes a rank test and still yields nothing |
+
+The headline figure is `min_resolvable_log2fc`: 1.96 standard errors of the log2 class ratio
+at the stated design, under Poisson counting error only — the |log2 fold change| whose
+estimate has a 95% interval that just excludes zero. A true effect of that size is detected
+about half the time, about 50% power; for 80% power it has to be about 2.8 standard errors,
+1.43 times the figure.
+
+**It bounds spread, not accuracy.** The figure is built from the delta-method standard error
+of the log class ratio, so it describes replicate scatter under uniform coverage and a
+correctly specified compatibility model. It says nothing about bias when coverage is not
+uniform. In simulation (Salmon, 49 genes, 30 replicates each; 39 genes estimable with a
+finite predicted SE in all seven coverage models, each a monotone positional skew), no
+gene's |bias| reaches its own predicted SE at uniform coverage: 0 of 39. At a 2.3× ratio
+between first- and last-decile gene-body coverage, a routine mildly degraded sample, 20–24
+of 39 exceed it, depending on the direction of the skew. The replicate SD meanwhile stays
+below the predicted SE in 34–37 of 39, as it did in 35 of 39 at uniform coverage, so the
+scatter gives no sign of the bias. NTRK3 holds a replicate SD of 0.016–0.025 while its bias
+runs from 0.002 to 2.82 log2. **Replicate agreement does not detect this failure.**
+Measure your own libraries' gene-body coverage (RSeQC `geneBody_coverage.py`) before reading
+the figure as an error bar. Set against the unique-k-mer gate of v2.1.1, on the 47 genes with
+a row in every design, the conditioning factor did not sort genes by error: the 31 genes the
+gate passes with conditioning above 10 had a median RMSE at uniform coverage of 0.190 against
+0.173 for the 6 at or below it, and a smaller worst bias under skew, 2.01 against 2.70 log2.
+The gate failed two genes the structure calls estimable (CD44, ESR1) and passed all 8 it calls
+not estimable, whose uniform RMSE (median 0.163) was no worse than the estimable genes'; as a
+group they are deeper by construction, their median gene 3.9 times the estimable genes' in
+fragments (`validation/README.md` has the table and that confound). Every
+simulation figure this README quotes is recomputed from the stored outputs in `validation/` by
+`validation/summarize.py`, and a test fails when one no longer agrees.
+
+The conditioning factor is kept as a **diagnostic**, not a headline — a **geometry proxy, not a standard
+error** — it assumes `Var(y) = sigma^2 I`, which a quantifier does not satisfy, and it moves by
+up to two orders of magnitude with the annotation release. Its thresholds are provisional. The three
+layers answer different questions and can disagree. Structural estimability is
+not precision, and neither is a promise that a quantifier's optimiser will land on the
+right answer — an EM returns numbers for a non-identifiable model too. What the
+estimability layer asserts is narrower and checkable: whether the class contrast is a
+linear functional of the observable fragment-class expectations.
 
 ## Full workflow (real data)
 
 ```bash
-# 0) build a decoy-aware index once (Salmon + GENCODE) — see scripts/01_salmon_quant.sbatch
+# 0) build a Salmon index once -- the commands are under "Index scope" below:
 #    - from the GENCODE release that matches `annotate --ensembl-release`
 #      (https://www.gencodegenes.org/human/releases.html), and
-#    - from reference-chromosome transcripts only: see "Index scope" below
-# 1) quantify on an HPC cluster:
-sbatch scripts/01_salmon_quant.sbatch                    # -> quant/<donor>/quant.sf
+#    - from reference-chromosome transcripts only
+# 1) quantify on an HPC cluster, one output directory per cohort (both example sample maps
+#    name their donors ctrl1-ctrl5, and the script skips a donor whose quant.sf exists):
+sbatch --export=ALL,SAMPLE_MAP=example/sample_map_GSE228458.csv,OUTDIR=quant/GSE228458 \
+    scripts/01_salmon_quant.sbatch                       # -> quant/GSE228458/<donor>/quant.sf
+sbatch --export=ALL,SAMPLE_MAP=example/sample_map_GSE137619.csv,OUTDIR=quant/GSE137619 \
+    scripts/01_salmon_quant.sbatch
 # 2) extract per cohort:
-isoform-dominance extract --config config.json --quantdir quant \
+isoform-dominance extract --config config.json --quantdir quant/GSE228458 \
     --samplemap example/sample_map_GSE228458.csv --cohort GSE228458 --out perdonor_GSE228458.csv
+isoform-dominance extract --config config.json --quantdir quant/GSE137619 \
+    --samplemap example/sample_map_GSE137619.csv --cohort GSE137619 --out perdonor_GSE137619.csv
 # 3) stats + figure:
 isoform-dominance stats --config config.json --condition control \
     --perdonor GSE228458=perdonor_GSE228458.csv --perdonor GSE137619=perdonor_GSE137619.csv \
@@ -124,6 +431,17 @@ gzip -dc Homo_sapiens.GRCh38.cdna.all.fa.gz \
   > Homo_sapiens.GRCh38.cdna.primary.fa
 ```
 
+Then build the index from the filtered FASTA, once, and quantify every donor of a cohort
+against it (the sbatch script's `INDEX`):
+
+```bash
+salmon index -t gencode.v50.transcripts.chr.fa -i salmon_index_v50chr -k 31 -p 12
+```
+
+Without `--gencode`, `quant.sf` names keep the whole GENCODE header, which is what lets
+`extract` check them for same-name copies; with it, names are cut to the transcript id and
+`extract` reads them just the same.
+
 The package checks for such an index where it can. `identifiability
 --background-fasta` warns when the FASTA holds a transcript with the configured gene's
 name under another gene id, unless its sequence is a configured or a background
@@ -140,16 +458,107 @@ Salmon's `aux_info/meta_info.json`), and it stops when one cohort mixes indexes,
 drops all but the first of identical sequences when it builds an index (the index's
 `duplicate_clusters.tsv` lists them), so a config that names a dropped copy finds nothing.
 
+## How this relates to existing tools
+
+Differential transcript usage (DTU) is a mature area, and for genome-wide
+discovery you should use the established tools — this one does **not** replace them:
+
+- **DEXSeq** — differential *exon* usage, from exon-bin counts, with its own counting
+  scripts.
+- **DRIMSeq, satuRn** — genome-wide transcript-level DTU testing. They assume you already
+  have a transcript-by-sample count matrix and defined transcript groups.
+- **IsoformSwitchAnalyzeR** — genome-wide isoform-switch testing with rich functional
+  annotation of the switches (domains, NMD, coding potential) in R/Bioconductor; grouping
+  and import are configured by the analyst.
+- **Kmerator** ([doi:10.1093/nargab/lqab058](https://doi.org/10.1093/nargab/lqab058)) —
+  builds gene- and transcript-specific k-mer signatures against a reference, the
+  uniqueness question this package's first layer asks, without a verdict on a contrast.
+- **fishpond / swish** — rigorously propagates quantification uncertainty using
+  Salmon inferential replicates.
+
+**On identifiability specifically**, this package builds on existing work rather than
+claiming the idea:
+
+- **Hiller et al. 2009** ([doi:10.1093/bioinformatics/btp544](https://doi.org/10.1093/bioinformatics/btp544))
+  — criteria under which isoform abundances are uniquely determined by RNA-seq observations.
+- **Ferrer-Bonsoms et al. 2022** ([doi:10.1093/bioinformatics/btab873](https://doi.org/10.1093/bioinformatics/btab873))
+  — a read- and fragment-length-aware identifiability criterion, applied genome wide.
+- **terminus** ([doi:10.1093/bioinformatics/btaa448](https://doi.org/10.1093/bioinformatics/btaa448))
+  — groups transcripts *post hoc, from the data*, by inferential uncertainty.
+
+The first two address **transcript-level** identifiability of the full deconvolution;
+`terminus` chooses its groups after seeing the data. Neither answers the question a biologist
+arrives with: *is the contrast between two classes I defined on biological grounds estimable?*
+
+Two different questions hide under the same word, and keeping them apart is the whole reason
+this package exists. A contrast is **estimable** when it lies in the row space of the
+compatibility system — a yes/no in exact arithmetic. It is **measurable** when it can actually
+be recovered at a finite sequencing depth. Transcript-level identifiability settles the first
+in one direction only, and is silent on the second.
+
+- **It is not necessary for estimability.** Two transcripts with identical sequence make each
+  abundance unidentifiable while their **sum** is perfectly estimable. A transcript-level
+  verdict can reject a comparison that is in fact sound.
+- **It is sufficient for estimability — and that is the problem.** If every transcript is
+  identifiable the design matrix has full column rank, so *every* contrast is estimable. The
+  row-space condition is then satisfied trivially and stops discriminating exactly where you
+  need it to.
+- **It is not sufficient for measurability.** Full rank says nothing about finite depth: the
+  class direction can be so weakly observed that a formally estimable contrast is
+  unrecoverable. `identifiability` therefore reports the **smallest resolvable effect size
+  beside the row-space verdict**, and neither on its own.
+
+`isoform-dominance` targets that question: *for one gene, which functional isoform class
+predominates?* The contribution is evaluating the **estimability of the user's own class
+contrast, before quantification** — a check none of the tools above performs. Taking a gene
+name as input is not new (Kmerator does), and is not the claim. Around that sit two conveniences rather than claims: `annotate` goes
+from a gene symbol to a reviewed isoform-group proposal (presented for review, not treated as
+final), and the whole thing is a scriptable Python CLI with a download-free self-test, meant to
+ship alongside a manuscript.
+
+More documentation: a step-by-step
+[NTRK2 walkthrough](tutorial_NTRK2.md), a
+[gallery of further example genes](example_genes.md)
+(LEPR, NTRK2, NTRK3 and FLT1 at GENCODE 44 and 50, from inputs saved in the repository),
+and an
+[API reference](api.md).
+
 ## Statistical notes
 
 - Donor-level two-sided **Wilcoxon signed-rank** (`scipy.stats.wilcoxon`, `method="auto"`), per
-  cohort + combined. It is exact only with neither a zero difference nor a tie among the absolute
+  cohort. It is exact only with neither a zero difference nor a tie among the absolute
   differences (and n ≤ 50); otherwise SciPy runs an exhaustive permutation test at n ≤ 13 and
   the normal approximation above that. Which one produced each p-value is reported
-  (`wilcoxon_method`).
-- **Small-n floor:** n = 5 cannot reach P < 0.05 in the exact two-sided test (floor 0.0625);
-  report exact P + direction (e.g. 5/5) and combine concordant cohorts for the summary statistic.
-- Effect size = median fold-change, reported alongside significance.
+  (`wilcoxon_method`) — at n = 14 with one tie the approximation can sit well above the
+  exact figure.
+- **Small-n floor is computed, not just documented.** `signed_rank_resolution_floor(n)`
+  returns `2^(1-n)` for n pairs with a non-zero difference — under the sign-permutation null
+  exactly one assignment puts every difference on the same side, and a zero difference has no
+  sign to flip under any zero method. At n = 5 that is 0.0625, so no arrangement of five
+  donors reaches 0.05. Ties among the absolute differences do **not** raise it. Every test is
+  reported with its floor and flagged when the floor exceeds 0.05: each cohort's, the
+  donor-pooled one, Stouffer's (every cohort at its floor in one direction) and the
+  stratified one (`2^(1-N)` over the pairs of all strata). A P from a normal approximation
+  that lies below its floor is marked `approximation below the attainable exact minimum`. In
+  the self-test both cohorts sit at their floors, so the Stouffer P of 0.0044 is its floor.
+- **Cohorts are combined three ways**, all reported: donor-**pooled** (what v2.1 reported alone),
+  a weighted **Stouffer** combination of the per-cohort *exact* tests, and a weighted
+  **stratified signed-rank** combination. The latter borrows van Elteren's design-free
+  `1/(n+1)` stratum weights but is *not* van Elteren's test, which is a stratified
+  **two-sample** rank-sum procedure; these data are paired within donor. Stouffer is the
+  default, because at these sample sizes each stratum's exact p-value is trustworthy and the
+  normal approximation behind a combined rank statistic is not. Pooling donors from independent studies ranks one cohort's differences
+  against another's and lets depth or tissue handling drive the result — quote the stratified
+  figures when the cohorts are genuinely independent. A cohort enters Stouffer signed by the
+  direction of the signed-rank statistic that produced its p (`W+ − W−`), not by its count
+  of positive pairs, and weighted by the square root of the pairs that test ranked, so a
+  pair with no difference adds no weight; the stratified statistic uses the tie-corrected
+  null variance.
+- Effect size = median fold-change **with a donor-bootstrap 95% interval** (seeded, so it
+  reproduces). From five donors or fewer that interval is the donors' range — the bootstrap
+  median then equals the lowest ratio, and the highest, more than 2.5% of the time — so it is
+  computed and labelled as the range (`fold_CI_method`): GSE228458's (4.93, 32.76) is the
+  lowest and highest of its five donors' ratios.
 
 ## Layout
 
@@ -162,6 +571,19 @@ example/                 config + sample maps
 ```
 
 ## Citation
+
+**Version provenance.** Version **2.1.1** was used for the LEPR isoform quantification and
+aggregation in a leptin-receptor/LRP1 choroid-plexus manuscript (under revision), and is
+archived at [10.5281/zenodo.20738150](https://doi.org/10.5281/zenodo.20738150). Releasing a new
+version does **not** alter that record: Zenodo mints a separate version DOI and leaves the old
+one in place, and the `v2.1.1` tag and release are left untouched by policy — not because they
+are technically immutable, but because the manuscript under revision cites them. The `extract`
+aggregation behaviour those results rest on — transcript-to-group mapping and per-donor TPM
+summation — is unchanged through 2.5.0, and the bundled self-test still reproduces the same
+reference numbers. 2.4.0 adds two refusals to `extract` where 2.3.0 wrote a table: a cohort
+quantified against more than one Salmon index, and a config none of whose transcripts is in
+any donor's `quant.sf`. 2.4.1 counts an index with Salmon's decoys and one without as two,
+and writes the rows in 2.1.1's order again (2.4.0 sorted them by donor name).
 
 Cite this repository (see `CITATION.cff`, DOI 10.5281/zenodo.20672051) and Salmon:
 Patro, R. et al. *Nat. Methods* **14**, 417–419 (2017). https://doi.org/10.1038/nmeth.4197

@@ -32,6 +32,8 @@ import os
 import sys
 import zlib
 
+import numpy as np
+
 from . import (__version__, annotate, contamination, ensembl, extract, identifiability,
                index_scope, io, stats)
 
@@ -157,7 +159,7 @@ def cmd_annotate(a):
         return EXIT_OK
     print("Proposed groups for %s -> %s" % (a.gene, a.out))
     for g, ids in cfg["groups"].items():
-        print("  %s: %d transcripts" % (g, len(ids)))
+        print("  %s: %d transcript%s" % (g, len(ids), "" if len(ids) == 1 else "s"))
     print("  primary_comparison:", cfg["primary_comparison"])
     print("  REVIEW _proposed/_clusters and rename groups before use.")
     return EXIT_OK
@@ -371,6 +373,8 @@ def cmd_identifiability(a):
     try:
         if a.inputs:
             inputs = _load_saved_inputs(a, cfg)
+    except io.InputError:
+        raise                               # a file that cannot be used: main's `error:`
     except ValueError as e:
         print("config error: %s" % e, file=sys.stderr)
         return 1
@@ -389,6 +393,15 @@ def cmd_identifiability(a):
         return _bad_url(e)
     except ensembl.TRANSIENT as e:
         return _net_fail(e)
+    except np.linalg.LinAlgError:
+        # a ValueError since numpy 1.25, and no config error: a numerical fault in the
+        # analysis is one in the code, and keeps its traceback (as in the self-test)
+        raise
+    except io.InputError:
+        # a ValueError too: a file named on the command line that cannot be used (a FASTA
+        # without a record the GTF gives, say) is no config error, and main says it in its
+        # one `error:` line, as for every other command
+        raise
     except ValueError as e:
         print("config error: %s" % e, file=sys.stderr)
         return 1
@@ -652,12 +665,19 @@ def _report(a, res):
     print("  design: %s %dbp reads, fragments %.0f+-%.0f, depth %.0fM, TPM %.3g, n=%d"
           % ("paired" if d["paired"] else "single", d["read_length"],
              d["frag_mean"], d["frag_sd"], d["depth"] / 1e6, d["tpm"], d["n_donors"]))
+    def _finite(r):
+        v = r.get("min_resolvable_log2fc")
+        return v is not None and math.isfinite(v)
+
+    def _starred(r):
+        """A figure past the linearisation limit; one that does not exist is not past it."""
+        return _finite(r) and bool(r.get("beyond_linear"))
+
     def _fc(r):
         """min resolvable |log2FC|, or why there is no usable figure."""
-        v = r.get("min_resolvable_log2fc")
-        if v is None or not math.isfinite(v):
+        if not _finite(r):
             return "min |log2FC| n/a"
-        return "min |log2FC| %.3f%s" % (v, "*" if r.get("beyond_linear") else "")
+        return "min |log2FC| %.3f%s" % (r["min_resolvable_log2fc"], "*" if _starred(r) else "")
 
     incoherent = []
     for g, r in res["groups"].items():
@@ -710,7 +730,7 @@ def _report(a, res):
                   "position above -- the direction can reverse; the interaction was not "
                   "measured." % (2 ** abs(ratio), shorter, longer),
                   file=sys.stderr)
-    if any(r.get("beyond_linear") for r in list(res["groups"].values()) + [c]):
+    if any(_starred(r) for r in list(res["groups"].values()) + [c]):
         print("  * first-order figure past the linearisation limit: read it as "
               "'not resolvable at this design', not as a value.", file=sys.stderr)
     for g, j in incoherent:
@@ -740,15 +760,27 @@ def _report(a, res):
                  "it has" if len(gt["transcripts_without_windows"]) == 1 else "they have"),
               file=sys.stderr)
     if d["min_log2fc"] is not None:
-        past = [g for g in res["primary_comparison"][:2] if res["groups"][g]["beyond_linear"]]
-        past += ["the contrast"] if c["beyond_linear"] else []
+        # why each estimand is not resolved, when that is not its figure: through 2.8.0 every
+        # one flagged beyond_linear was said to be past the limit, those with no figure too
+        why = {"not estimable": [], "estimable, but with no finite figure": [],
+               "beyond the linearisation limit, relative SE > %.1f"
+               % identifiability.LINEARISATION_LIMIT: []}
+        named = [(g, res["groups"][g]) for g in res["primary_comparison"][:2]]
+        for name, r in named + [("the contrast", c)]:
+            if not r.get("estimable"):
+                why["not estimable"].append(name)
+            elif not _finite(r):
+                why["estimable, but with no finite figure"].append(name)
+            elif r.get("beyond_linear"):
+                why["beyond the linearisation limit, relative SE > %.1f"
+                    % identifiability.LINEARISATION_LIMIT].append(name)
+        said = "; ".join("%s %s" % (", ".join(names), reason)
+                         for reason, names in why.items() if names)
         print("  EFFECT SIZE: |log2FC| %.3f %s at this design%s"
               % (d["min_log2fc"],
                  "resolved by both class totals and the contrast"
                  if res["effect_resolvable"] else "NOT resolved",
-                 "" if res["effect_resolvable"] or not past else
-                 " (%s beyond the linearisation limit, relative SE > %.1f)"
-                 % (", ".join(past), identifiability.LINEARISATION_LIMIT)))
+                 "" if res["effect_resolvable"] or not said else " (%s)" % said))
     print("  VERDICT:", res["verdict"])
     for reason in res["reasons"]:
         print("    - %s" % reason, file=sys.stderr)
@@ -787,8 +819,16 @@ def cmd_extract(a):
 
 
 def cmd_stats(a):
-    res = stats.run(io.load_config(a.config), a.condition, _kv(a.perdonor), a.out,
-                    n_boot=a.n_boot, seed=a.seed)
+    cfg = io.load_config(a.config)
+    try:
+        io.primary_pair(cfg)
+    except ValueError as e:
+        # a comparison that is not of two groups, names a group the config lacks or names one
+        # group twice: one line naming the config, as for its shape.  Through 2.8.0 fewer than
+        # two groups and one group twice were tracebacks, more than two were read as the first
+        # two, and a group the config lacks was refused by the table, for its missing column
+        raise io.InputError("config %s: %s" % (a.config, e)) from None
+    res = stats.run(cfg, a.condition, _kv(a.perdonor), a.out, n_boot=a.n_boot, seed=a.seed)
     if a.json:
         _emit(res)
         return EXIT_OK

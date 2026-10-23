@@ -1,4 +1,5 @@
 """Shared IO helpers: config, sample-map and saved-inputs loading."""
+import collections.abc
 import csv
 import datetime
 import gzip
@@ -75,14 +76,94 @@ def open_bytes(path):
 def load_config(path, need_groups=True):
     """A config written by ``annotate`` or by hand: a JSON object, with a ``groups`` object
     mapping group names to transcript ids unless ``need_groups`` is false (``qc`` reads
-    only ``contamination_qc``)."""
+    only ``contamination_qc``).  With ``need_groups`` the groups and ``primary_comparison``
+    are held to :func:`groups_shape_error`, and a config that fails it is an
+    :class:`InputError` naming the file and the place."""
     cfg = load_json(path, "config")
     if not isinstance(cfg, dict):
         raise InputError("config %s is not a JSON object" % path)
     if need_groups and not isinstance(cfg.get("groups"), dict):
         raise InputError("config %s has no \"groups\" object mapping group names to "
                          "transcript ids; `annotate` writes one" % path)
+    if need_groups:
+        wrong = groups_shape_error(cfg)
+        if wrong:
+            raise InputError("config %s: %s" % (path, wrong))
     return cfg
+
+
+def _shown(value):
+    """``value`` as the config would write it, cut short when long."""
+    try:
+        text = json.dumps(value, ensure_ascii=False)
+    except (TypeError, ValueError):
+        text = repr(value)
+    return text if len(text) <= 60 else text[:57] + "..."
+
+
+def _a_list(value):
+    """Whether ``value`` reads as a list: something with a length that can be iterated, and
+    is not a string, bytes or a mapping.  A JSON array; from Python, a tuple, a set or an
+    array too, as 2.8.0 took them."""
+    if isinstance(value, (str, bytes, bytearray, collections.abc.Mapping)):
+        return False
+    try:
+        len(value)
+        iter(value)
+    except TypeError:                       # a number, None, an iterator, a 0-d array
+        return False
+    return True
+
+
+#: what is wrong with a ``primary_comparison`` given, from Python, as a set
+_A_SET = ("primary_comparison is %s, a set: it has no first and second group; give them in "
+          "a list")
+
+
+def groups_shape_error(config):
+    """What is wrong with the shape of ``config``'s classes and comparison, as a sentence
+    that starts with the place (``groups``, ``group "<name>"`` or ``primary_comparison``),
+    or None.
+
+    ``groups`` maps one group name or more to a non-empty list of transcript ids, each a
+    non-empty string with no white space; ``primary_comparison``, when present, is a list of
+    group names, each a string.  From Python a list may be any collection that is not a
+    string or a mapping -- a tuple, a set, an array -- except that a comparison must have an
+    order, and so is no set.  Through 2.8.0 nothing checked this: a class given as a string
+    was read one character at a time as transcript ids, an empty class gave a verdict, an id
+    with a space was read as it stood (asked of Ensembl, and found in no ``quant.sf``, unless
+    a version followed it), and a comparison given as a string was read as its letters.
+    That the comparison names two groups, both the config's and not one twice, is checked
+    where the comparison is used: by :func:`primary_pair` (``stats``) and by
+    ``identifiability``; ``extract`` writes no fraction column then."""
+    groups = config.get("groups")
+    if not isinstance(groups, collections.abc.Mapping):
+        return "groups is %s, not an object mapping group names to transcript ids" % (
+            _shown(groups))
+    if not groups:
+        return ("groups is empty: a config names one group or more, each with a list of "
+                "transcript ids")
+    for name, ids in groups.items():
+        place = "group %s" % _shown(name)
+        if not _a_list(ids):
+            return "%s is %s, not a list of transcript ids" % (place, _shown(ids))
+        if len(ids) == 0:                   # an array has no truth value
+            return "%s lists no transcript; a group lists one or more transcript ids" % place
+        for t in ids:
+            if not (isinstance(t, str) and t and not any(c.isspace() for c in t)):
+                return ("%s lists %s, which is not a transcript id: a transcript id is a "
+                        "non-empty string with no white space" % (place, _shown(t)))
+    if "primary_comparison" not in config:
+        return None
+    pc = config["primary_comparison"]
+    if isinstance(pc, collections.abc.Set):
+        return _A_SET % _shown(pc)
+    if not _a_list(pc):
+        return "primary_comparison is %s, not a list of group names" % _shown(pc)
+    for g in pc:
+        if not isinstance(g, str):
+            return "primary_comparison lists %s, which is not a group name" % _shown(g)
+    return None
 
 
 def file_sha256(path, chunk=1 << 20):
@@ -145,19 +226,42 @@ def load_sample_map(path):
     return cond
 
 
+def _comparison(config):
+    """``config``'s ``primary_comparison`` as a list -- without one, the config's first two
+    groups -- for the code that reads it in order.  ``ValueError`` for a set, from Python:
+    it has no first and second group (2.8.0 raised ``TypeError`` there, and a ``list()``
+    of it would take Python's order of the moment)."""
+    pc = config.get("primary_comparison", list(config["groups"])[:2])
+    if isinstance(pc, collections.abc.Set):
+        raise ValueError(_A_SET % _shown(pc))
+    return list(pc)
+
+
 def primary_pair(config):
-    """The two groups named in ``primary_comparison`` (for the paired comparison)."""
+    """The two groups named in ``primary_comparison`` (for the paired comparison); without
+    one, the config's first two groups.  ``ValueError`` when the comparison does not name
+    exactly two groups, names a group the config does not have, or names one group twice,
+    as ``identifiability`` refuses such a comparison, and for a set; ``stats`` says it in
+    one line naming the config."""
     groups = config["groups"]
-    pc = config.get("primary_comparison", list(groups)[:2])
+    pc = _comparison(config)
     if len(pc) < 2:
         raise ValueError(
             "primary_comparison must name two isoform groups for a paired "
             "comparison; got %r. `annotate` proposes a pair only when an "
             "alternative terminal-exon cluster exists; edit the config to define "
             "two groups." % (pc,))
-    if pc[0] == pc[1] and pc[0] in groups:
-        # each donor's class against itself: every ratio 1, and P NaN.  A group the config
-        # lacks is left to the table's reading, which names the missing column
+    if len(pc) > 2:
+        # through 2.8.0 the first two were compared, and the others said nothing
+        raise ValueError("primary_comparison must name two isoform groups for a paired "
+                         "comparison; got %r, %d groups" % (pc, len(pc)))
+    missing = list(dict.fromkeys(g for g in pc if g not in groups))
+    if missing:
+        # through 2.8.0 the per-donor table refused it, for a column the config never named
+        raise ValueError("primary_comparison names group(s) not in config['groups']: %r"
+                         % (missing,))
+    if pc[0] == pc[1]:
+        # each donor's class against itself: every ratio 1, and P NaN
         raise ValueError("primary_comparison compares group %r with itself; name two "
                          "different groups" % (pc[0],))
     return pc[0], pc[1]

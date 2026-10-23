@@ -5,3 +5,11 @@ nav:
   - 'Worked example: NTRK2': tutorial_NTRK2.md
   - 'More example genes': example_genes.md
   - 'API reference': api.md
+# a strict build fails on each of these, not only on a link to a missing file: a page left
+# out of the nav, a link that is absolute or that names no file of the site, and a link to
+# an anchor a page does not have
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn

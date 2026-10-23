@@ -219,7 +219,12 @@ _BROKEN = {"absent": ({"inputs": None}, "No such file or directory"),
                {"config": lambda: _packaged("config", primary_comparison=["short", "medium"])},
                "primary_comparison names group(s) not in config['groups']: ['medium']"),
            "a transcript in two classes": ({"config": _config_sharing_a_transcript},
-                                           "a transcript belongs to one class")}
+                                           "a transcript belongs to one class"),
+           # the shape of the classes, an InputError of reading the config (2.8.0 ran the
+           # analysis on an empty class)
+           "an empty class": ({"config": lambda: _packaged(
+               "config", groups={"short": [], "long": ["ENST00000349533"]})},
+               'group "short" lists no transcript')}
 _PLAIN_VALUE_ERRORS = ["for another gene", "a class the comparison lacks",
                        "a transcript in two classes"]
 

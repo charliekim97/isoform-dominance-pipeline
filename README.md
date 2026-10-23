@@ -20,7 +20,7 @@ stats     per-donor TPM    → paired Wilcoxon, per cohort + stratified combinat
 qc        marker TPM       → contamination control (is the signal a cell-type artifact?)
 ```
 
-![example output](docs/example_output.png)
+![example output](https://raw.githubusercontent.com/charliekim97/isoform-dominance-pipeline/main/docs/example_output.png)
 
 *Bundled self-test: short LEPR isoform (LepRa) predominates over the long isoform (LepRb) in
 control human choroid plexus, in each of two independent cohorts (5/5 and 6/6 donors). The
@@ -58,10 +58,17 @@ protein-coding transcripts from Ensembl, clusters them by their 3' terminal-exon
 acceptor (the alternative last exon that defines functional isoform classes), and proposes a
 comparison you review and rename.
 ```bash
-isoform-dominance annotate --gene LEPR --out config.json
-#   iso_896aa : 7 transcripts   (short / LepRa)
-#   iso_1165aa: 2 transcripts   (long / LepRb, canonical)
+isoform-dominance annotate --gene LEPR --gtf gencode.v50.annotation.gtf.gz \
+    --out LEPR.gencode50.config.json
+# Proposed groups for LEPR -> LEPR.gencode50.config.json
+#   iso_1165aa: 2 transcripts
+#   iso_896aa: 7 transcripts
+#   primary_comparison: ['iso_896aa', 'iso_1165aa']
+#   REVIEW _proposed/_clusters and rename groups before use.
+# exit status 0
 ```
+That is its standard output on GENCODE 50 (Ensembl 116), from the GTF; without `--gtf` it
+reads Ensembl's REST API. The config it wrote is `example/saved/LEPR.gencode50.config.json`.
 Review it: the proposal is a function of the annotation release too. The alternative class
 is the one with the most transcripts, and transcript counts are what a new release changes
 most. Across six Ensembl releases from 110 to 116, 30 of the 84 genes in a 109-gene survey
@@ -509,9 +516,12 @@ from a gene symbol to a reviewed isoform-group proposal (presented for review, n
 final), and the whole thing is a scriptable Python CLI with a download-free self-test, meant to
 ship alongside a manuscript.
 
-More documentation: a step-by-step [NTRK2 walkthrough](docs/tutorial_NTRK2.md), a
-[gallery of further example genes](docs/example_genes.md) (NTRK2/NTRK3 kinase
-truncations and the FLT1 soluble-decoy receptor), and an [API reference](docs/api.md).
+More documentation: a step-by-step
+[NTRK2 walkthrough](https://github.com/charliekim97/isoform-dominance-pipeline/blob/main/docs/tutorial_NTRK2.md), a
+[gallery of further example genes](https://github.com/charliekim97/isoform-dominance-pipeline/blob/main/docs/example_genes.md)
+(LEPR, NTRK2, NTRK3 and FLT1 at GENCODE 44 and 50, from inputs saved in the repository),
+and an
+[API reference](https://github.com/charliekim97/isoform-dominance-pipeline/blob/main/docs/api.md).
 
 ## Statistical notes
 

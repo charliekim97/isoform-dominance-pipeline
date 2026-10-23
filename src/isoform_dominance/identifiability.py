@@ -815,12 +815,18 @@ def gls_covariance(A, theta):
     multiplier of the BLUE only under ``Var(y) = sigma^2 I``.  Fragment counts are not
     homoskedastic: ``Var(y_c) = E[y_c]``, so the weight is ``W = diag(1/mean)``.
 
-    The difference is not cosmetic.  Over 41 estimable genes the homoskedastic factor had
-    a median of 65.0 and a range of 850x; the same genes under Poisson weighting with
-    theta = 1 (one expected fragment) per transcript had a median of 16.4 and a range of
-    157x.  The *ranking* barely moved (Spearman 0.93), so this does not rescue a fixed
-    threshold on the factor -- what it does is put the number on a scale that can be
-    turned into a detectable effect.
+    The difference is not cosmetic, but it is not in the medians either: the two factors
+    are on different scales.  Over 41 estimable genes the homoskedastic factor had a median
+    of 65.0 and a range of 850x.  The size of the Poisson-weighted one is set by the scale
+    of theta -- over the same genes a median of 16.4 with theta = 1 (one expected fragment)
+    per transcript, and of 353.74 with the design's expected fragment counts as theta -- so
+    the two medians do not compare.  What does not depend on that scale is the spread and
+    the order: multiplying theta by s for every transcript multiplies every gene's figure
+    by sqrt(s), and at any such scale the range is 157x against 850x and the ranking barely
+    moves (Spearman 0.93 with the homoskedastic factor).  With the design's expected
+    counts, which differ from one transcript to another, they are 116.8x and 0.922.  So
+    this does not rescue a fixed threshold on the factor -- what it does is put the number
+    on a scale that can be turned into a detectable effect.
 
     ``theta`` is the vector of expected fragment counts per transcript.  It is what the
     analysis is trying to estimate, so a plug-in is unavoidable; :func:`analyze` passes a
@@ -1240,17 +1246,22 @@ def _gtf_gene(config, needed, gtf, species):
 
 def _check_classes(config):
     """``config``'s compared classes, its ``primary_comparison``; ``ValueError`` when its
-    classes cannot be compared: no groups, a comparison that does not name two of them or
-    compares one with itself, a transcript in two.  :func:`analyze` checks this before
-    anything else, and the self-test on its packaged config before it runs the analysis."""
+    classes cannot be compared: groups or a comparison of the wrong shape
+    (:func:`isoform_dominance.io.groups_shape_error`, the sentence ``io.load_config`` gives
+    the CLI), no groups, a comparison that does not name exactly two of them or compares one
+    with itself, a transcript in two.  :func:`analyze` checks this before anything else, and the
+    self-test on its packaged config before it runs the analysis."""
+    wrong = io.groups_shape_error(config)
+    if wrong:
+        raise ValueError(wrong)             # among them a config with no group
     groups = config["groups"]
-    if not groups:
-        raise ValueError("config['groups'] is empty; nothing to test.")
-    pc = config.get("primary_comparison", list(groups)[:2])
-    if len(pc) < 2:
+    pc = io._comparison(config)
+    if len(pc) != 2:
+        # three or more: through 2.8.0 the contrast was of the first two, and every class
+        # named went into the verdict and the exit status
         raise ValueError(
             "primary_comparison must name two isoform groups; got %r" % (pc,))
-    missing = [g for g in pc if g not in groups]
+    missing = list(dict.fromkeys(g for g in pc if g not in groups))
     if missing:
         raise ValueError(
             "primary_comparison names group(s) not in config['groups']: %r" % (missing,))
@@ -1451,8 +1462,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         whose only unique sequence is a handful of junction k-mers is structurally
         estimable but practically not.
     """
+    pc = _check_classes(config)             # first: a config with no groups is a ValueError
     groups = config["groups"]
-    pc = _check_classes(config)
     window = int(window or k)
     if decoys and not background_fasta:
         raise ValueError("--decoys names records of a --background-fasta, and none was given")

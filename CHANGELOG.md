@@ -11,12 +11,184 @@ versioning.
 > are left in place as a matter of policy: they are never retagged, replaced or deleted.
 > Nothing in this or any later version alters that record's files. The
 > `extract` aggregation behaviour those results depend on — transcript-to-group mapping
-> and per-donor TPM summation — is unchanged through 2.5.0, and the bundled self-test still
+> and per-donor TPM summation — is unchanged through 2.9.0, and the bundled self-test still
 > reproduces the same reference numbers. 2.4.0 adds two refusals to `extract` where 2.3.0
 > wrote a table: a cohort quantified against more than one Salmon index, and a config none
 > of whose transcripts is in any donor's `quant.sf`. 2.4.1 counts an index with Salmon's
 > decoys and one without as two, and writes the rows in 2.1.1's order again (2.4.0 sorted
-> them by donor name).
+> them by donor name). 2.8.0 writes no fraction column for a group compared with itself,
+> and 2.9.0 none for a comparison naming a group the config lacks; 2.9.0 refuses a config
+> whose groups have the wrong shape (none, an empty one, one given as a string or an object,
+> an id that is not a non-empty string without white space).
+
+## [Unreleased]
+
+### Added
+- **`scripts/make_docs_index.py`** writes `docs/index.md`, the documentation site's front
+  page, from the README: the same text, with the README's URLs of the figure and of the
+  documentation pages made relative to `docs/` again. `tests/test_docs_index.py` fails while
+  the committed page is not what the script writes from the README in hand.
+- **A documentation site workflow** (`.github/workflows/docs.yml`): on a pull request or a
+  push to `main` that touches `docs/`, `mkdocs.yml`, the README, `scripts/make_docs_index.py`
+  or the workflow, and by hand, it builds the four pages with `mkdocs build --strict` (mkdocs
+  1.6.1, not a dev dependency), which fails on a broken link -- the build of 2.8.0's pages
+  stopped with two such warnings -- and uploads the site as the Pages artifact. A second job
+  deploys it to GitHub Pages, from a push to or a manual run on `main` of the public
+  repository only, so a pull request or a private mirror builds and stops there; only that
+  job may write to Pages, and only it is in the `pages` concurrency group, so a pull
+  request's build never waits on, or cancels, a deployment. Nothing is pushed to a branch.
+  `mkdocs.yml` makes the strict build fail on a link to an anchor a page lacks, an absolute
+  link, a link to no file of the site and a page left out of the nav, which mkdocs 1.6 only
+  logs by default. `tests/test_docs_workflow.py` holds the workflow and these settings to
+  this, and skips in the sdist, which leaves `.github/` out. The built `site/` is ignored by
+  git. `CONTRIBUTING.md` says how to remake the front page and build the site, and lists the
+  CI as it is (Python 3.10–3.14, the sdist's tests, the site and the draft PDF).
+
+### Fixed
+- **A numerical fault in `identifiability` is no longer reported as a config error.** numpy's
+  `LinAlgError` has been a `ValueError` since numpy 1.25, and the `except ValueError` around
+  the analysis caught it: a singular matrix ended as `config error: Singular matrix` and exit
+  status 1, which sends the user to a config that is not at fault. It now keeps its
+  traceback, as the self-test's has since 2.8.0. Under numpy 1.24, the declared floor, it was
+  never caught (`tests/test_cli.py`).
+- **A file `identifiability` cannot use is an `error:`, not a config error.** `io.InputError`
+  is a `ValueError`, and the two `except ValueError` clauses of the command caught it with the
+  config's errors: a saved-inputs file of another format, or a `--transcripts-fasta` without a
+  record the `--gtf` gives, ended as `config error: ...`, which sends the user to a config
+  that is not at fault. `main` now says it in its one `error:` line, as for every other
+  command; the exit status is 1, as it was (`tests/test_cli.py`).
+- **A config whose classes or comparison have the wrong shape is refused, naming the place.**
+  2.8.0 checked only that a config is a JSON object with a `groups` object. One rule,
+  `io.groups_shape_error`, now holds `groups` to one group or more, every group to a non-empty
+  list of transcript ids, each a non-empty string with no white space, and
+  `primary_comparison`, when present, to a list of group names, each a string.
+  `io.load_config`, which `identifiability`, `extract` and `stats` read the config with,
+  refuses a config that breaks it with one line naming the file and the place
+  (`error: config <path>: group "A" lists no transcript; ...`) and exit status 1;
+  `identifiability.analyze` raises a `ValueError` with the same sentence, as it now does for a
+  config with no `groups` at all (a `KeyError` through 2.8.0); the self-test's check of its
+  packaged config fails as one check. From Python a list may still be any collection 2.8.0
+  read -- a tuple, a set, an array -- but not a mapping, and a comparison, which has an order,
+  not a set. `qc`, which reads only `contamination_qc`, is not held to it. Every config in the
+  repository passes (`tests/test_config_shape.py`). Accepted by 2.8.0 and refused now:
+  - no group (`"groups": {}`): `identifiability` said
+    `config error: config['groups'] is empty`; with a `primary_comparison`, `extract` raised a
+    `KeyError` after one header line and `stats` ran on the per-donor table it was given, and
+    without one `extract` wrote a table of no class (exit 0) and `stats` gave a traceback;
+  - a group with no transcript (`[]`), whether or not it is one of the two compared.
+    `identifiability` gave a verdict (`weakly_identifiable`, exit 0) for an empty compared
+    class, `extract` wrote it as 0 TPM and a fraction of 0 for every donor, and `stats` ran;
+  - a group given as a string (`"A": "A1"`): `identifiability` read it one character at a
+    time as the transcript ids `A` and `1` and asked Ensembl for them, `extract` counted the
+    characters as missing transcripts with a WARNING, and `stats` ran;
+  - a transcript id that is not a string (`[5]`): an `AttributeError` traceback from
+    `identifiability` and `extract`; `stats` ran;
+  - an empty transcript id (`[""]`): `identifiability` asked Ensembl for it, `extract`
+    counted it as a missing transcript with a WARNING, and `stats` ran;
+  - an id with white space (`"A1 "`): `identifiability` asked Ensembl for it, and `extract`
+    counted it as a missing transcript with a WARNING. With a version (`"A1.1 "`) all three
+    read it up to the dot, as if it had no white space; it is refused now too;
+  - a group given as an object (`"A": {"A1": 1}`): all three read its keys as the transcript
+    ids;
+  - `primary_comparison` null or a number: a `TypeError` traceback from all three;
+  - `primary_comparison` a string: read as its letters, so that `"AB"` compared groups `A`
+    and `B` (`identifiability` gave a verdict and exit 0, `extract` wrote `A_fraction`); a
+    longer string got no fraction column from `extract` and a missing-column error from
+    `stats`;
+  - a `primary_comparison` entry that is not a string.
+  `stats` reads no transcript id, and refuses a config with a group of the wrong shape all
+  the same: the config is the one `extract` and `identifiability` read.
+- **A comparison is of two groups, and `stats` and `extract` check it as `identifiability`
+  does.** Through 2.8.0 a `primary_comparison` of fewer than two groups, or of one group
+  twice, was a `ValueError` traceback from `stats`; one that names a group the config lacks
+  reached the per-donor table, which was refused for a missing column -- a column the config
+  never named; and one of three or more groups was read as its first two, by `stats` and
+  `extract` with nothing said (`extract` wrote no fraction column) and by `identifiability`
+  with every class it names in the verdict and the exit status, so that with `--min-log2fc` a
+  third class could turn exit status 0 into 3 with no estimand named as not resolved.
+  `identifiability` now refuses three or more groups as it refused fewer than two
+  (`config error: primary_comparison must name two isoform groups; got ['A', 'B', 'C']`), and
+  `stats` refuses each of these before it reads a table, in one line naming the config
+  (`error: config <path>: primary_comparison names group(s) not in config['groups']: ['medium']`),
+  exit status 1; `io.primary_pair` raises its `ValueError` for each, and for a set, which has
+  no order (2.8.0: `TypeError`). `extract` writes no fraction column for a comparison of other
+  than two groups and now says so in a WARNING; it raised a `KeyError` for a group the config
+  lacks, leaving a table of one header line, and now writes the table without a fraction
+  column and says so too, as it has since 2.8.0 for a group compared with itself
+  (`tests/test_config_shape.py`, `tests/test_edge.py`, `tests/test_silent_wrong_answers.py`).
+- **The EFFECT SIZE line says why each estimand is not resolved.** Through 2.8.0 it said every
+  estimand flagged `beyond_linear` was "beyond the linearisation limit, relative SE > 0.3",
+  those with no figure at all among them, whose relative SE is infinite: NTRK2 at GENCODE 50,
+  none of whose class totals or contrast is estimable, read
+  `(iso_477aa, iso_822aa, the contrast beyond the linearisation limit, relative SE > 0.3)` in
+  the walkthrough. The line now names them by what holds: not estimable; estimable, but with
+  no finite figure (`finite_se` false); beyond the linearisation limit, for a finite figure
+  past it. The footnote that explains a starred figure (`* first-order figure past the
+  linearisation limit ...`, on standard error) is printed only when a figure is starred; it
+  was printed for NTRK2, whose figures are all `n/a`. `--json` and the exit status are
+  unchanged, and `beyond_linear` is still true for an infinite relative SE
+  (`tests/test_beyond_linear.py`).
+- **`annotate` says "1 transcript"**, not "1 transcripts", for a class of one transcript
+  (FLT1's `iso_733aa`). The config and `annotate --json` are unchanged.
+
+### Documented
+- **`gls_covariance`'s docstring no longer sets two medians of different scales side by
+  side.** It put the homoskedastic factor's median (65.0) beside the Poisson-weighted one's
+  (16.4), but the size of the second is set by the scale of theta: 16.4 at theta = 1 per
+  transcript, 353.74 with the design's expected fragment counts. It now says so, and gives
+  what does not depend on that scale: multiplying theta by one factor for every transcript
+  multiplies every gene's figure by its square root, so the range (157x against 850x) and
+  the ranking (Spearman 0.93) stay; with the design's expected counts they are 116.8x and
+  0.922. No figure changed. `validation/summarize.py` computes the new ones too, into
+  `summary.json` (`survey.poisson_design_*`) and the block of `validation/README.md`, and
+  `tests/test_validation.py` holds the docstring to them.
+- **The README's links work on PyPI, and the docs' front page is the README.** The figure
+  and the links to the three documentation pages were relative paths, which PyPI resolves
+  against pypi.org: four broken links on the project page. They are absolute URLs now (the
+  figure's raw file and the pages' views on GitHub, on `main`), and a test refuses a relative
+  link in the README. `docs/index.md` had drifted from the README into a v2.1-era page (the
+  `identify` line still read "k-mer uniqueness"); it is now generated from it.
+- **`docs/api.md` lists the whole public API, with the signatures the code has.** Of the
+  109 public functions and classes 2.8.0 has in `annotate`, `annotation_files`,
+  `identifiability`, `ensembl`, `extract`, `stats`, `contamination`, `io` and `index_scope`
+  -- a function or class a module defines, without a leading underscore -- 57 had no entry,
+  among them every exception class, `ensembl`'s request functions (the module had no
+  section) and the read-model and GLS functions of `identifiability`. Seven entries lacked
+  parameters the code has (`ensembl.resolve_server`'s keyword-only `timeout`, `retries` and
+  `retry_wait`, `extract.extract`'s `found_out`, `annotate.fetch_transcripts`' `retries` and
+  `retry_wait`, `annotate.build_config`'s and `run`'s `**retry`, `io.file_sha256`'s `chunk`,
+  `index_scope.fasta_copies`' `versions`), and seven more wrote a default otherwise than the
+  code does (`block=BLOCK`, `30_000_000`, double quotes). Each of the 110, with this round's
+  `io.groups_shape_error`, is now one entry line, `module.name` and
+  `inspect.signature` as the code gives it, under its module's heading, with the
+  per-class `incomplete_3prime_only` key of the report and the errors of
+  `io.groups_shape_error` and `io.primary_pair` where they belong; the five functions with
+  no docstring are described from their code. `tests/test_api_docs.py` holds every public
+  name to one entry with the code's signature, and every `module.name` the page writes in
+  code to a name the module has. The `cli` module's functions are said to be internal.
+- **The NTRK2 walkthrough and the example-genes page run offline, on inputs in the
+  repository, and show what the commands print.** Both showed v2.1-era output that the CLI
+  no longer prints (`primary_comparison distinguishable by short reads: True`, k-mer counts
+  without the gene background), needed the network, and named isoforms' functions without
+  a source. They now run on `example/saved/` (GENCODE 44 and 50), say to run them in a clone
+  of the repository, and name classes by protein length and transcript id. The walkthrough
+  shows NTRK2 at GENCODE 50: the `annotate --gtf` proposal, `identifiability` with and
+  without `--min-log2fc 0.5` (exit status 0 and 3), what the command says of its verdict on
+  standard error, quoted, and the unique k-mers counted between the two classes alone
+  (`--no-gene-background`: 6793 and 5639, the counts the old page showed), with the same
+  verdict. The example-genes page is one table of LEPR, NTRK2, NTRK3 and FLT1 at both
+  releases (proposed comparison, verdict, the contrast's min |log2FC| and conditioning, exit
+  status at `--min-log2fc 0.5`), and short notes on NTRK3's proposal changing between the
+  releases and on proposals decided by a tie (FLT1, LEPR). `tests/test_docs_examples.py`
+  runs every block with every socket refused and compares its standard output line by line
+  (an `annotate --gtf` block with `annotate.run` returning the config that command wrote,
+  as the GTF is not in the repository), checks each quotation against the standard error
+  of a command on the page, and recomputes the table, under the header the page gives it;
+  a code block it would not run (a `~~~` fence, an indented block) and a command line
+  without the ` \` that joins it to the next fail it. The README's `annotate` block is now
+  that command's standard output on GENCODE 50, checked the same way; it had other lines,
+  in another order, with labels the command does not print. The README's description of the
+  example-genes page no longer names an isoform's function.
 
 ## [2.8.0] - 2026-10-18
 

@@ -1,0 +1,59 @@
+name: docs
+
+# The documentation site: built strictly on every change to it, so that a broken link or a
+# page missing from the nav fails the pull request, and deployed to GitHub Pages from main.
+# Pages is set to deploy from GitHub Actions in the repository's settings.
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - mkdocs.yml
+      - README.md
+      - scripts/make_docs_index.py
+      - .github/workflows/docs.yml
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - mkdocs.yml
+      - README.md
+      - scripts/make_docs_index.py
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # not a dev dependency: mkdocs brings PyYAML, which the tests must not lean on
+      - run: pip install "mkdocs==1.6.1"
+      - run: mkdocs build --strict --site-dir site
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    # a pull request, a fork or a private mirror builds and stops here
+    if: github.repository == 'charliekim97/isoform-dominance-pipeline' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # on this job only: on the workflow, a pull request's build would wait in the queue of
+    # a pending deployment, and could cancel it
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

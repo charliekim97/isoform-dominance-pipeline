@@ -46,6 +46,10 @@ def test_extract_errors_on_empty_quantdir(tmp_path):
 def test_primary_pair_requires_two_groups():
     with pytest.raises(ValueError):
         io.primary_pair({"groups": {"only": ["ENST1"]}, "primary_comparison": ["only"]})
+    # through 2.8.0 the first two, and the third said nothing
+    with pytest.raises(ValueError, match="got \\['a', 'b', 'a'\\], 3 groups"):
+        io.primary_pair({"groups": {"a": ["ENST1"], "b": ["ENST2"]},
+                         "primary_comparison": ["a", "b", "a"]})
 
 
 def test_primary_pair_requires_two_different_groups():
@@ -53,6 +57,18 @@ def test_primary_pair_requires_two_different_groups():
     with pytest.raises(ValueError, match="compares group 'a' with itself"):
         io.primary_pair({"groups": {"a": ["ENST1"], "b": ["ENST2"]},
                          "primary_comparison": ["a", "a"]})
+
+
+def test_primary_pair_requires_groups_the_config_has():
+    # through 2.8.0 the pair came back, and the per-donor table refused it for its column
+    with pytest.raises(ValueError, match=r"not in config\['groups'\]: \['c'\]"):
+        io.primary_pair({"groups": {"a": ["ENST1"], "b": ["ENST2"]},
+                         "primary_comparison": ["a", "c"]})
+    with pytest.raises(ValueError, match=r"not in config\['groups'\]: \['c'\]"):
+        io.primary_pair({"groups": {"a": ["ENST1"], "b": ["ENST2"]},
+                         "primary_comparison": ["c", "c"]})
+    assert io.primary_pair({"groups": {"a": ["ENST1"], "b": ["ENST2"]},
+                            "primary_comparison": ("b", "a")}) == ("b", "a")
 
 
 def test_single_group_extract_still_writes(tmp_path):
