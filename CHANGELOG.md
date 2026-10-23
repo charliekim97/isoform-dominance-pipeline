@@ -21,6 +21,26 @@ versioning.
 > whose groups have the wrong shape (none, an empty one, one given as a string or an object,
 > an id that is not a non-empty string without white space).
 
+## [Unreleased]
+
+### Corrections to earlier entries
+- **Recorded before the 3.0 gate is run.** Step 1 of the gate in `validation/README.md` names
+  three transcripts of VEGFA's `iso_317aa` and three of TP53's `iso_354aa` as the members of
+  the 49 genes' classes that the stored index dropped for an identical copy, each copy a member
+  of the same class. The list is incomplete. The index also dropped five members of LDHA's
+  `iso_330aa` and one of NDUFS1's `iso_706aa`, keeping identical copies of the same genes on
+  the GRCh38 scaffolds HG2111_PATCH (ENSG00000288299) and HSCHR2_6_CTG7_2 (ENSG00000283447),
+  which no class holds. Step 1's rule applies to them as written: they take the kept copy's
+  effective length and their fragments stay in the truth. No class's summed TPM can hold those
+  fragments, so for these two genes the truth leaves more than how Salmon apportions the
+  fragments. Computed before any TPM row exists, from the stored truths of the uniform design
+  and a stored Salmon run's effective lengths, this alone moves LDHA's TPM row by +0.30 log2
+  (+0.28 to +0.32 across the 30 replicates), against its predicted SE of 0.378, and NDUFS1's
+  by +0.04, against 0.440. LDHA's `NumReads` row has the same kind of shift, +0.33, which its
+  stored bias of +0.25 already includes. The gate is run and graded as written. Beside the
+  graded rows, the write-up shows LDHA's and NDUFS1's TPM rows against a truth that gives those
+  fragments to the kept copy, which decides nothing.
+
 ## [2.9.0] - 2026-10-23
 
 ### Added
