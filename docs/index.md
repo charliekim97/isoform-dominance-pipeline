@@ -122,9 +122,11 @@ isoform-dominance identifiability --config example/saved/LEPR.gencode50.config.j
 #   annotation: Ensembl release 116; sequence from saved inputs (release 116, example/saved/LEPR.gencode50.inputs.json)
 #   background: 9 same-gene transcript(s)
 #   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
+#   estimand: fragment (class fragment totals) decides; abundance below the contrast (--estimand abundance)
 #   [identifiable] iso_1165aa: min |log2FC| 0.064; class 5369 unique k-mers; best transcript 5399 bp in 1 block(s), ~1072 informative reads; conditioning 3.62
 #   [identifiable] iso_896aa: min |log2FC| 0.216; class 356 unique k-mers; best transcript 208 bp in 2 block(s), ~63 informative reads; conditioning 115.05
 #   contrast iso_896aa vs iso_1165aa: min |log2FC| 0.234; identifiable, conditioning 117.68
+#   abundance estimand: [identifiable] iso_1165aa min |log2FC| 0.061; [identifiable] iso_896aa min |log2FC| 0.216; contrast min |log2FC| 0.225, identifiable
 #   effective length: iso_896aa 5103 bp vs iso_1165aa 8072 bp (mean per transcript), log2 ratio -0.66
 #   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_896aa median 0.07 [0.05-0.12], 372 positions over 7 transcript(s); iso_1165aa median 0.67 [0.51-0.84], 10738 positions over 2 transcript(s)
 #   unique-read counting SE (best transcript per class) on log2 ratio: 0.187 per donor, min resolvable |log2FC| 0.366 at n=1

@@ -1099,6 +1099,152 @@ def estimability(A, c, rcond=1e-10, *, svd=None):
 
 
 # --------------------------------------------------------------------------- #
+# the two estimands
+# --------------------------------------------------------------------------- #
+ESTIMANDS = ("fragment", "abundance")
+"""The class totals :func:`analyze` can decide by, its ``estimand``.
+
+``"fragment"``: a class's expected fragment count, ``sum over t in g of theta_t``, with
+``theta_t`` the expected count of the system's observation unit from transcript ``t``.  It is
+what the package asked through 2.8.0, what a quantifier's ``NumReads`` sums, and what the
+simulation in ``validation/`` measured; it is the default.
+
+``"abundance"``: a class's length-corrected abundance, ``sum over t in g of theta_t / l_t``,
+with ``l_t`` the effective length of ``t`` -- the number of positions the observation unit
+can start at -- so that ``theta_t / l_t`` is ``t``'s abundance.  Its class ratio is the ratio
+that summed TPM estimates, which is what ``extract`` and ``stats`` compare: TPM is
+``NumReads / effective length``, normalised over the sample, and the normalisation cancels
+in a ratio.  In this system the unit is a window and ``l_t = L_t - window + 1``, the
+positions each column of :func:`compatibility_matrix` counts (dropped windows included, as
+in the column's denominator); in a quantifier's fragment model it is the fragment effective
+length.  Each is the exact conversion in its own model, and the answers where only the
+abundance estimand is estimable rest on the window count: with a fragment effective length
+(``L_t - 199``, for 200-base fragments) in its place, an abundance functional estimable here
+leaves a residual of 2e-6 to 6e-2 where only it is (22 functionals of the 49-gene panel
+below), and of at most 7e-4 where the fragment one is estimable too (100 of those 123 stay
+under the 1e-8 threshold).  The figures rest on it too.  :func:`analyze` evaluates them at
+the design's expected fragment counts, which a fragment model spreads over the fragment
+effective length rather than over ``l_t``, so at the defaults the abundance estimand weights
+each transcript's TPM by ``max(1, L_t - 199) / (L_t - 30)``: about 0.91 at 2 kb, 0.64 at 500 nt
+and 0.37 at 300 nt.  Where a class holds short transcripts its figures are of that weighted
+abundance, not quite of the one summed TPM measures.
+
+The two are different functionals of one system, not one in two units, and whether each is
+estimable is decided by the same null space.  They can part.  Where no direction the system
+cannot see changes a compared class's abundance, the abundance estimand is estimable; where
+one of those directions changes the class's fragment count -- which, keeping its abundance,
+it can do only by moving abundance between transcripts of the class that differ in length --
+the fragment estimand is not.  Two alternative first exons of different length crossed with
+two alternative last exons across a shared middle at least a window long, the classes by
+last exon, is such a case; with the classes taken across the cross instead (``X1Y1 + X2Y2``
+against ``X1Y2 + X2Y1``), neither estimand is estimable.  On a 49-gene panel the contrast
+was estimable as abundance only for 7 genes (NTRK2 and NTRK3 among them), and as fragment
+totals only for none; the converse can hold where windows are dropped and a column sums to
+less than one (``tests/test_estimands.py`` has a case).  Whichever is estimable, the
+precision figures of the abundance estimand have not yet been checked against a quantifier's
+TPM in simulation, as the fragment estimand's were against ``NumReads``.
+"""
+
+_ESTIMAND_DEFINITION = {
+    "fragment": "sum over the class of theta_t, the expected fragment count",
+    "abundance": "sum over the class of theta_t / l_t, l_t the transcript's window positions "
+                 "(effective length in this system): the length-corrected abundance, whose "
+                 "class ratio is the ratio that summed TPM estimates",
+}
+
+#: whether the precision figures of each estimand were checked against a quantifier in the
+#: simulation of ``validation/``: the fragment estimand's against NumReads; the abundance
+#: estimand's not yet (``validation/README.md`` says what will decide)
+_PRECISION_CHECKED = {"fragment": True, "abundance": False}
+
+#: the label of each estimand in a report's reasons: the fragment one's are 2.8.0's
+_ESTIMAND_LABEL = {
+    "fragment": ("the %s class total", "the class contrast"),
+    "abundance": ("the %s class abundance", "the class abundance contrast"),
+}
+
+
+def _coefficients(name, c, n_positions):
+    """The functional of estimand ``name`` that the fragment functional ``c`` (a 0/1 class
+    indicator, or the difference of two) stands for: ``c`` itself for ``"fragment"``;
+    ``c / l`` for ``"abundance"``, scaled to the Euclidean norm of ``c``.  The scale moves
+    neither estimability nor a relative standard error, only the conditioning factor, which
+    it puts on the fragment functional's footing: a class of transcripts of one length gets
+    the fragment class's coefficients exactly."""
+    if name == "fragment":
+        return c
+    a = c / n_positions
+    norm = float(np.linalg.norm(a))
+    return a * (float(np.linalg.norm(c)) / norm) if norm else a
+
+
+def _estimand_report(name, A, svd, cov, theta, indicator, n_positions, pc, report, n_donors,
+                     tau, min_reads, min_log2fc):
+    """One estimand's estimability, precision and verdicts: ``indicator`` maps each class to
+    its 0/1 column indicator, ``n_positions`` gives each column's window positions (see
+    :func:`_coefficients`), ``report`` holds each class's read-model numbers, which the
+    verdict reads.  Returns ``{"definition", "groups", "contrast", "effect_resolvable",
+    "verdict", "reasons"}`` and ``precision_checked_in_simulation``; each class's and the
+    contrast's fields are in the order a report has always given them."""
+    label, contrast_label = _ESTIMAND_LABEL[name]
+    groups = {}
+    for g, ind in indicator.items():
+        c = _coefficients(name, ind, n_positions)
+        e = estimability(A, c, svd=svd)
+        e["label"] = label % g
+        rse = gls_relative_se(cov, c, theta) if e["estimable"] else float("inf")
+        e["gls_relative_se"] = rse
+        e["finite_se"] = math.isfinite(rse)
+        e["min_resolvable_log2fc"] = min_resolvable_log2fc(rse, n_donors)
+        e["beyond_linear"] = rse > LINEARISATION_LIMIT
+        e["verdict"], e["reasons"] = _verdict(dict(report[g], **e), tau, min_reads,
+                                              min_log2fc)
+        groups[g] = e
+
+    ca = _coefficients(name, indicator[pc[0]], n_positions)
+    cb = _coefficients(name, indicator[pc[1]], n_positions)
+    contrast = estimability(
+        A, _coefficients(name, indicator[pc[0]] - indicator[pc[1]], n_positions), svd=svd)
+    contrast["label"] = contrast_label
+    # The figure is the delta-method SE of log(A/B), a quadratic form in its gradient
+    # c_a/a - c_b/b.  That is a standard error only when the gradient is estimable, which
+    # the difference c_a - c_b being estimable does not ensure: with class totals that are
+    # not, it read 0.87 where the system with more rows gave 3.06.
+    a_tot = float(ca @ theta)
+    b_tot = float(cb @ theta)
+    raw = float("inf")
+    if contrast["estimable"] and a_tot and b_tot and estimability(
+            A, ca / a_tot - cb / b_tot, svd=svd)["estimable"]:
+        raw = log_ratio_se(cov, ca, cb, theta)
+    contrast["gls_relative_se"] = raw
+    # estimable and still no finite figure: the class totals are not, or are zero.  With
+    # --json the inf is written as null, so this is what says the figure does not exist
+    contrast["finite_se"] = math.isfinite(raw)
+    contrast["min_resolvable_log2fc"] = min_resolvable_log2fc(raw, n_donors)
+    contrast["beyond_linear"] = raw > LINEARISATION_LIMIT
+    contrast["verdict"], contrast["reasons"] = _verdict(contrast, tau, None, min_log2fc)
+
+    # The exit status of the CLI hangs on this, not on ``verdict``: the structural
+    # verdict moves with the annotation release, while a resolvable effect size is the
+    # question the experimenter actually asked.  None when no effect size was asked for.
+    # An estimand past the linearisation limit is not resolved whatever its figure reads.
+    primary = [groups[g] for g in pc] + [contrast]
+    effect_resolvable = None if min_log2fc is None else all(
+        math.isfinite(e["min_resolvable_log2fc"])
+        and e["min_resolvable_log2fc"] <= min_log2fc
+        and not e["beyond_linear"] for e in primary)
+    verdicts = [groups[g]["verdict"] for g in pc] + [contrast["verdict"]]
+    reasons = sorted({r for g in pc for r in groups[g]["reasons"]} | set(contrast["reasons"]))
+    overall = ("not_identifiable" if "not_identifiable" in verdicts
+               else "weakly_identifiable" if "weakly_identifiable" in verdicts
+               else "identifiable")
+    return {"definition": _ESTIMAND_DEFINITION[name],
+            "precision_checked_in_simulation": _PRECISION_CHECKED[name], "groups": groups,
+            "contrast": contrast, "effect_resolvable": effect_resolvable,
+            "verdict": overall, "reasons": reasons}
+
+
+# --------------------------------------------------------------------------- #
 # top-level analysis
 # --------------------------------------------------------------------------- #
 def _verdict(entry, tau, min_reads=None, min_log2fc=None):
@@ -1290,7 +1436,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             mean_efflen=DEFAULT_MEAN_EFFLEN, tpm=DEFAULT_TPM, n_donors=1,
             conditioning_tau=DEFAULT_CONDITIONING_TAU,
             min_informative_reads=DEFAULT_MIN_INFORMATIVE_READS,
-            min_log2fc=None, ensembl_release=None, inputs_out=None,
+            min_log2fc=None, estimand="fragment", ensembl_release=None, inputs_out=None,
             keep_duplicates=False, max_window_records=DEFAULT_MAX_WINDOW_RECORDS,
             gtf=None, transcripts_fasta=None,
             retries=DEFAULT_RETRIES, retry_wait=DEFAULT_RETRY_WAIT):
@@ -1370,6 +1516,11 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         standard error of the *whole* system under Poisson counts -- not from
         :func:`unique_read_counting_se`, which describes a unique-read-counting estimator
         and is reported alongside for what it is.
+    estimand
+        Which class totals decide ``verdict``, ``reasons``, ``effect_resolvable`` and the
+        figures of ``groups`` and ``contrast``: ``"fragment"`` (the default, and the only
+        one through 2.8.0) or ``"abundance"``; see :data:`ESTIMANDS`.  Both are computed
+        and reported under ``estimands`` whichever decides.
     ensembl_release
         The Ensembl release to fetch sequence and the gene background from, when
         anything has to be fetched.  None means the release ``rest.ensembl.org``
@@ -1461,8 +1612,22 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         estimable when a class it is nested inside has unique sequence, and a class
         whose only unique sequence is a handful of junction k-mers is structurally
         estimable but practically not.
+
+        ``estimands`` holds both estimands of :data:`ESTIMANDS`, each as ``{definition,
+        precision_checked_in_simulation, groups, contrast, effect_resolvable, verdict,
+        reasons}`` -- per class and for the
+        contrast the fields that depend on the estimand (``estimable``, ``residual``,
+        ``conditioning_factor``, ``rank``, ``label``, ``gls_relative_se``, ``finite_se``,
+        ``min_resolvable_log2fc``, ``beyond_linear``, ``verdict``, ``reasons``) -- and
+        ``decision_estimand`` names the one that decides.  ``groups``, ``contrast``,
+        ``effect_resolvable``, ``verdict`` and ``reasons`` are that estimand's, beside
+        the fields that do not depend on it, so with the default they are what 2.8.0
+        gave.
     """
     pc = _check_classes(config)             # first: a config with no groups is a ValueError
+    if estimand not in ESTIMANDS:
+        raise ValueError("estimand must be one of %s, got %r"
+                         % (", ".join(ESTIMANDS), estimand))
     groups = config["groups"]
     window = int(window or k)
     if decoys and not background_fasta:
@@ -1751,54 +1916,36 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         1.0, tpm, all_lengths.get(t, 0), depth=depth,
         mean_efflen=mean_efflen, frag_mean=frag_mean) for t in all_tids])
     cov = gls_covariance(A, theta)
-    class_indicator = {}
-
+    indicator = {}
     for g, ids in group_ids.items():
         c = np.zeros(len(all_tids))
         for t in ids:
             c[idx[t]] = 1.0
-        report[g].update(estimability(A, c, svd=svd))
-        report[g]["label"] = "the %s class total" % g
+        indicator[g] = c
+    # The abundance estimand divides each column by l_t, its window positions: the
+    # denominator of the column in A (see ESTIMANDS and _coefficients).
+    n_positions = np.array([max(1, len(all_tracks[t])) for t in all_tids], dtype=float)
+    estimands = {name: _estimand_report(name, A, svd, cov, theta, indicator, n_positions,
+                                        pc, report, n_donors, conditioning_tau,
+                                        min_informative_reads, min_log2fc)
+                 for name in ESTIMANDS}
+    chosen = estimands[estimand]
+
+    # The report's own fields are the deciding estimand's, in the order 2.8.0 wrote them,
+    # so that with the default its bytes are 2.8.0's.
+    end_nf = files["incomplete_3prime"] if files is not None else None
+    for g, ids in group_ids.items():
+        e = chosen["groups"][g]
+        report[g].update((key, e[key]) for key in
+                         ("estimable", "residual", "conditioning_factor", "rank", "label"))
         report[g]["coherence"] = class_coherence(tracks, ids)
         # what only a GTF says: every model of the class lacks its annotated 3' end
-        end_nf = files["incomplete_3prime"] if files is not None else None
         report[g]["incomplete_3prime_only"] = (None if end_nf is None else
                                                bool(ids) and all(end_nf[t] for t in ids))
-        class_indicator[g] = c
-        rse = gls_relative_se(cov, c, theta) if report[g]["estimable"] else float("inf")
-        report[g]["gls_relative_se"] = rse
-        report[g]["finite_se"] = math.isfinite(rse)
-        report[g]["min_resolvable_log2fc"] = min_resolvable_log2fc(rse, n_donors)
-        report[g]["beyond_linear"] = rse > LINEARISATION_LIMIT
-        report[g]["verdict"], report[g]["reasons"] = _verdict(
-            report[g], conditioning_tau, min_informative_reads, min_log2fc)
-
-    c = np.zeros(len(all_tids))
-    for t in group_ids[pc[0]]:
-        c[idx[t]] += 1.0
-    for t in group_ids[pc[1]]:
-        c[idx[t]] -= 1.0
-    contrast = estimability(A, c, svd=svd)
-    contrast["label"] = "the class contrast"
-    # The figure is the delta-method SE of log(A/B), a quadratic form in its gradient
-    # c_a/a - c_b/b.  That is a standard error only when the gradient is estimable, which
-    # the difference c_a - c_b being estimable does not ensure: with class totals that are
-    # not, it read 0.87 where the system with more rows gave 3.06.
-    a_tot = float(class_indicator[pc[0]] @ theta)
-    b_tot = float(class_indicator[pc[1]] @ theta)
-    raw = float("inf")
-    if contrast["estimable"] and a_tot and b_tot and estimability(
-            A, class_indicator[pc[0]] / a_tot - class_indicator[pc[1]] / b_tot,
-            svd=svd)["estimable"]:
-        raw = log_ratio_se(cov, class_indicator[pc[0]], class_indicator[pc[1]], theta)
-    contrast["gls_relative_se"] = raw
-    # estimable and still no finite figure: the class totals are not, or are zero.  With
-    # --json the inf is written as null, so this is what says the figure does not exist
-    contrast["finite_se"] = math.isfinite(raw)
-    contrast["min_resolvable_log2fc"] = min_resolvable_log2fc(raw, n_donors)
-    contrast["beyond_linear"] = raw > LINEARISATION_LIMIT
-    contrast["verdict"], contrast["reasons"] = _verdict(
-        contrast, conditioning_tau, None, min_log2fc)
+        report[g].update((key, e[key]) for key in
+                         ("gls_relative_se", "finite_se", "min_resolvable_log2fc",
+                          "beyond_linear", "verdict", "reasons"))
+    contrast = dict(chosen["contrast"])
     mean_a, mean_b, efflen_ratio = class_efflen_ratio(
         [len(seqs[t]) for t in group_ids[pc[0]]],
         [len(seqs[t]) for t in group_ids[pc[1]]], frag_mean)
@@ -1830,22 +1977,9 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     gene_total["transcripts_without_windows"] = [t for t in all_tids if not all_tracks[t]]
     gene_total["transcripts_all_windows_dropped"] = emptied
 
-    # The exit status of the CLI hangs on this, not on ``verdict``: the structural
-    # verdict moves with the annotation release, while a resolvable effect size is the
-    # question the experimenter actually asked.  None when no effect size was asked for.
-    # An estimand past the linearisation limit is not resolved whatever its figure reads.
-    primary = [report[g] for g in pc] + [contrast]
-    effect_resolvable = None if min_log2fc is None else all(
-        math.isfinite(e["min_resolvable_log2fc"])
-        and e["min_resolvable_log2fc"] <= min_log2fc
-        and not e["beyond_linear"] for e in primary)
-
-    verdicts = [report[g]["verdict"] for g in pc] + [contrast["verdict"]]
-    all_reasons = sorted({r for g in pc for r in report[g]["reasons"]}
-                         | set(contrast["reasons"]))
-    overall = ("not_identifiable" if "not_identifiable" in verdicts
-               else "weakly_identifiable" if "weakly_identifiable" in verdicts
-               else "identifiable")
+    effect_resolvable = chosen["effect_resolvable"]
+    overall = chosen["verdict"]
+    all_reasons = chosen["reasons"]
 
     return {
         "k": k,
@@ -1904,6 +2038,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         "primary_distinguishable": all(report[g]["distinguishable"] for g in pc),
         "verdict": overall,
         "reasons": all_reasons,
+        # since 2.9.0, after every key 2.8.0 wrote: which estimand the fields above are,
+        # and both estimands' own fields
+        "decision_estimand": estimand,
+        "estimands": estimands,
     }
 
 

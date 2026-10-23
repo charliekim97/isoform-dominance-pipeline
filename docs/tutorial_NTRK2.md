@@ -36,9 +36,11 @@ isoform-dominance identifiability --config example/saved/NTRK2.gencode50.config.
 #   annotation: Ensembl release 116; sequence from saved inputs (release 116, example/saved/NTRK2.gencode50.inputs.json)
 #   background: 30 same-gene transcript(s)
 #   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
+#   estimand: fragment (class fragment totals) decides; abundance below the contrast (--estimand abundance)
 #   [not_identifiable] iso_822aa: min |log2FC| n/a; class 31 unique k-mers; best transcript 57 bp in 1 block(s), ~34 informative reads; conditioning inf
 #   [not_identifiable] iso_477aa: min |log2FC| n/a; class 287 unique k-mers; best transcript 60 bp in 1 block(s), ~35 informative reads; conditioning inf
 #   contrast iso_477aa vs iso_822aa: min |log2FC| n/a; not_identifiable, conditioning inf
+#   abundance estimand: [weakly_identifiable] iso_822aa min |log2FC| 0.104; [weakly_identifiable] iso_477aa min |log2FC| 0.061; contrast min |log2FC| 0.133, weakly_identifiable
 #   effective length: iso_477aa 6232 bp vs iso_822aa 7940 bp (mean per transcript), log2 ratio -0.35
 #   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_477aa median 0.24 [0.05-0.99], 360 positions over 22 transcript(s); iso_822aa median 0.04 [0.04-1.00], 39 positions over 12 transcript(s)
 #   unique-read counting SE (best transcript per class) on log2 ratio: 0.347 per donor, min resolvable |log2FC| 0.680 at n=1
@@ -56,9 +58,11 @@ isoform-dominance identifiability --config example/saved/NTRK2.gencode50.config.
 #   annotation: Ensembl release 116; sequence from saved inputs (release 116, example/saved/NTRK2.gencode50.inputs.json)
 #   background: 30 same-gene transcript(s)
 #   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
+#   estimand: fragment (class fragment totals) decides; abundance below the contrast (--estimand abundance)
 #   [not_identifiable] iso_822aa: min |log2FC| n/a; class 31 unique k-mers; best transcript 57 bp in 1 block(s), ~34 informative reads; conditioning inf
 #   [not_identifiable] iso_477aa: min |log2FC| n/a; class 287 unique k-mers; best transcript 60 bp in 1 block(s), ~35 informative reads; conditioning inf
 #   contrast iso_477aa vs iso_822aa: min |log2FC| n/a; not_identifiable, conditioning inf
+#   abundance estimand: [weakly_identifiable] iso_822aa min |log2FC| 0.104; [weakly_identifiable] iso_477aa min |log2FC| 0.061; contrast min |log2FC| 0.133, identifiable
 #   effective length: iso_477aa 6232 bp vs iso_822aa 7940 bp (mean per transcript), log2 ratio -0.35
 #   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_477aa median 0.24 [0.05-0.99], 360 positions over 22 transcript(s); iso_822aa median 0.04 [0.04-1.00], 39 positions over 12 transcript(s)
 #   unique-read counting SE (best transcript per class) on log2 ratio: 0.347 per donor, min resolvable |log2FC| 0.680 at n=1
@@ -97,9 +101,11 @@ isoform-dominance identifiability --config example/saved/NTRK2.gencode50.config.
 #   annotation: Ensembl release 116; sequence from saved inputs (release 116, example/saved/NTRK2.gencode50.inputs.json)
 #   background: 0 same-gene transcript(s)
 #   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
+#   estimand: fragment (class fragment totals) decides; abundance below the contrast (--estimand abundance)
 #   [not_identifiable] iso_822aa: min |log2FC| n/a; class 6793 unique k-mers; best transcript 6772 bp in 2 block(s), ~1369 informative reads; conditioning inf
 #   [not_identifiable] iso_477aa: min |log2FC| n/a; class 5639 unique k-mers; best transcript 5356 bp in 2 block(s), ~1086 informative reads; conditioning inf
 #   contrast iso_477aa vs iso_822aa: min |log2FC| n/a; not_identifiable, conditioning inf
+#   abundance estimand: [identifiable] iso_822aa min |log2FC| 0.044; [identifiable] iso_477aa min |log2FC| 0.037; contrast min |log2FC| 0.067, identifiable
 #   effective length: iso_477aa 6232 bp vs iso_822aa 7940 bp (mean per transcript), log2 ratio -0.35
 #   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_477aa median 0.66 [0.48-0.84], 92484 positions over 22 transcript(s); iso_822aa median 0.63 [0.44-0.81], 72229 positions over 12 transcript(s)
 #   unique-read counting SE (best transcript per class) on log2 ratio: 0.059 per donor, min resolvable |log2FC| 0.115 at n=1

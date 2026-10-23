@@ -43,6 +43,39 @@ versioning.
   this, and skips in the sdist, which leaves `.github/` out. The built `site/` is ignored by
   git. `CONTRIBUTING.md` says how to remake the front page and build the site, and lists the
   CI as it is (Python 3.10–3.14, the sdist's tests, the site and the draft PDF).
+- **Two estimands in `identifiability`, and `--estimand` to choose the one that decides.**
+  Through 2.8.0 a verdict was of one class total, the class's expected fragment count, the sum
+  of theta_t over its transcripts: what a quantifier's `NumReads` sums. `extract` and `stats`
+  compare summed TPM, whose class ratio is that of the length-corrected abundance, the sum of
+  theta_t / l_t with l_t a transcript's effective length -- in the system `identifiability`
+  builds, its window positions, L_t - window + 1, dropped windows included. The two are
+  different functionals of one system, not one in two units, and they can part: a direction
+  the system cannot see can keep a class's abundance and move its fragment count, by moving
+  abundance between transcripts of the class that differ in length, and then the fragment
+  estimand is not estimable, while the abundance one is when no direction the system cannot see
+  changes a compared class's abundance. On the 49-gene panel of `validation/` the contrast is
+  estimable as abundance only for 7 genes (CANX, GNAS, NTRK2, NTRK3, SMN2, TNFRSF1B, VEGFA)
+  and as fragment totals only for none (the converse can hold where windows are dropped); of
+  the saved examples, NTRK2 at GENCODE 44 and 50 and NTRK3 at GENCODE 50. Both are computed
+  and reported: `--json` gains, after every key 2.8.0 wrote, `estimands` (`fragment` and
+  `abundance`, each with its `definition`, `precision_checked_in_simulation` -- true for the
+  fragment estimand, false for the abundance one -- its fields of each class and of the
+  contrast, `estimable` to `reasons`, `effect_resolvable`, `verdict` and `reasons`) and
+  `decision_estimand`; the human output gains a line naming the deciding estimand and one
+  under the contrast giving the other, and a NOTE on stderr where the two differ on what is
+  estimable. `--estimand` (`analyze(..., estimand=)`) picks the one that decides `verdict`,
+  `reasons`, `effect_resolvable`, the figures of `groups` and `contrast`, `EFFECT SIZE` (which
+  then names the class abundances) and the exit status. The default is `fragment`, and with it
+  every field and exit status 2.8.0 gave is unchanged: on the saved examples the `--json`
+  report is byte for byte 2.8.0's up to the two keys, and the test against 2.7.0's reports
+  now holds the order of the keys too. The abundance coefficients 1/l_t are scaled to the
+  fragment functional's norm, which moves no estimability and no relative standard error, only
+  the conditioning factor, onto the fragment one's footing. Whether the abundance estimand is
+  estimable is decided exactly in the window system, but where only it is estimable that answer
+  rests on counting a transcript's length in window positions, and its figures weight a short
+  transcript less than TPM does; its precision figures have not yet been checked against a
+  quantifier's TPM, and the command says so wherever it offers or uses the estimand
+  (`tests/test_estimands.py`).
 
 ### Fixed
 - **A numerical fault in `identifiability` is no longer reported as a config error.** numpy's
