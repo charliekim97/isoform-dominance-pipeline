@@ -21,7 +21,7 @@ versioning.
 > whose groups have the wrong shape (none, an empty one, one given as a string or an object,
 > an id that is not a non-empty string without white space).
 
-## [Unreleased]
+## [2.9.0] - 2026-10-23
 
 ### Added
 - **`scripts/make_docs_index.py`** writes `docs/index.md`, the documentation site's front

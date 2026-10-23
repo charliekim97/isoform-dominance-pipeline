@@ -6,8 +6,8 @@ authors:
   - family-names: "Kim"
     given-names: "Sangeon"
     orcid: "https://orcid.org/0009-0005-7227-323X"
-version: "2.8.0"
-date-released: "2026-10-18"
+version: "2.9.0"
+date-released: "2026-10-23"
 license: MIT
 doi: "10.5281/zenodo.20672051"
 repository-code: "https://github.com/charliekim97/isoform-dominance-pipeline"
