@@ -15,9 +15,15 @@
 ``<gene>.cfg.json`` and ``<gene>.seqs.json`` it holds instead (``simulate_reads.read_inputs``).
 
 Truth is the fragment count drawn per transcript, and the comparison is against Salmon's
-``NumReads`` -- also a fragment count.  Nothing is compared in TPM, because an effective
-length convention sitting between the simulation and the estimate is the easiest way to
-measure the bookkeeping instead of the surrogate.
+``NumReads`` -- also a fragment count.  Beside it each run records the class ratio of summed
+``TPM`` (``genes_tpm``), against a truth that carries no effective length of its own: the
+fragments written for each transcript over the ``EffectiveLength`` the quantifier itself
+gives it (:func:`tpm_truth`), the ratio summed TPM would read had every fragment gone to the
+transcript it was drawn from.  An effective length convention sitting between the
+simulation and the estimate is the easiest way to measure the bookkeeping instead of the
+surrogate: the simulator's, max(1, L - 199), is not Salmon's for a transcript shorter than
+most fragments.  ``validation/README.md`` says what the TPM rows decide, and
+``gate_3_0.py`` grades a run by it.
 
 The checkpoint is the guard on exactly that.  On a gene the surrogate calls well
 conditioned, at high depth, the realised SD must approach the predicted one and the bias
@@ -174,13 +180,16 @@ without the analysis noticing.
 
 def quantify(index, r1, r2, outdir, threads, extra,
              quantifier="salmon", kallisto_bin="kallisto"):
-    """Dispatch to a quantifier. The salmon path below is unchanged from the version
-    that produced every c1_*.json and p1_*.json result. Prove that before reading any
-    kallisto number: re-run the b=0 leg to a fresh --out with the same design and diff
-    it per gene against validation/data/sim/c1_d1.json. The seed is replicate-only
-    (simulate_reads.main), so the fragments are identical and the signed errors must
-    match to the bit. Any nonzero difference means this refactor moved the salmon path
-    and the twelve stored legs can no longer be compared with anything."""
+    """Dispatch to a quantifier: ``(counts, diag, abundance)``, ``abundance`` the
+    ``{"tpm": {...}, "efflen": {...}}`` the quantifier gives every transcript of its index,
+    ids without version. The salmon path's counts are unchanged from the version that
+    produced every c1_*.json and p1_*.json result; the TPM and effective lengths are read
+    beside them from the same file. Prove that before reading any kallisto number: re-run
+    the b=0 leg to a fresh --out with the same design and diff it per gene against
+    validation/data/sim/c1_d1.json. The seed is replicate-only (simulate_reads.main), so the
+    fragments are identical and the signed errors must match to the bit. Any nonzero
+    difference means this refactor moved the salmon path and the twelve stored legs can no
+    longer be compared with anything."""
     if quantifier == "kallisto":
         return _quantify_kallisto(index, r1, r2, outdir, threads, kallisto_bin)
     return _quantify_salmon(index, r1, r2, outdir, threads, extra)
@@ -216,18 +225,21 @@ def _quantify_kallisto(index, r1, r2, outdir, threads, kallisto_bin):
             "came from and that transcript ids match apart from the version suffix."
             % (pct, info.get("n_processed", "?"), MIN_PERCENT_MAPPED))
 
-    counts = {}
+    counts, tpm, efflen = {}, {}, {}
     with open(os.path.join(outdir, "abundance.tsv")) as f:
         header = next(f).rstrip("\n").split("\t")
         try:
             col = header.index("est_counts")
+            col_tpm, col_len = header.index("tpm"), header.index("eff_length")
         except ValueError:
-            raise RuntimeError("abundance.tsv header %r has no est_counts column; this "
-                               "kallisto writes a layout this harness does not know"
+            raise RuntimeError("abundance.tsv header %r lacks est_counts, tpm or eff_length; "
+                               "this kallisto writes a layout this harness does not know"
                                % header) from None
         for line in f:
             pes = line.rstrip("\n").split("\t")
-            counts[pes[0].split(".")[0]] = float(pes[col])
+            t = pes[0].split(".")[0]
+            counts[t] = float(pes[col])
+            tpm[t], efflen[t] = float(pes[col_tpm]), float(pes[col_len])
     diag = {"percent_mapped": pct,
             "num_processed": info.get("n_processed"),
             "num_mapped": info.get("n_pseudoaligned"),
@@ -236,7 +248,7 @@ def _quantify_kallisto(index, r1, r2, outdir, threads, kallisto_bin):
             "library_type": "fr-stranded (asserted, not detected)",
             "frag_length_mean": None,
             "frag_length_sd": None}
-    return counts, diag
+    return counts, diag, {"tpm": tpm, "efflen": efflen}
 
 
 def _quantify_salmon(index, r1, r2, outdir, threads, extra):
@@ -279,12 +291,17 @@ def _quantify_salmon(index, r1, r2, outdir, threads, extra):
               "but if the orientation changed the truth and the estimate may no longer "
               "describe the same fragments." % (detected, EXPECTED_LIBTYPE))
 
-    counts = {}
+    counts, tpm, efflen = {}, {}, {}
     with open(os.path.join(outdir, "quant.sf")) as f:
-        next(f)
+        header = next(f).rstrip("\n").split("\t")
+        if header[:5] != ["Name", "Length", "EffectiveLength", "TPM", "NumReads"]:
+            raise RuntimeError("quant.sf header %r is not Salmon's Name, Length, "
+                               "EffectiveLength, TPM, NumReads" % header)
         for line in f:
             p = line.rstrip("\n").split("\t")
             counts[p[0].split(".")[0]] = float(p[4])          # NumReads
+            tpm[p[0].split(".")[0]] = float(p[3])
+            efflen[p[0].split(".")[0]] = float(p[2])
     diag = {"percent_mapped": pct,
             "num_processed": meta.get("num_processed"),
             "num_mapped": meta.get("num_mapped"),
@@ -292,7 +309,65 @@ def _quantify_salmon(index, r1, r2, outdir, threads, extra):
             "library_type": detected,
             "frag_length_mean": meta.get("frag_length_mean"),
             "frag_length_sd": meta.get("frag_length_sd")}
-    return counts, diag
+    return counts, diag, {"tpm": tpm, "efflen": efflen}
+
+
+def kept_copies(index):
+    """``{dropped id: kept id}`` from the index's ``duplicate_clusters.tsv``, which Salmon
+    writes when it keeps one of several transcripts of identical sequence; ``{}`` when the
+    index has none (a kallisto index, or one built with duplicates kept)."""
+    path = os.path.join(index, "duplicate_clusters.tsv")
+    out = {}
+    if os.path.exists(path):
+        with open(path) as f:
+            next(f)
+            for line in f:
+                kept, dropped = line.rstrip("\n").split("\t")[:2]
+                out[dropped.split(".")[0]] = kept.split(".")[0]
+    return out
+
+
+def tpm_truth(groups, pc, seqs, written, efflen, kept=None):
+    """The TPM row's truth for one gene and replicate: per class of ``pc``, the sum over its
+    transcripts of the fragments written for each (``written``) over the effective length
+    the quantifier gave it (``efflen``) -- the class's summed TPM, up to the library's one
+    normalising factor, had every fragment gone to the transcript it was drawn from.
+
+    A transcript the quantifier does not list, because its index kept another of identical
+    sequence, takes the effective length of the one kept: ``kept`` (the index's
+    ``duplicate_clusters.tsv``, :func:`kept_copies`) names it, or else the transcript of the
+    gene with the same sequence that the quantifier lists.  Its fragments stay in the truth;
+    the quantifier gave them to the one kept.  A transcript with neither is refused, as is an
+    effective length that is not positive: the truth would be undefined.
+
+    Returns ``({class: truth}, {transcript: the transcript whose length it took})``.
+    """
+    kept = kept or {}
+    took = {}
+    out = {}
+    for c in pc:
+        total = 0.0
+        for t in groups[c]:
+            source = t
+            if t not in efflen:
+                source = kept.get(t)
+                if source not in efflen:
+                    same = [u for u in sorted(seqs) if u != t and u in efflen
+                            and seqs[u] == seqs[t]]
+                    if not same:
+                        raise RuntimeError(
+                            "the quantifier lists no %s and no transcript of identical "
+                            "sequence: its effective length, and so the TPM truth, is "
+                            "undefined" % t)
+                    source = same[0]
+                took[t] = source
+            e = efflen[source]
+            if not e > 0:
+                raise RuntimeError("the effective length the quantifier gives %s is %r"
+                                   % (source, e))
+            total += written.get(t, 0) / e
+        out[c] = total
+    return out, took
 
 
 def one_replicate(a, rep, source, genes_arg=None):
@@ -315,17 +390,19 @@ def one_replicate(a, rep, source, genes_arg=None):
     base = os.path.join(work, "rep%d" % rep)
     truth = json.load(open(base + ".truth.json"))
     try:
-        counts, diag = quantify(a.index, base + "_1.fq.gz", base + "_2.fq.gz",
-                                os.path.join(work, "quant%d" % rep), a.threads,
-                                a.salmon_flags.split() if a.salmon_flags else [],
-                                getattr(a, "quantifier", "salmon"),
-                                getattr(a, "kallisto_bin", "kallisto"))
+        counts, diag, abundance = quantify(
+            a.index, base + "_1.fq.gz", base + "_2.fq.gz",
+            os.path.join(work, "quant%d" % rep), a.threads,
+            a.salmon_flags.split() if a.salmon_flags else [],
+            getattr(a, "quantifier", "salmon"), getattr(a, "kallisto_bin", "kallisto"))
     finally:
         # 270 replicates leak 270 libraries if a quant fails halfway
         for f in (base + "_1.fq.gz", base + "_2.fq.gz"):
             if os.path.exists(f):
                 os.remove(f)
     out = {}
+    kept = kept_copies(a.index)
+    diag["effective_length_taken_from"] = {}
     for gene, g in truth["genes"].items():
         pc = g["primary_comparison"]
         cfg = source[gene]["config"]
@@ -338,6 +415,20 @@ def one_replicate(a, rep, source, genes_arg=None):
             "true_log2_ratio": g["true_log2_ratio"],
             "estimated": est, "true": tru,
         }
+        # the class ratio of summed TPM, against the ratio it would read had every fragment
+        # gone to the transcript it was drawn from (tpm_truth); a replicate counts as above
+        seqs = {t.split(".")[0]: s for t, s in source[gene]["sequences"].items()}
+        est_t = {c: sum(abundance["tpm"].get(t, 0.0) for t in groups[c]) for c in pc}
+        tru_t, took = tpm_truth(groups, pc, seqs, g["fragments_per_transcript"],
+                                abundance["efflen"], kept)
+        ok_t = all(est_t[c] > 0 and tru_t[c] > 0 for c in pc)
+        out[gene]["tpm"] = {
+            "estimated_log2_ratio": math.log2(est_t[pc[0]] / est_t[pc[1]]) if ok_t else None,
+            "true_log2_ratio": math.log2(tru_t[pc[0]] / tru_t[pc[1]]) if ok_t else None,
+            "estimated": est_t, "true": tru_t,
+        }
+        if took:
+            diag["effective_length_taken_from"][gene] = took
     # keep the two small files that say what salmon did; drop the bulky rest
     qdir = os.path.join(work, "quant%d" % rep)
     for keep in ("cmd_info.json",):
@@ -411,6 +502,63 @@ def summarise(per_rep, source, tpm, depth_scale, genes=None, mean_efflen=None, r
                          rmse=math.sqrt(sum(x * x for x in errs) / len(errs)),
                          **p))
     return rows
+
+
+def predicted_abundance(source, gene, tpm, depth_scale, mean_efflen=None):
+    """The abundance estimand's contrast figures, as :func:`predicted` gives the fragment
+    estimand's, for the TPM rows."""
+    cfg = source[gene]["config"]
+    seqs = {t.split(".")[0]: s for t, s in source[gene]["sequences"].items()}
+    need = {t.split(".")[0] for v in cfg["groups"].values() for t in v}
+    kw = {} if mean_efflen is None else {"mean_efflen": mean_efflen}
+    res = I.analyze(cfg,
+                    sequences={t: seqs[t] for t in need},
+                    background_sequences={t: s for t, s in seqs.items() if t not in need},
+                    background_gene_transcripts=False,
+                    tpm=tpm, depth=30e6 * depth_scale, **kw)
+    c = res["estimands"]["abundance"]["contrast"]
+    return {"estimable": c["estimable"],
+            "min_resolvable_log2fc": c["min_resolvable_log2fc"],
+            "beyond_linear": c["beyond_linear"],
+            "predicted_se": (c["min_resolvable_log2fc"] / 1.96
+                             if math.isfinite(c["min_resolvable_log2fc"]) else float("inf"))}
+
+
+def summarise_tpm(per_rep, source, tpm, depth_scale, genes=None, mean_efflen=None,
+                  ratio=None):
+    """The TPM rows: :func:`summarise`'s statistics -- ``n``, ``realised_sd`` (SD of the
+    estimated log2 ratio), ``bias`` (median error), ``rmse`` -- over each replicate's
+    ``tpm`` entry, with the abundance estimand's prediction.  A ``--ratio`` run carries no
+    prediction here: it is solved at flat TPM only."""
+    rows = []
+    names = genes or sorted({g for r in per_rep for g in r})
+    for gene in names:
+        errs, ests = [], []
+        for r in per_rep:
+            e = (r.get(gene) or {}).get("tpm")
+            if e and e["estimated_log2_ratio"] is not None and e["true_log2_ratio"] is not None:
+                ests.append(e["estimated_log2_ratio"])
+                errs.append(e["estimated_log2_ratio"] - e["true_log2_ratio"])
+        if len(ests) < 3:
+            continue
+        p = (predicted_abundance(source, gene, tpm, depth_scale, mean_efflen)
+             if ratio is None else {"estimable": None, "min_resolvable_log2fc": None,
+                                    "beyond_linear": None, "predicted_se": None})
+        rows.append(dict(gene=gene, n=len(ests),
+                         realised_sd=statistics.stdev(ests),
+                         bias=statistics.median(errs),
+                         rmse=math.sqrt(sum(x * x for x in errs) / len(errs)),
+                         **p))
+    return rows
+
+
+def _sha256(path):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def cmd_checkpoint(a):
@@ -514,19 +662,28 @@ def cmd_run(a):
     per = [r[0] for r in reps]
     diags = [r[2] for r in reps]
     rows = summarise(per, source, a.tpm, a.depth_scale, None, a.mean_efflen, a.ratio)
+    rows_tpm = summarise_tpm(per, source, a.tpm, a.depth_scale, None, a.mean_efflen, a.ratio)
+    taken = {}
+    for d in diags:
+        for gene, took in d.get("effective_length_taken_from", {}).items():
+            taken.setdefault(gene, {}).update(took)
     json.dump({"design": {"depth_scale": a.depth_scale, "ratio": a.ratio,
                           "tpm": a.tpm, "bias_5p": a.bias_5p,
                           "mean_efflen": a.mean_efflen,
                           "replicates": a.replicates,
                           "salmon_flags": a.salmon_flags,
-                          "quantifier": getattr(a, "quantifier", "salmon")},
+                          "quantifier": getattr(a, "quantifier", "salmon"),
+                          "genes_simulated": sorted(source),
+                          "inputs_sha256": _sha256(a.inputs) if a.inputs else None},
                "salmon": {"version": diags[0].get("salmon_version") if diags else None,
                           "kallisto_version": (diags[0].get("kallisto_version")
                                                if diags else None),
                           "percent_mapped_min": min((d["percent_mapped"] for d in diags),
                                                     default=None),
                           "library_type": diags[0].get("library_type") if diags else None},
-               "genes": rows}, open(a.out, "w"), indent=1)
+               "genes": rows,
+               "genes_tpm": rows_tpm,
+               "effective_length_taken_from": taken}, open(a.out, "w"), indent=1)
     good = [r for r in rows if r["estimable"]]
     bad = [r for r in rows if not r["estimable"]]
     print("\n%d genes, %d estimable, %d not" % (len(rows), len(good), len(bad)))
@@ -574,6 +731,8 @@ def cmd_run(a):
             print("      TPM (annotation count drives both the flag and the fragment")
             print("      count), so a raw difference here is confounded -- see")
             print("      validation/README.md before reading anything into it.")
+    print("\nTPM rows (class ratio of summed TPM against tpm_truth): %d genes; "
+          "validation/gate_3_0.py grades a uniform-coverage Salmon run" % len(rows_tpm))
     print("\nwrote %s" % a.out)
     return 0
 

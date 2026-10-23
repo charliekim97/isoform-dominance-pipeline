@@ -76,6 +76,22 @@ versioning.
   transcript less than TPM does; its precision figures have not yet been checked against a
   quantifier's TPM, and the command says so wherever it offers or uses the estimand
   (`tests/test_estimands.py`).
+- **The simulation harness records summed TPM, and `validation/gate_3_0.py` grades the 3.0
+  gate.** Beside the `NumReads` rows, which are unchanged, `run_simulation.py run` writes
+  `genes_tpm`: the class ratio of summed `TPM` against the ratio summed TPM would read had
+  every fragment gone to the transcript it was drawn from -- the fragments written for each
+  transcript over the effective length the quantifier gives it (`tpm_truth`), so that the
+  simulator's own effective length, which is not Salmon's for short transcripts, does not
+  enter -- with the abundance estimand's prediction. A transcript the index dropped as
+  identical to another takes the kept one's effective length (the index's
+  `duplicate_clusters.tsv`, or the gene's transcript of identical sequence), and one with
+  neither stops the run. The design block names the genes simulated and the inputs' SHA-256.
+  `gate_3_0.py` applies the gate's steps 3 to 6 to such a run against the predictions fixed
+  in `gate_3_0_predictions.json`, after checking their SHA-256 against the gate's text, and
+  refuses a run of another design, quantifier or Salmon version, or one whose `NumReads`
+  rows do not reproduce the stored uniform run within 0.01 log2 (exit status 2); it exits 0
+  when the gate passes and 1 when it fails (`tests/test_gate_3_0.py`,
+  `tests/test_harness_smoke.py`).
 
 ### Fixed
 - **A numerical fault in `identifiability` is no longer reported as a config error.** numpy's

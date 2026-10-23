@@ -6,7 +6,9 @@ predicted for each gene, before any read existed, was recorded beside the realis
 
 - `data/`: the stored outputs and the inputs they were made from, kept unchanged; `data/README.md` gives the design
   and the SHA-256 of every file.
-- `run_simulation.py`, `simulate_reads.py`: the harness that made them.
+- `run_simulation.py`, `simulate_reads.py`: the harness that made them. It now also records the class ratio of summed
+  TPM, which the stored outputs do not hold (below, "Remaking a design").
+- `gate_3_0.py`: grades a TPM run against the gate for 3.0 (below, "The abundance estimand ...").
 - `summarize.py`: recomputes, from `data/` and the installed package, every figure the documentation quotes from
   this simulation, and the four-row comparison of issue #2. `summary.json` is its output, and the block below is
   generated from it.
@@ -45,6 +47,22 @@ them, which is the order of the per-gene files it was made from (`--rundir` take
 bundle is read as it is, never sorted; `tests/test_validation_harness.py` checks that the bundle and its unpacked
 files give the same replicate. For kallisto, build its index with `index --quantifier kallisto` and run with
 `--quantifier kallisto --kallisto-bin <path>`.
+
+Beside the `NumReads` rows (`genes`), a run made by this harness writes `genes_tpm`: per gene, the class ratio of summed
+`TPM` against the ratio summed TPM would read had every fragment gone to the transcript it was drawn from -- the
+fragments written for each transcript over the effective length the quantifier itself gives it
+(`run_simulation.tpm_truth`), a transcript the index dropped as identical to another taking the kept one's -- with the
+abundance estimand's prediction. The `NumReads` rows are what they were: `tests/test_harness_smoke.py` runs both with
+a stubbed Salmon. `gate_3_0.py` grades a uniform-coverage Salmon run by the gate below, against the predictions fixed
+with it, and refuses a run of another design, quantifier or Salmon version, or one whose `NumReads` rows do not
+reproduce the stored uniform run (`data/sim/c1_d1.json`, within 0.01 log2), which the same seeds, reads, Salmon and
+index give again:
+
+```bash
+python validation/run_simulation.py run --inputs validation/data/sweep116.json.gz --index salmon_idx \
+    --work sim --bias-5p 0 --replicates 30 --out c1_d1_tpm.json
+python validation/gate_3_0.py c1_d1_tpm.json    # exit status 0: passes, 1: fails, 2: not graded
+```
 
 ## The panel
 
