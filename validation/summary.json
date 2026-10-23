@@ -371,6 +371,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.6312518840616258
+    },
     "beyond_linear": false,
     "conditioning_factor": 35.76286590552803,
     "estimable": true,
@@ -416,6 +420,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.516782435962622
+    },
     "beyond_linear": false,
     "conditioning_factor": 7.912143058058787,
     "estimable": true,
@@ -453,6 +461,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.17975797284386544
+    },
     "beyond_linear": false,
     "conditioning_factor": 40.1754685570785,
     "estimable": true,
@@ -496,6 +508,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.65963668699118
+    },
     "beyond_linear": true,
     "conditioning_factor": null,
     "estimable": false,
@@ -605,6 +621,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.27789169004181563
+    },
     "beyond_linear": false,
     "conditioning_factor": 9.68428779161243,
     "estimable": true,
@@ -645,6 +665,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.6618659185975829
+    },
     "beyond_linear": false,
     "conditioning_factor": 46.92560890826128,
     "estimable": true,
@@ -682,6 +706,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 1.3648316022948122
+    },
     "beyond_linear": true,
     "conditioning_factor": 193.71447618209626,
     "estimable": true,
@@ -733,6 +761,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 1.2041382982293682
+    },
     "beyond_linear": true,
     "conditioning_factor": 363.7229829551353,
     "estimable": true,
@@ -845,6 +877,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 1.0486753706021972
+    },
     "beyond_linear": true,
     "conditioning_factor": 45.49444986543773,
     "estimable": true,
@@ -897,6 +933,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 1.0854671538351743
+    },
     "beyond_linear": true,
     "conditioning_factor": 220.80188414318866,
     "estimable": true,
@@ -950,6 +990,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 1.0963656664431114
+    },
     "beyond_linear": true,
     "conditioning_factor": 46.79517851191963,
     "estimable": true,
@@ -995,6 +1039,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 1.5941571963706305
+    },
     "beyond_linear": true,
     "conditioning_factor": 812.9519387867182,
     "estimable": true,
@@ -1055,6 +1103,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 1.2723564284778348
+    },
     "beyond_linear": true,
     "conditioning_factor": 75.18289654900408,
     "estimable": true,
@@ -1111,6 +1163,10 @@
     "salmon": 5
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 2.3781430506007997
+    },
     "beyond_linear": true,
     "conditioning_factor": 58.77564030543049,
     "estimable": true,
@@ -1150,6 +1206,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.6790016556085469
+    },
     "beyond_linear": false,
     "conditioning_factor": 3.829079730913794,
     "estimable": true,
@@ -1187,6 +1247,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.9861754697910434
+    },
     "beyond_linear": true,
     "conditioning_factor": 51.90586695250337,
     "estimable": true,
@@ -1234,6 +1298,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.7018607719624906
+    },
     "beyond_linear": false,
     "conditioning_factor": 2.5664263171828594,
     "estimable": true,
@@ -1276,6 +1344,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.3282445936679987
+    },
     "beyond_linear": false,
     "conditioning_factor": 181.39759981383696,
     "estimable": true,
@@ -1315,6 +1387,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.2888098627525015
+    },
     "beyond_linear": false,
     "conditioning_factor": 15.874202061807605,
     "estimable": true,
@@ -1351,6 +1427,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.2760940914984326
+    },
     "beyond_linear": false,
     "conditioning_factor": 68.92735846063967,
     "estimable": true,
@@ -1417,6 +1497,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.2290752701188483
+    },
     "beyond_linear": true,
     "conditioning_factor": null,
     "estimable": false,
@@ -1496,6 +1580,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.7540900366302965
+    },
     "beyond_linear": false,
     "conditioning_factor": 231.92257128601966,
     "estimable": true,
@@ -1559,6 +1647,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.5004817090217214
+    },
     "beyond_linear": false,
     "conditioning_factor": 4.876900196820168,
     "estimable": true,
@@ -1594,6 +1686,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.5780370398761574
+    },
     "beyond_linear": false,
     "conditioning_factor": 49.095496353037554,
     "estimable": true,
@@ -1640,6 +1736,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.5692668741099504
+    },
     "beyond_linear": false,
     "conditioning_factor": 93.34441225510253,
     "estimable": true,
@@ -1688,6 +1788,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.4068073228905692
+    },
     "beyond_linear": false,
     "conditioning_factor": 4.127844666459681,
     "estimable": true,
@@ -1726,6 +1830,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.43285904873159764
+    },
     "beyond_linear": false,
     "conditioning_factor": 77.03946748286744,
     "estimable": true,
@@ -1765,6 +1873,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.7416014819442026
+    },
     "beyond_linear": false,
     "conditioning_factor": 127.07965898291721,
     "estimable": true,
@@ -1827,6 +1939,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.22523023449747095
+    },
     "beyond_linear": false,
     "conditioning_factor": 117.67699460999815,
     "estimable": true,
@@ -1868,6 +1984,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.6516016320666714
+    },
     "beyond_linear": false,
     "conditioning_factor": 14.195052279776554,
     "estimable": true,
@@ -1906,6 +2026,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.46503208390626233
+    },
     "beyond_linear": false,
     "conditioning_factor": 64.98073262245336,
     "estimable": true,
@@ -1945,6 +2069,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.863309402691188
+    },
     "beyond_linear": true,
     "conditioning_factor": 38.25957451783937,
     "estimable": true,
@@ -2012,6 +2140,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 4.369064882890789
+    },
     "beyond_linear": true,
     "conditioning_factor": 293.52358983736036,
     "estimable": true,
@@ -2109,6 +2241,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.13329311331916965
+    },
     "beyond_linear": true,
     "conditioning_factor": null,
     "estimable": false,
@@ -2175,6 +2311,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.06777761466184204
+    },
     "beyond_linear": true,
     "conditioning_factor": null,
     "estimable": false,
@@ -2234,6 +2374,10 @@
     "salmon": 3
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 140.39179335150672
+    },
     "beyond_linear": true,
     "conditioning_factor": 2182.360769787888,
     "estimable": true,
@@ -2304,6 +2448,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.8356616109629003
+    },
     "beyond_linear": true,
     "conditioning_factor": 25.679390639284872,
     "estimable": true,
@@ -2346,6 +2494,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.6145168308413994
+    },
     "beyond_linear": false,
     "conditioning_factor": 68.19619693795104,
     "estimable": true,
@@ -2442,6 +2594,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.15315358563656623
+    },
     "beyond_linear": false,
     "conditioning_factor": 48.697716753195586,
     "estimable": true,
@@ -2488,6 +2644,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.9861640463473752
+    },
     "beyond_linear": true,
     "conditioning_factor": 91.8746872773252,
     "estimable": true,
@@ -2529,6 +2689,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.8665573270961009
+    },
     "beyond_linear": true,
     "conditioning_factor": null,
     "estimable": false,
@@ -2573,6 +2737,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.8516909086967249
+    },
     "beyond_linear": true,
     "conditioning_factor": 110.51514051392158,
     "estimable": true,
@@ -2619,6 +2787,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.19292403661394503
+    },
     "beyond_linear": false,
     "conditioning_factor": 39.153754624332784,
     "estimable": true,
@@ -2662,6 +2834,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.7859180113709412
+    },
     "beyond_linear": false,
     "conditioning_factor": 348.45197837556185,
     "estimable": true,
@@ -2709,6 +2885,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 2.6695907893137374
+    },
     "beyond_linear": true,
     "conditioning_factor": null,
     "estimable": false,
@@ -2755,6 +2935,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.3800290743044196
+    },
     "beyond_linear": false,
     "conditioning_factor": 215.16276876134333,
     "estimable": true,
@@ -2818,6 +3002,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 10.896908163302532
+    },
     "beyond_linear": true,
     "conditioning_factor": 718.7508090992766,
     "estimable": true,
@@ -2878,6 +3066,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": false,
+     "min_resolvable_log2fc": null
+    },
     "beyond_linear": true,
     "conditioning_factor": null,
     "estimable": false,
@@ -2938,6 +3130,10 @@
     "salmon": 7
    },
    "structural": {
+    "abundance": {
+     "estimable": true,
+     "min_resolvable_log2fc": 0.982672236168151
+    },
     "beyond_linear": true,
     "conditioning_factor": null,
     "estimable": false,
@@ -3126,11 +3322,22 @@
    }
   ],
   "conditioning_range": 850.3500588255514,
+  "estimable_as_abundance_only": [
+   "CANX",
+   "GNAS",
+   "NTRK2",
+   "NTRK3",
+   "SMN2",
+   "TNFRSF1B",
+   "VEGFA"
+  ],
+  "estimable_as_fragment_only": [],
   "fraction_over_tau": 0.8536585365853658,
   "median_conditioning": 64.98073262245336,
   "median_min_jaccard": 0.49253082987383257,
   "n_classes_with_pairs": 74,
   "n_estimable": 41,
+  "n_estimable_abundance": 48,
   "n_genes": 49,
   "n_transcripts": 1911,
   "poisson_design_median": 353.73797002364626,

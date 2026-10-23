@@ -2,9 +2,12 @@
 saved example of `example/saved/`, with the same exit status.
 
 The files compared against are in ``tests/data/v270_identifiability`` (its README says how they
-were written).  Keys, strings, booleans, integers and nulls must be the same; a real number
-within a relative 1e-9 (absolute 1e-12), because a report holds residuals of about 1e-16 whose
-last digits move with the BLAS build.  The only change allowed is a key this release adds.
+were written).  Keys, in the same order, strings, booleans, integers and nulls must be the
+same; a real number within a relative 1e-9 (absolute 1e-12), because a report holds residuals
+of about 1e-16 whose last digits move with the BLAS build.  The only change allowed is a key
+this release adds.  ``--json`` writes keys in the order the report holds them, so with the
+order the same a report's bytes are 2.7.0's up to the keys added and the last digits of a
+real number.
 """
 import copy
 import json
@@ -19,8 +22,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SAVED = ROOT / "example" / "saved"
 GOLDEN = ROOT / "tests" / "data" / "v270_identifiability"
 
-#: keys of the report that 2.8.0 adds; everything else is 2.7.0's
-ADDED = ("unique_read_counting_se",)
+#: keys of the report that 2.8.0 and 2.9.0 add; everything else is 2.7.0's.  2.9.0's are the
+#: two estimands and which decides: with the default, the fields 2.7.0 wrote are the fragment
+#: estimand's, as they were (tests/test_estimands.py)
+ADDED = ("unique_read_counting_se", "decision_estimand", "estimands")
 #: keys of each group that 2.8.0 adds, null on a saved input: only a GTF says them
 ADDED_PER_GROUP = ("incomplete_3prime_only",)
 
@@ -55,6 +60,9 @@ def differences(got, want, where="report"):
                ] if set(got) - set(want) else []
         out += ["%s: keys %s missing" % (where, sorted(set(want) - set(got)))
                 ] if set(want) - set(got) else []
+        common = [k for k in got if k in want]
+        if common != [k for k in want if k in got]:
+            out.append("%s: keys in the order %s, not %s" % (where, common, list(want)))
         for k in sorted(set(got) & set(want)):
             out += differences(got[k], want[k], "%s.%s" % (where, k))
         return out
@@ -96,6 +104,13 @@ def test_the_report_on_a_saved_input_is_the_one_2_7_0_gave(name, capsys):
             else round(c["min_resolvable_log2fc"], 4)) == fc
 
 
+def _first(d, key):
+    """``d`` with ``key`` moved to the front, in place."""
+    items = [(key, d.pop(key))] + list(d.items())
+    d.clear()
+    d.update(items)
+
+
 def test_the_comparison_can_fail():
     """Each kind of change the comparison is there to catch makes it report one."""
     want = json.loads((GOLDEN / "LEPR.gencode50.json").read_text())
@@ -111,6 +126,9 @@ def test_the_comparison_can_fail():
         lambda r: r.pop("counting_noise"),
         lambda r: r["background"]["gene_transcripts"].pop(),
         lambda r: r["contrast"].__setitem__("gls_relative_se", None),
+        # the same keys in another order are other bytes
+        lambda r: _first(r["groups"]["iso_896aa"], "gls_relative_se"),
+        lambda r: _first(r, "verdict"),
     ]
     for change in changes:
         got = copy.deepcopy(want)

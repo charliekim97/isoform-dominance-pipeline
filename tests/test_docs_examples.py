@@ -30,7 +30,7 @@ from isoform_dominance import annotate, cli
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SAVED = ROOT / "example" / "saved"
 #: the pages, and the most lines each may run to
-PAGES = {"docs/tutorial_NTRK2.md": 128, "docs/example_genes.md": 92}
+PAGES = {"docs/tutorial_NTRK2.md": 176, "docs/example_genes.md": 100}
 
 
 def text_of(page):
@@ -209,17 +209,22 @@ def row(gene, n, monkeypatch, capsys):
     a, b = res["primary_comparison"]
     c = res["contrast"]
     _, _, status = run_command(argv + ["--min-log2fc", "0.5"], monkeypatch, capsys)
+    _, _, as_abundance = run_command(argv + ["--min-log2fc", "0.5", "--estimand", "abundance"],
+                                     monkeypatch, capsys)
+    abundance = res["estimands"]["abundance"]["contrast"]
     return [gene, "%d (%d)" % (n, RELEASES[n]),
             "`%s` (%d) vs `%s` (%d)" % (a, len(groups[a]), b, len(groups[b])),
             "`%s`" % res["verdict"], _cell(c["min_resolvable_log2fc"], "%.3f"),
             # the CLI prints an infinite conditioning factor as inf
             "%.2f" % (c["conditioning_factor"] if c["conditioning_factor"] is not None
-                      else float("inf")), str(status)]
+                      else float("inf")), str(status),
+            _cell(abundance["min_resolvable_log2fc"], "%.3f"), str(as_abundance)]
 
 
 HEAD = ["Gene", "GENCODE (Ensembl)", "Proposed comparison (transcripts)", "Verdict",
         "Contrast min \\|log2FC\\|", "Contrast conditioning",
-        "Exit status, `--min-log2fc 0.5`"]
+        "Exit status, `--min-log2fc 0.5`", "Abundance: contrast min \\|log2FC\\|",
+        "Abundance: exit status"]
 
 
 def test_the_table_is_what_the_saved_inputs_give(offline, monkeypatch, capsys):

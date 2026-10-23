@@ -2,7 +2,8 @@
 
 `tests/test_saved_identifiability.py` runs the current code on the same inputs and compares its report with these
 files: the same keys, the same strings, booleans, integers and nulls, and every real number within a relative
-tolerance of 1e-9 (absolute 1e-12), after removing the one key 2.8.0 adds to the report, `unique_read_counting_se`.
+tolerance of 1e-9 (absolute 1e-12), after removing the keys later releases add to the report: 2.8.0's
+`unique_read_counting_se`, and 2.9.0's `decision_estimand` and `estimands`.
 The tolerance is there because a report holds about 1e-16 `residual` values whose last digits move with the BLAS
 build; nothing else about the report may move.
 

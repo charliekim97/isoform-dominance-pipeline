@@ -140,7 +140,7 @@ Every transcript has TPM 10, so a gene's fragments grow with its transcript coun
 
 ### The structural survey of the same 49 genes
 
-Quoted by the package's docstrings, the `--min-log2fc` help and the harness. 1911 transcripts, the shortest 100 nt. The contrast is estimable for 41; their conditioning factor: median 65.0, range 850x, above 10 for 85%. The Poisson-weighted factor at theta = 1 per transcript: median 16.4, range 157x, Spearman 0.93 with the conditioning factor; with the design's expected fragment counts as theta: median 353.74, range 116.8x, Spearman 0.922. Classes whose least similar pair of transcripts shares under 5% of windows: TPI1 iso_63aa 0.004, CD44 iso_536aa 0.009, DMD iso_970aa 0.038; over the 74 classes of the primary comparisons with two or more transcripts, the median share of the least similar pair: 0.49. TPI1's unique-read counting min |log2FC|: 0.76.
+Quoted by the package's docstrings, the `--min-log2fc` help and the harness. 1911 transcripts, the shortest 100 nt. The contrast is estimable for 41; their conditioning factor: median 65.0, range 850x, above 10 for 85%. The Poisson-weighted factor at theta = 1 per transcript: median 16.4, range 157x, Spearman 0.93 with the conditioning factor; with the design's expected fragment counts as theta: median 353.74, range 116.8x, Spearman 0.922. Classes whose least similar pair of transcripts shares under 5% of windows: TPI1 iso_63aa 0.004, CD44 iso_536aa 0.009, DMD iso_970aa 0.038; over the 74 classes of the primary comparisons with two or more transcripts, the median share of the least similar pair: 0.49. TPI1's unique-read counting min |log2FC|: 0.76. As the abundance estimand (length-corrected class abundance, `--estimand abundance`) the contrast is estimable for 48: for 7 genes as abundance only (CANX, GNAS, NTRK2, NTRK3, SMN2, TNFRSF1B, VEGFA), and as fragment totals only for none.
 <!-- summary:end -->
 
 ## What the four-row table shows
@@ -172,7 +172,7 @@ conditioned (1) or badly conditioned (2), and genes the gate fails that the stru
 | S5, S6 | CHANGELOG, `[Unreleased]` |
 | S8 | `simulate_reads.py`'s docstring; here |
 | the table | README, "It bounds spread, not accuracy"; here |
-| the survey | the docstrings of `gls_covariance`, `class_coherence`, `min_resolvable_log2fc` and `analyze`; the comment in `_verdict`; the help of `--min-log2fc`; `simulate_reads.py`'s docstring |
+| the survey | the docstrings of `gls_covariance`, `class_coherence`, `min_resolvable_log2fc` and `analyze`; the comment in `_verdict`; the help of `--min-log2fc`; `simulate_reads.py`'s docstring; the README, "Two estimands", and the gate below (the abundance estimand) |
 
 ## Read S8 before any comparison of the not-estimable genes with the others
 
@@ -181,6 +181,81 @@ annotation is also what makes a class contrast inestimable. The not-estimable ge
 S8 gives a 3.9-fold larger median gene and an 8.8-fold larger smaller class. Any comparison of the two groups (S5,
 the table's excess) is confounded by depth. A later simulation should hold the gene's total fixed instead; that
 needs the prediction re-solved at the new abundances, which `simulate_reads.py`'s docstring explains.
+
+## The abundance estimand, and what decides whether it becomes the default
+
+Every row here compares a class ratio of `NumReads` with the fragments drawn, and every prediction recorded beside
+it is the fragment estimand's: this simulation checks the fragment estimand, which `identifiability` decides by
+unless asked. `--estimand abundance` decides by the length-corrected class abundance, whose class ratio is the ratio
+that summed TPM estimates, which `extract` and `stats` compare. Whether that estimand is estimable is decided
+exactly in the window system `identifiability` builds, and where only it is estimable the answer rests on counting a
+transcript's length in window positions (`identifiability.ESTIMANDS`); its precision figures have not been checked
+against a quantifier. Whether it becomes the default in 3.0 is decided by the following, fixed on 2026-10-23, before
+any such run:
+
+1. **The run.** The simulation is repeated as stored: the same 49 genes, designs, seeds and reads, every
+   replicate's library holding all 49 genes, quantified as stored (Salmon 2.7.0 against the stored index,
+   `salmon quant -l A` with no option beyond those `run_simulation.py` passes), with the class ratio of summed TPM
+   (`quant.sf`'s `TPM`) recorded beside that of `NumReads`. The truth, per replicate, is the class ratio of the sum
+   over each class of f_t / E_t, with f_t the fragments the simulator wrote for transcript t (the replicate's
+   `fragments_per_transcript`, whose class sums are the truth of the `NumReads` rows) and E_t the `EffectiveLength`
+   `quant.sf` gives t in that replicate. A transcript `quant.sf` does not list, because the index kept another of
+   identical sequence, takes the E_t of the one kept, and its fragments stay in the truth (within the 49 genes,
+   three of VEGFA's `iso_317aa` and three of TP53's `iso_354aa`, each identical to a member of its own class). This
+   truth is the ratio summed TPM would read had Salmon given every fragment to the transcript it was drawn from; as
+   the fragments drawn do for the `NumReads` rows, it leaves only how Salmon apportions the fragments. The
+   simulation's own effective length, max(1, L - 199), is not Salmon's for a transcript shorter than most fragments,
+   and with TPM 10 for every transcript as the truth Salmon would be charged for the difference: DMD's 123-nt
+   transcript alone would put about 1 log2 between its class's summed TPM and that truth. A replicate counts when
+   both classes have a positive estimate and a positive truth. A gene's bias is the median over those replicates of
+   the estimated minus the true log2 ratio, its replicate SD the standard deviation of the estimated log2 ratio, as
+   in every row here; a gene with fewer than 3 replicates that count fails both criteria and, if it is SMN2 or
+   VEGFA, stops the gate as in step 4. For kallisto, reported only, `abundance.tsv`'s `tpm` and `eff_length` stand
+   for `quant.sf`'s `TPM` and `EffectiveLength`.
+2. **The predictions.** The abundance estimand's contrast `min_resolvable_log2fc` / 1.96 (log2) at the simulated
+   design, as this code gives them: `gate_3_0_predictions.json` beside this file, written on 2026-10-23 and kept
+   unchanged (SHA-256 `b321a1b10d4319b393801ff0ca53c26e177dcbdff2ae950d76a1976170baae00`). A later change to the
+   code does not change them. For the primary set they are CANX 0.337, GNAS 0.117, NTRK2 0.068, NTRK3 0.035, SMN2
+   0.442, TNFRSF1B 1.362 and VEGFA 0.501, rounded here; the file holds them unrounded, and the grade is against the
+   file. They are figures of the abundance with window positions as lengths, not of summed TPM, which weights a
+   transcript by an effective length near L - 199: with L - 199 in place of the window positions none of the 7
+   contrasts is estimable in the window system (residual 1e-4 to 5e-2, VEGFA's the largest). The primary set
+   therefore tests whether summed TPM meets the figures of a nearby functional.
+3. **The primary set, graded first.** The 7 genes of the file's `primary` (CANX, GNAS, NTRK2, NTRK3, SMN2,
+   TNFRSF1B, VEGFA: on 2026-10-23 the genes whose contrast is estimable as abundance and not as fragment totals),
+   with Salmon, at uniform coverage (`bias_5p` 0). It passes when every one of the 7 has a |bias| below its
+   predicted SE, at least 6 of the 7 a replicate SD below it, and step 4 does not stop it: the standard the 39 genes
+   of S1 met with `NumReads`, where no |bias| reached the predicted SE and the SD stayed below it for 35.
+4. **The stop rule.** Two of the 7 already failed with `NumReads`: SMN2 (|bias| 0.544, SD 0.796, against a
+   predicted SE of 0.442) and VEGFA (|bias| 0.549 against 0.501). If either has a |bias| or a replicate SD at or
+   above its predicted SE with summed TPM, the default does not change, and why a quantifier's TPM departs from an
+   estimable abundance is found first. The one SD step 3 lets a gene miss cannot be theirs.
+5. **Predictions past the linearisation limit.** Three of the 7 are past it: SMN2, VEGFA and TNFRSF1B, at a
+   relative SE of 0.306, 0.348 and 0.944 on the natural-log scale against the limit of 0.3, where the CLI stars a
+   figure and reads it as not resolvable rather than as a value. They are graded by the same first-order SE all the
+   same, as S1 graded its 39 genes, 14 of whose predictions are past the limit too. TNFRSF1B's predicted SE, 1.362
+   log2, is so wide that its check is a weak one.
+6. **The control, graded when the primary set passes.** The 39 genes of the file's `control` (S1's on
+   2026-10-23), at uniform coverage, with their abundance predictions from the same file: a |bias| below the
+   predicted SE for at least 38, and an SD below it for at least 31, the fewest any design of S1 gave with
+   `NumReads`. Against the abundance predictions, `NumReads` at uniform coverage met them for 39 and 34. The control
+   checks that the TPM ratio and the abundance prediction agree where the two estimands do.
+7. **What decides nothing.** The six skewed designs and kallisto are reported. Under positional skew a gene's
+   bias passes its predicted SE often, whichever estimand (S1), and kallisto has no bias model.
+
+If the primary set and the control pass, 3.0 makes `abundance` the default; if the primary set fails, step 4 stops
+it or the control fails, 3.0 keeps `fragment`. The run is made once, with the stored seeds. A second run counts only
+to correct a fault in the harness found without reading the TPM rows -- a replicate whose `fragments_per_transcript`
+differ from those the stored seeds give, a quantification the harness refuses, or a figure not computed as step 1
+defines -- with its fix committed before the second run, which is graded in full; both runs are reported. A later
+change of the default needs a gate of its own, fixed before its run. `--estimand fragment` stays in 3.0 whatever the
+outcome, so that a 2.x report can be reproduced and this simulation checked again.
+
+What a pass can show: in this simulation every transcript has TPM 10, and at that truth the genes whose fragment
+contrast is not estimable had no clearly larger `NumReads` |bias| than the others (S5), and 5 of the 7 met the
+abundance standard with `NumReads` although their fragment contrast is not estimable. A pass therefore tests the
+abundance estimand's precision figures at a flat truth; it does not show that being estimable as abundance is what
+makes those 7 comparisons recoverable.
 
 ## What these outputs do not cover
 

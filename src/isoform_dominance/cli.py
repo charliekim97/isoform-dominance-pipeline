@@ -13,7 +13,8 @@ with ``--min-log2fc``:
 
 ===== ==============================================================
   0   no ``--min-log2fc`` given, or both class totals and the
-      contrast resolve it at the stated design
+      contrast of the deciding estimand (``--estimand``) resolve it at
+      the stated design
   3   ``--min-log2fc`` given and not resolved -- including when an
       estimand has no finite figure at all, or one past the
       linearisation limit (``beyond_linear``)
@@ -299,7 +300,7 @@ def _analyze(a, cfg, seqs, background, saved, captured=None):
         read_length=a.read_length, frag_mean=a.frag_mean, frag_sd=a.frag_sd,
         paired=not a.single_end, depth=a.depth, tpm=a.tpm, n_donors=a.donors,
         conditioning_tau=a.tau, min_informative_reads=a.min_informative_reads,
-        min_log2fc=a.min_log2fc, ensembl_release=a.ensembl_release,
+        min_log2fc=a.min_log2fc, estimand=a.estimand, ensembl_release=a.ensembl_release,
         inputs_out=captured, keep_duplicates=a.keep_duplicates,
         max_window_records=a.max_window_records,
         gtf=a.gtf, transcripts_fasta=a.transcripts_fasta,
@@ -486,6 +487,74 @@ def _listed(ids, n=5):
     return ", ".join(ids[:n]) + (" and %d more" % (len(ids) - n) if len(ids) > n else "")
 
 
+#: how a report's stdout names each estimand of identifiability.ESTIMANDS
+_ESTIMAND_SHORT = {"fragment": "fragment (class fragment totals)",
+                   "abundance": "abundance (length-corrected class abundance, whose class "
+                                "ratio summed TPM estimates)"}
+
+#: said of the abundance estimand wherever its figures are used or offered
+_ABUNDANCE_PENDING = ("Its estimability is decided exactly in this window system, but where "
+                      "only it is estimable that answer rests on counting each transcript's "
+                      "length in window positions (identifiability.ESTIMANDS); its precision "
+                      "figures have not yet been checked against a quantifier's TPM in "
+                      "simulation, as the fragment estimand's were against NumReads "
+                      "(validation/README.md).")
+
+
+def _estimand_notes(res):
+    """The NOTEs on the two estimands of a report: where they differ on whether the
+    compared class totals and the contrast are estimable, and, when the abundance estimand
+    decides, that its precision is not yet validated."""
+    est = res.get("estimands") or {}
+    if set(est) != {"fragment", "abundance"}:
+        return []
+    deciding = res.get("decision_estimand", "fragment")
+    pc = res["primary_comparison"][:2]
+    entries = [(g, est["fragment"]["groups"][g], est["abundance"]["groups"][g]) for g in pc]
+    entries.append(("the class contrast", est["fragment"]["contrast"],
+                    est["abundance"]["contrast"]))
+
+    def _names(items):
+        return items[0] if len(items) == 1 else "%s and %s" % (", ".join(items[:-1]), items[-1])
+
+    def _verb(items):
+        return "is" if len(items) == 1 else "are"
+    abundance_only = [g for g, f, a in entries if a["estimable"] and not f["estimable"]]
+    fragment_only = [g for g, f, a in entries if f["estimable"] and not a["estimable"]]
+    notes = []
+    if deciding == "abundance":
+        notes.append("the abundance estimand decides (--estimand abundance). "
+                     + _ABUNDANCE_PENDING)
+    # what the two answers say, and nothing they do not: an estimand that is estimable is
+    # changed by no direction this system cannot see; one that is not is changed by some,
+    # and as the two differ only in each transcript's length, a direction that changes one
+    # and not the other moves abundance between transcripts that differ in length
+    def _why(items, kept, moved):
+        if len(items) == 1:
+            return ("no direction this system cannot see changes it as %s, while some change "
+                    "it as %s" % (kept, moved))
+        return ("no direction this system cannot see changes any of them as %s, while for "
+                "each some direction changes it as %s" % (kept, moved))
+    if abundance_only:
+        notes.append(
+            "%s %s estimable as length-corrected class abundance -- whose class ratio is the "
+            "ratio that summed TPM estimates, which `extract` and `stats` compare -- and not "
+            "as fragment totals%s: %s, by moving abundance between transcripts that differ in "
+            "length.%s"
+            % (_names(abundance_only), _verb(abundance_only),
+               ", which decide here" if deciding == "fragment" else "",
+               _why(abundance_only, "abundance", "a fragment total"),
+               (" --estimand abundance decides by the abundance estimand. "
+                + _ABUNDANCE_PENDING) if deciding == "fragment" else ""))
+    if fragment_only:
+        notes.append(
+            "%s %s estimable as fragment totals and not as length-corrected class abundance: "
+            "%s, by moving abundance between transcripts that differ in length."
+            % (_names(fragment_only), _verb(fragment_only),
+               _why(fragment_only, "a fragment total", "abundance")))
+    return notes
+
+
 def _report(a, res):
     """Print the report of one run -- JSON on stdout with ``--json`` -- and return the exit
     status."""
@@ -665,6 +734,11 @@ def _report(a, res):
     print("  design: %s %dbp reads, fragments %.0f+-%.0f, depth %.0fM, TPM %.3g, n=%d"
           % ("paired" if d["paired"] else "single", d["read_length"],
              d["frag_mean"], d["frag_sd"], d["depth"] / 1e6, d["tpm"], d["n_donors"]))
+    deciding = res.get("decision_estimand", "fragment")
+    other = "abundance" if deciding == "fragment" else "fragment"
+    print("  estimand: %s decides; %s below the contrast (--estimand %s)"
+          % (_ESTIMAND_SHORT[deciding], other, other))
+
     def _finite(r):
         v = r.get("min_resolvable_log2fc")
         return v is not None and math.isfinite(v)
@@ -694,6 +768,15 @@ def _report(a, res):
     print("  contrast %s vs %s: %s; %s, conditioning %.2f"
           % (res["primary_comparison"][0], res["primary_comparison"][1],
              _fc(c), c["verdict"], c["conditioning_factor"]))
+    estimands = res.get("estimands") or {}
+    if other in estimands:
+        o = estimands[other]
+        print("  %s estimand: %s; contrast %s, %s"
+              % (other, "; ".join("[%s] %s %s" % (r["verdict"], g, _fc(r))
+                                  for g, r in o["groups"].items()),
+                 _fc(o["contrast"]), o["contrast"]["verdict"]))
+        for note in _estimand_notes(res):
+            print("  NOTE: " + note, file=sys.stderr)
     a_name, b_name = res["primary_comparison"][:2]
     ratio = c.get("log2_efflen_ratio")
     if ratio is not None:
@@ -730,7 +813,10 @@ def _report(a, res):
                   "position above -- the direction can reverse; the interaction was not "
                   "measured." % (2 ** abs(ratio), shorter, longer),
                   file=sys.stderr)
-    if any(_starred(r) for r in list(res["groups"].values()) + [c]):
+    shown = list(res["groups"].values()) + [c]
+    if other in estimands:                  # the other estimand's line stars its figures too
+        shown += list(estimands[other]["groups"].values()) + [estimands[other]["contrast"]]
+    if any(_starred(r) for r in shown):
         print("  * first-order figure past the linearisation limit: read it as "
               "'not resolvable at this design', not as a value.", file=sys.stderr)
     for g, j in incoherent:
@@ -778,7 +864,9 @@ def _report(a, res):
                          for reason, names in why.items() if names)
         print("  EFFECT SIZE: |log2FC| %.3f %s at this design%s"
               % (d["min_log2fc"],
-                 "resolved by both class totals and the contrast"
+                 ("resolved by both class abundances and the contrast"
+                  if res.get("decision_estimand") == "abundance"
+                  else "resolved by both class totals and the contrast")
                  if res["effect_resolvable"] else "NOT resolved",
                  "" if res["effect_resolvable"] or not said else " (%s)" % said))
     print("  VERDICT:", res["verdict"])
@@ -1007,6 +1095,14 @@ def build_parser():
                         "exit status (3 when not resolved), which is the recommended way "
                         "to run this (--tau has no calibrated value: over a 49-gene survey "
                         "the median gene sat at conditioning 65 against the default 10)")
+    s.add_argument("--estimand", choices=identifiability.ESTIMANDS, default="fragment",
+                   help="which class totals decide the verdict, the effect size and the exit "
+                        "status: 'fragment', the expected fragment counts (the default, and "
+                        "2.8.0's), or 'abundance', the length-corrected class abundance, whose "
+                        "class ratio is the ratio that summed TPM estimates, which extract and "
+                        "stats compare. Both are "
+                        "reported; the abundance estimand's precision figures await a check "
+                        "against a quantifier's TPM in simulation")
     s.add_argument("--tau", type=float, default=identifiability.DEFAULT_CONDITIONING_TAU,
                    help="structural conditioning factor above which a class is only weakly "
                         "identifiable; a diagnostic that does not affect the exit status")

@@ -36,9 +36,11 @@ isoform-dominance identifiability --config example/saved/NTRK2.gencode50.config.
 #   annotation: Ensembl release 116; sequence from saved inputs (release 116, example/saved/NTRK2.gencode50.inputs.json)
 #   background: 30 same-gene transcript(s)
 #   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
+#   estimand: fragment (class fragment totals) decides; abundance below the contrast (--estimand abundance)
 #   [not_identifiable] iso_822aa: min |log2FC| n/a; class 31 unique k-mers; best transcript 57 bp in 1 block(s), ~34 informative reads; conditioning inf
 #   [not_identifiable] iso_477aa: min |log2FC| n/a; class 287 unique k-mers; best transcript 60 bp in 1 block(s), ~35 informative reads; conditioning inf
 #   contrast iso_477aa vs iso_822aa: min |log2FC| n/a; not_identifiable, conditioning inf
+#   abundance estimand: [weakly_identifiable] iso_822aa min |log2FC| 0.104; [weakly_identifiable] iso_477aa min |log2FC| 0.061; contrast min |log2FC| 0.133, weakly_identifiable
 #   effective length: iso_477aa 6232 bp vs iso_822aa 7940 bp (mean per transcript), log2 ratio -0.35
 #   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_477aa median 0.24 [0.05-0.99], 360 positions over 22 transcript(s); iso_822aa median 0.04 [0.04-1.00], 39 positions over 12 transcript(s)
 #   unique-read counting SE (best transcript per class) on log2 ratio: 0.347 per donor, min resolvable |log2FC| 0.680 at n=1
@@ -56,9 +58,11 @@ isoform-dominance identifiability --config example/saved/NTRK2.gencode50.config.
 #   annotation: Ensembl release 116; sequence from saved inputs (release 116, example/saved/NTRK2.gencode50.inputs.json)
 #   background: 30 same-gene transcript(s)
 #   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
+#   estimand: fragment (class fragment totals) decides; abundance below the contrast (--estimand abundance)
 #   [not_identifiable] iso_822aa: min |log2FC| n/a; class 31 unique k-mers; best transcript 57 bp in 1 block(s), ~34 informative reads; conditioning inf
 #   [not_identifiable] iso_477aa: min |log2FC| n/a; class 287 unique k-mers; best transcript 60 bp in 1 block(s), ~35 informative reads; conditioning inf
 #   contrast iso_477aa vs iso_822aa: min |log2FC| n/a; not_identifiable, conditioning inf
+#   abundance estimand: [weakly_identifiable] iso_822aa min |log2FC| 0.104; [weakly_identifiable] iso_477aa min |log2FC| 0.061; contrast min |log2FC| 0.133, identifiable
 #   effective length: iso_477aa 6232 bp vs iso_822aa 7940 bp (mean per transcript), log2 ratio -0.35
 #   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_477aa median 0.24 [0.05-0.99], 360 positions over 22 transcript(s); iso_822aa median 0.04 [0.04-1.00], 39 positions over 12 transcript(s)
 #   unique-read counting SE (best transcript per class) on log2 ratio: 0.347 per donor, min resolvable |log2FC| 0.680 at n=1
@@ -69,8 +73,7 @@ isoform-dominance identifiability --config example/saved/NTRK2.gencode50.config.
 
 ## 3. What the command says of its verdict
 
-The blocks above are standard output. On standard error the first run also says, word for
-word:
+The blocks above are standard output. On stderr the first run also says, word for word:
 
 > The verdict is a screening flag, not the exit status. It says whether each class total
 > and the contrast lie in the row space of a sequence-derived compatibility surrogate at
@@ -85,7 +88,57 @@ word:
 > statement about the data: a longer --window, a different grouping, or long reads may
 > change it.
 
-## 4. Unique k-mers between the two classes alone
+## 4. Class abundance, the other estimand
+
+The line under the contrast is the other estimand, which decides nothing in these runs: the
+length-corrected class abundance, whose class ratio is the ratio that summed TPM estimates.
+That ratio is what `extract` and `stats` compare. For NTRK2 at GENCODE 50 it is estimable
+where the class fragment totals are not, and the first run says so on stderr:
+
+> iso_477aa, iso_822aa and the class contrast are estimable as length-corrected class abundance
+> -- whose class ratio is the ratio that summed TPM estimates, which `extract` and `stats`
+> compare -- and not as fragment totals, which decide here: no direction this system cannot see
+> changes any of them as abundance, while for each some direction changes it as a fragment
+> total, by moving abundance between transcripts that differ in length. --estimand abundance
+> decides by the abundance estimand. Its estimability is decided exactly in this window system,
+> but where only it is estimable that answer rests on counting each transcript's length in
+> window positions (identifiability.ESTIMANDS); its precision figures have not yet been checked
+> against a quantifier's TPM in simulation, as the fragment estimand's were against NumReads
+> (validation/README.md).
+
+`--estimand abundance` makes it decide:
+
+```bash
+isoform-dominance identifiability --config example/saved/NTRK2.gencode50.config.json \
+    --inputs example/saved/NTRK2.gencode50.inputs.json --min-log2fc 0.5 --estimand abundance
+# Identifiability (window=31, canonical k-mers)
+#   annotation: Ensembl release 116; sequence from saved inputs (release 116, example/saved/NTRK2.gencode50.inputs.json)
+#   background: 30 same-gene transcript(s)
+#   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
+#   estimand: abundance (length-corrected class abundance, whose class ratio summed TPM estimates) decides; fragment below the contrast (--estimand fragment)
+#   [weakly_identifiable] iso_822aa: min |log2FC| 0.104; class 31 unique k-mers; best transcript 57 bp in 1 block(s), ~34 informative reads; conditioning 59.36
+#   [weakly_identifiable] iso_477aa: min |log2FC| 0.061; class 287 unique k-mers; best transcript 60 bp in 1 block(s), ~35 informative reads; conditioning 38.21
+#   contrast iso_477aa vs iso_822aa: min |log2FC| 0.133; identifiable, conditioning 70.02
+#   fragment estimand: [not_identifiable] iso_822aa min |log2FC| n/a; [not_identifiable] iso_477aa min |log2FC| n/a; contrast min |log2FC| n/a, not_identifiable
+#   effective length: iso_477aa 6232 bp vs iso_822aa 7940 bp (mean per transcript), log2 ratio -0.35
+#   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_477aa median 0.24 [0.05-0.99], 360 positions over 22 transcript(s); iso_822aa median 0.04 [0.04-1.00], 39 positions over 12 transcript(s)
+#   unique-read counting SE (best transcript per class) on log2 ratio: 0.347 per donor, min resolvable |log2FC| 0.680 at n=1
+#   EFFECT SIZE: |log2FC| 0.500 resolved by both class abundances and the contrast at this design
+#   VERDICT: weakly_identifiable
+# exit status 0
+```
+
+`VERDICT` reads `weakly_identifiable` because each class's best transcript has fewer than the
+`--min-informative-reads` default of 50 informative reads, a count that does not depend on the
+estimand. The effect of 0.5 is resolved, and the exit status is 0. On stderr the run adds:
+
+> the abundance estimand decides (--estimand abundance). Its estimability is decided exactly in
+> this window system, but where only it is estimable that answer rests on counting each
+> transcript's length in window positions (identifiability.ESTIMANDS); its precision figures
+> have not yet been checked against a quantifier's TPM in simulation, as the fragment
+> estimand's were against NumReads (validation/README.md).
+
+## 5. Unique k-mers between the two classes alone
 
 The background is the gene's 30 other transcripts, which the inputs hold. Without it,
 uniqueness is judged between the two classes only:
@@ -97,9 +150,11 @@ isoform-dominance identifiability --config example/saved/NTRK2.gencode50.config.
 #   annotation: Ensembl release 116; sequence from saved inputs (release 116, example/saved/NTRK2.gencode50.inputs.json)
 #   background: 0 same-gene transcript(s)
 #   design: paired 100bp reads, fragments 200+-60, depth 30M, TPM 10, n=1
+#   estimand: fragment (class fragment totals) decides; abundance below the contrast (--estimand abundance)
 #   [not_identifiable] iso_822aa: min |log2FC| n/a; class 6793 unique k-mers; best transcript 6772 bp in 2 block(s), ~1369 informative reads; conditioning inf
 #   [not_identifiable] iso_477aa: min |log2FC| n/a; class 5639 unique k-mers; best transcript 5356 bp in 2 block(s), ~1086 informative reads; conditioning inf
 #   contrast iso_477aa vs iso_822aa: min |log2FC| n/a; not_identifiable, conditioning inf
+#   abundance estimand: [identifiable] iso_822aa min |log2FC| 0.044; [identifiable] iso_477aa min |log2FC| 0.037; contrast min |log2FC| 0.067, identifiable
 #   effective length: iso_477aa 6232 bp vs iso_822aa 7940 bp (mean per transcript), log2 ratio -0.35
 #   distinguishing windows (0 = 5' end, 1 = 3' end of each transcript): iso_477aa median 0.66 [0.48-0.84], 92484 positions over 22 transcript(s); iso_822aa median 0.63 [0.44-0.81], 72229 positions over 12 transcript(s)
 #   unique-read counting SE (best transcript per class) on log2 ratio: 0.059 per donor, min resolvable |log2FC| 0.115 at n=1
@@ -111,7 +166,7 @@ isoform-dominance identifiability --config example/saved/NTRK2.gencode50.config.
 `primary_comparison distinguishable by short reads: True`: unique k-mers counted between
 the configured classes alone. The verdict with them is the one above, `not_identifiable`.
 
-## 5. GENCODE 44, and from here
+## 6. GENCODE 44, and from here
 
 The same comparison at GENCODE 44 (Ensembl 110), and LEPR, NTRK3 and FLT1 at both releases,
 are in the [example genes](example_genes.md) table. With a reviewed config and Salmon

@@ -43,6 +43,39 @@ versioning.
   this, and skips in the sdist, which leaves `.github/` out. The built `site/` is ignored by
   git. `CONTRIBUTING.md` says how to remake the front page and build the site, and lists the
   CI as it is (Python 3.10–3.14, the sdist's tests, the site and the draft PDF).
+- **Two estimands in `identifiability`, and `--estimand` to choose the one that decides.**
+  Through 2.8.0 a verdict was of one class total, the class's expected fragment count, the sum
+  of theta_t over its transcripts: what a quantifier's `NumReads` sums. `extract` and `stats`
+  compare summed TPM, whose class ratio is that of the length-corrected abundance, the sum of
+  theta_t / l_t with l_t a transcript's effective length -- in the system `identifiability`
+  builds, its window positions, L_t - window + 1, dropped windows included. The two are
+  different functionals of one system, not one in two units, and they can part: a direction
+  the system cannot see can keep a class's abundance and move its fragment count, by moving
+  abundance between transcripts of the class that differ in length, and then the fragment
+  estimand is not estimable, while the abundance one is when no direction the system cannot see
+  changes a compared class's abundance. On the 49-gene panel of `validation/` the contrast is
+  estimable as abundance only for 7 genes (CANX, GNAS, NTRK2, NTRK3, SMN2, TNFRSF1B, VEGFA)
+  and as fragment totals only for none (the converse can hold where windows are dropped); of
+  the saved examples, NTRK2 at GENCODE 44 and 50 and NTRK3 at GENCODE 50. Both are computed
+  and reported: `--json` gains, after every key 2.8.0 wrote, `estimands` (`fragment` and
+  `abundance`, each with its `definition`, `precision_checked_in_simulation` -- true for the
+  fragment estimand, false for the abundance one -- its fields of each class and of the
+  contrast, `estimable` to `reasons`, `effect_resolvable`, `verdict` and `reasons`) and
+  `decision_estimand`; the human output gains a line naming the deciding estimand and one
+  under the contrast giving the other, and a NOTE on stderr where the two differ on what is
+  estimable. `--estimand` (`analyze(..., estimand=)`) picks the one that decides `verdict`,
+  `reasons`, `effect_resolvable`, the figures of `groups` and `contrast`, `EFFECT SIZE` (which
+  then names the class abundances) and the exit status. The default is `fragment`, and with it
+  every field and exit status 2.8.0 gave is unchanged: on the saved examples the `--json`
+  report is byte for byte 2.8.0's up to the two keys, and the test against 2.7.0's reports
+  now holds the order of the keys too. The abundance coefficients 1/l_t are scaled to the
+  fragment functional's norm, which moves no estimability and no relative standard error, only
+  the conditioning factor, onto the fragment one's footing. Whether the abundance estimand is
+  estimable is decided exactly in the window system, but where only it is estimable that answer
+  rests on counting a transcript's length in window positions, and its figures weight a short
+  transcript less than TPM does; its precision figures have not yet been checked against a
+  quantifier's TPM, and the command says so wherever it offers or uses the estimand
+  (`tests/test_estimands.py`).
 
 ### Fixed
 - **A numerical fault in `identifiability` is no longer reported as a config error.** numpy's
@@ -132,6 +165,40 @@ versioning.
   (FLT1's `iso_733aa`). The config and `annotate --json` are unchanged.
 
 ### Documented
+- **The documentation says which class total a figure is of.** The README's identifiability
+  section has a part on the two estimands, and its release paragraph gives the structural
+  movement of each: with each release's own proposal, of the 84 genes with two classes at every
+  release, whether the contrast and both class totals are estimable changes between 110 and 116
+  for 10 as fragment totals and for 3 as abundance (all 3 among the 10), and NTRK3's abundance
+  estimand is estimable at all six releases. The NTRK2 walkthrough shows the other estimand's
+  line and NOTE and a run with `--estimand abundance` (exit status 0 at `--min-log2fc 0.5`,
+  where the fragment estimand gives 3); the example-genes table gains the abundance estimand's
+  contrast `min |log2FC|` and exit status. `paper.md` distinguishes the fragment-total and
+  abundance-total estimands, says that they can part, that the fragment one decides by default
+  in 2.9 and that the abundance one matches what `extract` and `stats` compare, with its
+  precision figures not yet checked against a quantifier's TPM; it had called the class total
+  an abundance while the code tested the fragment count. `validation/summarize.py` computes
+  where the two estimands part on the survey panel, and the README quotes it.
+- **What decides whether the abundance estimand becomes the default is fixed before any run
+  that could decide it.** `validation/README.md` sets the gate for 3.0 on 2026-10-23: the
+  simulation repeated and quantified as stored, with the class ratio of summed TPM, against
+  the ratio summed TPM would read had Salmon given every fragment to the transcript it was
+  drawn from (the fragments written, over Salmon's own effective lengths), so that only how
+  Salmon apportions the fragments is measured; predictions fixed in
+  `validation/gate_3_0_predictions.json`, which later code does not change, and said to be of
+  a nearby functional (window positions as lengths); first the 7 genes estimable as abundance
+  only, at uniform coverage, each with a |bias| below its predicted SE and 6 of the 7 a
+  replicate SD below it; a stop if SMN2 or VEGFA, whose `NumReads` error already exceeded the
+  abundance prediction, has a |bias| or an SD at or above its predicted SE; predictions past
+  the linearisation limit (SMN2, VEGFA, TNFRSF1B) graded by the same first-order SE, as S1
+  graded its own; then the 39 genes of S1 as a control, a |bias| below the predicted SE for
+  at least 38 and an SD below it for at least 31. One run; a second counts only to correct a
+  named kind of fault in the harness. It says what a pass can show at a flat truth: the
+  precision figures, not that estimability as abundance is what makes the 7 recoverable.
+  `--estimand fragment` stays in 3.0 whatever the outcome.
+- **The README's provenance note runs to 2.9.0, as the CHANGELOG's does**, and the code block
+  of its offline section is no longer inside a quotation, which the documentation site
+  rendered as inline code.
 - **`gls_covariance`'s docstring no longer sets two medians of different scales side by
   side.** It put the homoskedastic factor's median (65.0) beside the Poisson-weighted one's
   (16.4), but the size of the second is set by the scale of theta: 16.4 at theta = 1 per

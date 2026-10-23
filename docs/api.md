@@ -300,7 +300,7 @@ and the structural `conditioning_factor`, from one singular value decomposition 
 tolerance. `svd`, `np.linalg.svd(A.T, full_matrices=False)[:2]`, lets a caller asking about
 several functionals of one `A` decompose it once; the answer is the same.
 
-**`identifiability.analyze(config, k=31, sequences=None, *, canonical=True, window=None, background_sequences=None, background_fasta=None, decoys=None, background_gene_transcripts='auto', species=None, read_length=100, frag_mean=200.0, frag_sd=60.0, paired=True, depth=30000000, mean_efflen=1500.0, tpm=10.0, n_donors=1, conditioning_tau=10.0, min_informative_reads=50.0, min_log2fc=None, ensembl_release=None, inputs_out=None, keep_duplicates=False, max_window_records=20, gtf=None, transcripts_fasta=None, retries=5, retry_wait=1.0)`**
+**`identifiability.analyze(config, k=31, sequences=None, *, canonical=True, window=None, background_sequences=None, background_fasta=None, decoys=None, background_gene_transcripts='auto', species=None, read_length=100, frag_mean=200.0, frag_sd=60.0, paired=True, depth=30000000, mean_efflen=1500.0, tpm=10.0, n_donors=1, conditioning_tau=10.0, min_informative_reads=50.0, min_log2fc=None, estimand='fragment', ensembl_release=None, inputs_out=None, keep_duplicates=False, max_window_records=20, gtf=None, transcripts_fasta=None, retries=5, retry_wait=1.0)`**
 The three layers the `identifiability` command reports -- sequence uniqueness, the read
 model, and estimability on the class-collapsed compatibility system -- for each group and
 for the contrast named in `primary_comparison`. A config whose groups or comparison have
@@ -327,7 +327,35 @@ unique-read counting SE of the log2 class ratio for each class's best transcript
 no floor on the contrast's figure; `counting_noise` holds the same, a deprecated key removed
 in 3.0, as is the function's old name `counting_noise_floor`); `gene_total`;
 `effect_resolvable` (None when no `min_log2fc` was given); `n_compatibility_classes`;
-`verdict` and `reasons`. The docstring defines each.
+`verdict` and `reasons`; and since 2.9.0, after all of these, `decision_estimand` and
+`estimands`. The docstring defines each.
+
+`estimand` (since 2.9.0) is one of `identifiability.ESTIMANDS`, `"fragment"` (the default) or
+`"abundance"`, and picks the class totals that decide `verdict`, `reasons`, `effect_resolvable`
+and the estimand's fields of `groups` and `contrast` (`estimable`, `residual`,
+`conditioning_factor`, `rank`, `label`, `gls_relative_se`, `finite_se`,
+`min_resolvable_log2fc`, `beyond_linear`, `verdict`, `reasons`). The fragment estimand is a
+class's expected fragment count, the sum of theta_t over its transcripts: 2.8.0's question, and
+what a quantifier's `NumReads` sums. The abundance estimand is its length-corrected abundance,
+the sum of theta_t / l_t with l_t the transcript's window positions (its effective length in
+this system), whose class ratio is the ratio that summed TPM estimates -- what `extract` and
+`stats` compare. They are different functionals of one system and can part: a direction the
+system cannot see that moves abundance between transcripts of one class that differ in length
+can leave the class's abundance where it was and move its fragment count, and then the fragment
+estimand is not estimable, while the abundance one is when no direction the system cannot see
+changes a compared class's abundance (`identifiability.ESTIMANDS` says more). Its coefficients,
+1/l_t, are scaled to the norm of the fragment functional's, which moves no estimability and no
+relative standard error, only the conditioning factor, onto the fragment one's footing. Both
+are computed and given under `estimands`, each as
+`{definition, precision_checked_in_simulation, groups, contrast, effect_resolvable, verdict, reasons}`
+with only the fields above per class and for the contrast; `decision_estimand` names the one
+that decides. With the default, every field 2.8.0 wrote is the fragment estimand's, as it was.
+Where only the abundance estimand is estimable, that answer rests on counting a transcript's
+length in window positions, and its figures weight a short transcript less than TPM does
+(`identifiability.ESTIMANDS` gives both). Its precision figures have not yet been checked
+against a quantifier's TPM in simulation (its `precision_checked_in_simulation` is `False`, the
+fragment one's `True`); `validation/README.md` says what that check must show before it becomes
+the default in 3.0. Any other value is a `ValueError`.
 
 `min_resolvable_log2fc` is `1.96 * SE / sqrt(n_donors)` on the log2 scale: the |log2 fold
 change| whose estimate's 95% interval just excludes zero. A true effect of exactly that
