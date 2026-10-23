@@ -323,3 +323,38 @@ def test_a_numerical_fault_in_the_analysis_is_no_config_error(monkeypatch):
                   "--config", os.path.join(saved, "LEPR.gencode50.config.json"),
                   "--inputs", os.path.join(saved, "LEPR.gencode50.inputs.json")])
     assert raised.value is fault
+
+
+def test_a_file_identifiability_cannot_use_is_no_config_error(tmp_path, capsys):
+    # io.InputError is a ValueError, and through 2.8.0 both `except ValueError` clauses of
+    # the command caught it: a saved-inputs file of another format, or a transcript FASTA
+    # without a record the GTF gives, ended as `config error: ...`, which sends the user to
+    # a config that is not at fault.  main() says it in one `error:` line instead
+    import gzip
+    saved = os.path.join(os.path.dirname(__file__), os.pardir, "example", "saved")
+    mini = os.path.join(os.path.dirname(__file__), "data", "gencode_mini")
+    config = os.path.join(saved, "LEPR.gencode50.config.json")
+    other = tmp_path / "inputs.json"
+    other.write_text('{"format": "something else"}')
+    assert cli.main(["identifiability", "--config", config, "--inputs", str(other)]) == 1
+    err = capsys.readouterr().err.strip().splitlines()
+    assert len(err) == 1 and err[0].startswith("error: "), err
+    assert "is not a saved-inputs file" in err[0]
+    # the FASTA of the mini GTF without one of LEPR's records: the file, not the config
+    records, keep = [], True
+    with gzip.open(os.path.join(mini, "gencode.v50.mini.transcripts.fa.gz"), "rt") as fh:
+        for line in fh:
+            if line.startswith(">"):
+                keep = "ENST00000349533" not in line
+            if keep:
+                records.append(line)
+    fasta = tmp_path / "missing_one.fa"
+    fasta.write_text("".join(records))
+    code = cli.main(["identifiability", "--config", config,
+                     "--gtf", os.path.join(mini, "gencode.v50.mini.gtf.gz"),
+                     "--transcripts-fasta", str(fasta)])
+    err = capsys.readouterr().err.strip().splitlines()
+    assert code == 1
+    assert [ln for ln in err if ln.startswith("error: ")] and not [
+        ln for ln in err if ln.startswith("config error")], err
+    assert "has no record for" in err[-1]

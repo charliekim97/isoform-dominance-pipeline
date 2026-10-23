@@ -44,6 +44,12 @@ versioning.
   status 1, which sends the user to a config that is not at fault. It now keeps its
   traceback, as the self-test's has since 2.8.0. Under numpy 1.24, the declared floor, it was
   never caught (`tests/test_cli.py`).
+- **A file `identifiability` cannot use is an `error:`, not a config error.** `io.InputError`
+  is a `ValueError`, and the two `except ValueError` clauses of the command caught it with the
+  config's errors: a saved-inputs file of another format, or a `--transcripts-fasta` without a
+  record the `--gtf` gives, ended as `config error: ...`, which sends the user to a config
+  that is not at fault. `main` now says it in its one `error:` line, as for every other
+  command; the exit status is 1, as it was (`tests/test_cli.py`).
 - **A config whose classes or comparison have the wrong shape is refused, naming the
   place.** 2.8.0 checked only that a config is a JSON object with a `groups` object. One
   rule, `io.groups_shape_error`, now holds every group to a non-empty list of transcript ids,

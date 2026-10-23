@@ -373,6 +373,8 @@ def cmd_identifiability(a):
     try:
         if a.inputs:
             inputs = _load_saved_inputs(a, cfg)
+    except io.InputError:
+        raise                               # a file that cannot be used: main's `error:`
     except ValueError as e:
         print("config error: %s" % e, file=sys.stderr)
         return 1
@@ -394,6 +396,11 @@ def cmd_identifiability(a):
     except np.linalg.LinAlgError:
         # a ValueError since numpy 1.25, and no config error: a numerical fault in the
         # analysis is one in the code, and keeps its traceback (as in the self-test)
+        raise
+    except io.InputError:
+        # a ValueError too: a file named on the command line that cannot be used (a FASTA
+        # without a record the GTF gives, say) is no config error, and main says it in its
+        # one `error:` line, as for every other command
         raise
     except ValueError as e:
         print("config error: %s" % e, file=sys.stderr)
