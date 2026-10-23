@@ -111,9 +111,10 @@ stops and lists them, and `--gene-id` picks one. The config records `gene_id`, a
 
 **2. Identifiability guardrail (`identify`).** A short-read quantifier apportions fragments
 by solving a linear inverse problem; a class total is recoverable only when it is an
-*estimable* function of that system. This checks the condition directly, on the class-collapsed
-system, and reports the smallest fold change the stated design can resolve for each class total
-and for the contrast between them. Ask it for the effect size you need:
+*estimable* function of that system, and a class can be totalled two ways (*Two estimands*,
+below). This checks the condition directly, on the class-collapsed system, and reports the
+smallest fold change the stated design can resolve for each class total and for the contrast
+between them. Ask it for the effect size you need:
 
 ```bash
 isoform-dominance identifiability --config example/saved/LEPR.gencode50.config.json \
@@ -167,14 +168,45 @@ no bias model and leaned to the longer class at uniform coverage too, 32 of 39 (
 quantifier, gene panel or form of skew was tested, and below that ratio nothing was measured, so
 nothing is said.
 
+**Two estimands.** A class can be totalled two ways, and they are different questions of one
+system. The *fragment* estimand is the class's expected fragment count, the sum of theta_t over
+its transcripts: what a quantifier's `NumReads` sums, and the only question through 2.8.0. The
+*abundance* estimand is its length-corrected abundance, the sum of theta_t / l_t with l_t the
+transcript's effective length, the positions its observation unit can start at: its class ratio
+is the ratio that summed TPM estimates, which is what `extract` and `stats` compare. In the
+system `identifiability` builds, the unit is a window and l_t is L_t - window + 1; in a
+quantifier's fragment model it is the fragment effective length. Usually the two agree; they
+can part. A direction the system cannot see can leave a class's abundance where it was and move
+its fragment count, by moving abundance between transcripts of the class that differ in length:
+then the fragment estimand is not estimable, and the abundance one is estimable when no
+direction the system cannot see changes a compared class's abundance. Two alternative first
+exons of different length crossed with two alternative last exons across a shared middle at
+least a window long, the classes by last exon, is such a case; with the classes taken across
+the cross instead (first exon 1 with last exon 1 and first exon 2 with last exon 2, against the
+other two), neither estimand is estimable. On the 49-gene panel of `validation/` the contrast
+is estimable as abundance only for 7 genes (CANX, GNAS, NTRK2, NTRK3, SMN2, TNFRSF1B, VEGFA),
+and as fragment totals only for none. The converse can occur where windows are dropped (a case
+in `tests/test_estimands.py`). Both are reported: the line under the contrast gives the other
+estimand, the human report says on stderr where the two part, and `--json` holds both under
+`estimands`, with `decision_estimand`. `--estimand` picks the one that decides the figures of
+the class and contrast lines, `EFFECT SIZE`, `VERDICT` and the exit status: `fragment` unless
+asked, so a run means what it meant in 2.8.0, and `--estimand abundance` asks the question
+`extract` and `stats` answer. Whether the abundance estimand is estimable is decided exactly in
+this window system, but where only it is estimable that answer rests on counting a transcript's
+length in window positions, and its figures weight a short transcript less than TPM does
+(`identifiability.ESTIMANDS` gives both). Its precision figures have not yet been checked
+against a quantifier's TPM in simulation, as the fragment estimand's were against `NumReads`,
+and `validation/README.md` fixes what that check must show before it becomes the default in
+3.0.
+
 Exit codes: **0** no `--min-log2fc` given, or it is resolved · **3** `--min-log2fc` given and
 not resolved at the stated design · **2** precondition failure: a transcript shorter than
-`--window` has no windows, so the gene total itself is not estimable · **1** config or
-network error. The structural verdict is never the exit status: it changes with the
-annotation release the transcripts came from, so it is reported in the output and in the
-`--json` report (`verdict`, with `gene_total` and `effect_resolvable` beside it). Every
-`--json` is standard JSON: a figure that is not finite is `null`, never `NaN` or `Infinity`,
-and `estimable` or `finite_se` beside it says why.
+`--window` has no windows, so the gene total itself is not estimable · **1** config or network
+error. 0 and 3 are the deciding estimand's (`--estimand`). The structural verdict is never the
+exit status: it changes with the annotation release the transcripts came from, so it is
+reported in the output and in the `--json` report (`verdict`, with `gene_total` and
+`effect_resolvable` beside it). Every `--json` is standard JSON: a figure that is not finite is
+`null`, never `NaN` or `Infinity`, and `estimable` or `finite_se` beside it says why.
 
 > **Why not just count unique k-mers?** Because that proxy — used by this package up to
 > v2.1.1 — is wrong in both directions. A class whose only unique sequence is the ~30 k-mers
@@ -251,7 +283,12 @@ them on depth and TPM, the `min |log2FC|` figures also on the number of donors, 
 > at 110 at all, because one of the two classes had no protein-coding transcript there; of the
 > 62 that could, 11 change verdict between the two. NTRK3's is `identifiable` at every one of
 > those releases before 116 and `not_identifiable` at 116. The exit status moves too: at
-> `--min-log2fc 1.0` it changes across the six for 13 of the 62. `annotate` records
+> `--min-log2fc 1.0` it changes across the six for 13 of the 62. These are the fragment
+> estimand's (*Two estimands*, above), and most of the structural movement is of it alone:
+> with each release's own proposal, of the 84 genes with two classes at every release,
+> whether the contrast and both class totals are estimable changes between 110 and 116 for
+> 10 as fragment totals and for 3 as abundance (ACADM, RPL13A and TSC1, among the 10), and
+> NTRK3's abundance estimand is estimable at all six releases. `annotate` records
 > the release it fetched from as `ensembl_release`, and `identifiability` prints it in its
 > header and carries it in the `--json` report, beside `fetched_release`, the release any
 > sequence was fetched from in that run. Both commands take `--ensembl-release N`: without
@@ -281,13 +318,13 @@ them on depth and TPM, the `min |log2FC|` figures also on the number of donors, 
 > the `basic` GTF, and not `pc_transcripts` -- of the release the index was built from (the
 > GENCODE-to-Ensembl table is at https://www.gencodegenes.org/human/releases.html: 44 is
 > Ensembl 110, 48 is 114, 50 is 116):
->
-> ```bash
-> isoform-dominance annotate --gene LEPR --gtf gencode.v50.annotation.gtf.gz --out lepr.json
-> isoform-dominance identifiability --config lepr.json --gtf gencode.v50.annotation.gtf.gz \
->     --transcripts-fasta gencode.v50.transcripts.fa.gz --min-log2fc 0.5
-> ```
->
+
+```bash
+isoform-dominance annotate --gene LEPR --gtf gencode.v50.annotation.gtf.gz --out lepr.json
+isoform-dominance identifiability --config lepr.json --gtf gencode.v50.annotation.gtf.gz \
+    --transcripts-fasta gencode.v50.transcripts.fa.gz --min-log2fc 0.5
+```
+
 > Neither makes a request. `annotate --gtf` writes the config REST gives at that release,
 > with the release the GTF's header names and an `annotation_source` block naming the file by
 > SHA-256. On the 109-gene survey panel the configs this reads from GENCODE 44, 48 and 50
@@ -581,11 +618,15 @@ version does **not** alter that record: Zenodo mints a separate version DOI and 
 one in place, and the `v2.1.1` tag and release are left untouched by policy — not because they
 are technically immutable, but because the manuscript under revision cites them. The `extract`
 aggregation behaviour those results rest on — transcript-to-group mapping and per-donor TPM
-summation — is unchanged through 2.5.0, and the bundled self-test still reproduces the same
+summation — is unchanged through 2.9.0, and the bundled self-test still reproduces the same
 reference numbers. 2.4.0 adds two refusals to `extract` where 2.3.0 wrote a table: a cohort
 quantified against more than one Salmon index, and a config none of whose transcripts is in
 any donor's `quant.sf`. 2.4.1 counts an index with Salmon's decoys and one without as two,
-and writes the rows in 2.1.1's order again (2.4.0 sorted them by donor name).
+and writes the rows in 2.1.1's order again (2.4.0 sorted them by donor name). 2.8.0 writes no
+fraction column for a group compared with itself, and 2.9.0 none for a comparison naming a
+group the config lacks; 2.9.0 refuses a config whose groups have the wrong shape (none, an
+empty one, one given as a string or an object, an id that is not a non-empty string without
+white space).
 
 Cite this repository (see `CITATION.cff`, DOI 10.5281/zenodo.20672051) and Salmon:
 Patro, R. et al. *Nat. Methods* **14**, 417–419 (2017). https://doi.org/10.1038/nmeth.4197

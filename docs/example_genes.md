@@ -11,18 +11,22 @@ Each row is `isoform-dominance identifiability --config example/saved/<gene>.gen
 --inputs example/saved/<gene>.gencode<N>.inputs.json` at the default design: the proposed
 comparison with each class's transcript count, the `VERDICT`, and the `min |log2FC|` and
 `conditioning` of the contrast line; and the exit status of the same command with
-`--min-log2fc 0.5`. `tests/test_docs_examples.py` recomputes every cell.
+`--min-log2fc 0.5`. These are the fragment estimand's, which decides by default. The last two
+columns are the abundance estimand's, the length-corrected class abundance, whose class ratio
+is the ratio that summed TPM estimates (README, "Two estimands"): the contrast's
+`min |log2FC|`, and the exit status with `--min-log2fc 0.5 --estimand abundance`.
+`tests/test_docs_examples.py` recomputes every cell.
 
-| Gene | GENCODE (Ensembl) | Proposed comparison (transcripts) | Verdict | Contrast min \|log2FC\| | Contrast conditioning | Exit status, `--min-log2fc 0.5` |
-|---|---|---|---|---|---|---|
-| LEPR | 44 (110) | `iso_906aa` (2) vs `iso_1165aa` (1) | `weakly_identifiable` | 0.318 | 12.82 | 0 |
-| LEPR | 50 (116) | `iso_896aa` (7) vs `iso_1165aa` (2) | `weakly_identifiable` | 0.234 | 117.68 | 0 |
-| NTRK2 | 44 (110) | `iso_477aa` (18) vs `iso_822aa` (10) | `not_identifiable` | n/a | inf | 3 |
-| NTRK2 | 50 (116) | `iso_477aa` (22) vs `iso_822aa` (12) | `not_identifiable` | n/a | inf | 3 |
-| NTRK3 | 44 (110) | `iso_617aa` (2) vs `iso_839aa` (6) | `identifiable` | 0.295 | 9.14 | 0 |
-| NTRK3 | 50 (116) | `iso_604aa` (7) vs `iso_825aa` (20) | `not_identifiable` | n/a | inf | 3 |
-| FLT1 | 44 (110) | `iso_733aa` (1) vs `iso_1338aa` (1) | `identifiable` | 0.272 | 4.64 | 0 |
-| FLT1 | 50 (116) | `iso_733aa` (1) vs `iso_1338aa` (6) | `weakly_identifiable` | 0.327 | 181.40 | 0 |
+| Gene | GENCODE (Ensembl) | Proposed comparison (transcripts) | Verdict | Contrast min \|log2FC\| | Contrast conditioning | Exit status, `--min-log2fc 0.5` | Abundance: contrast min \|log2FC\| | Abundance: exit status |
+|---|---|---|---|---|---|---|---|---|
+| LEPR | 44 (110) | `iso_906aa` (2) vs `iso_1165aa` (1) | `weakly_identifiable` | 0.318 | 12.82 | 0 | 0.312 | 0 |
+| LEPR | 50 (116) | `iso_896aa` (7) vs `iso_1165aa` (2) | `weakly_identifiable` | 0.234 | 117.68 | 0 | 0.225 | 0 |
+| NTRK2 | 44 (110) | `iso_477aa` (18) vs `iso_822aa` (10) | `not_identifiable` | n/a | inf | 3 | 0.134 | 0 |
+| NTRK2 | 50 (116) | `iso_477aa` (22) vs `iso_822aa` (12) | `not_identifiable` | n/a | inf | 3 | 0.133 | 0 |
+| NTRK3 | 44 (110) | `iso_617aa` (2) vs `iso_839aa` (6) | `identifiable` | 0.295 | 9.14 | 0 | 0.261 | 0 |
+| NTRK3 | 50 (116) | `iso_604aa` (7) vs `iso_825aa` (20) | `not_identifiable` | n/a | inf | 3 | 0.068 | 0 |
+| FLT1 | 44 (110) | `iso_733aa` (1) vs `iso_1338aa` (1) | `identifiable` | 0.272 | 4.64 | 0 | 0.272 | 0 |
+| FLT1 | 50 (116) | `iso_733aa` (1) vs `iso_1338aa` (6) | `weakly_identifiable` | 0.327 | 181.40 | 0 | 0.328 | 0 |
 
 The verdict is a screening flag, and the exit status answers `--min-log2fc`; the
 [NTRK2 walkthrough](tutorial_NTRK2.md) runs NTRK2 at GENCODE 50 and quotes what the command
@@ -33,7 +37,11 @@ says of both.
 The proposed comparison is not the same at the two releases: `iso_617aa` against
 `iso_839aa` at GENCODE 44, `iso_604aa` against `iso_825aa` at GENCODE 50. The first is
 `identifiable`, the second `not_identifiable`, and the exit status at `--min-log2fc 0.5`
-goes from 0 to 3. At GENCODE 44 `iso_617aa` was itself chosen by a tie (below).
+goes from 0 to 3. As the abundance estimand (the last two columns) the contrast is estimable at
+both releases, and the exit status is 0 at both: at GENCODE 50 no direction the system cannot
+see changes either class's abundance, while some change a class's fragment total, by moving
+abundance between transcripts of the class that differ in length. At GENCODE 44 `iso_617aa`
+was itself chosen by a tie (below).
 
 ## FLT1, and proposals decided by a tie
 

@@ -37,7 +37,8 @@ FASTA, such as the one a Salmon index was built from — is accounted for; how m
 fragments would be sequenced across that unique sequence at a stated depth, read length
 and fragment-length distribution, and hence what unique-read counting SE (best transcript per class) the class ratio
 carries; and whether each class total, and the contrast between them, is an *estimable*
-function of the fragment-class system at all. Quantification is then read from `Salmon`
+function of the fragment-class system at all, with a class total taken as either of two
+estimands (below). Quantification is then read from `Salmon`
 `quant.sf` files [@patro2017] and summarised per donor; the contrast is tested with a
 donor-level Wilcoxon signed-rank test [@wilcoxon1945], reported per cohort with a
 bootstrap interval, the finest p-value the design could have resolved, and a stratified
@@ -101,7 +102,22 @@ analysis proceeds at whatever resolution the data support.
 **The gap.** Those address *transcript-level* identifiability of the full
 deconvolution, or the resolution the data happen to permit. Here the classes are fixed
 *a priori and on biological grounds* — a signalling-competent receptor against a
-truncated one — and the estimand is a contrast of class totals. Two questions then hide
+truncated one — and the estimand is a contrast of class totals. A class total is itself
+two estimands. Its expected fragment count, which a quantifier's `NumReads` sums, and
+its length-corrected abundance, whose class ratio is the ratio that summed TPM estimates
+and the downstream comparison uses, are different functionals of one system, and they
+can part. A direction the system cannot see can move abundance between transcripts of
+one class that differ in length, which leaves the class's abundance and can change its
+fragment count; then the fragment total is not estimable, while the abundance total is
+estimable when no invisible direction changes either compared class's abundance. This
+can happen where transcripts of one class that differ in length are crossed with another
+class's. Since version 2.9 both are reported. The fragment-total estimand decides by
+default, for continuity with earlier releases and with the simulation that checked its
+precision figures; the abundance-total estimand, the one that matches what `extract` and
+`stats` compare, decides when asked. Its estimability is decided exactly in the same
+window surrogate, but where only it is estimable that answer rests on counting a
+transcript's length in window positions, and its precision figures have not yet been
+checked against a quantifier's TPM. Two questions then hide
 under one word. A contrast is *estimable* when it lies in the row space of the
 compatibility system: exact arithmetic, yes or no. It is *measurable* when it is
 recoverable at finite sequencing depth. Transcript-level identifiability is not

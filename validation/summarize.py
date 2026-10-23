@@ -176,6 +176,11 @@ def structural(entry):
            "primary_comparison": list(pc),
            "transcript_lengths": {g: [len(conf[t.split(".")[0]]) for t in cfg["groups"][g]]
                                   for g in pc}}
+    # the other estimand, which decides nothing the harness recorded: the fields above are
+    # the fragment estimand's, as every stored prediction is
+    ab = res["estimands"]["abundance"]
+    out["abundance"] = {"estimable": ab["contrast"]["estimable"],
+                        "min_resolvable_log2fc": ab["contrast"]["min_resolvable_log2fc"]}
     return out, res
 
 
@@ -479,7 +484,17 @@ def summarize(data=DATA, analysed=None):
               "n_classes_with_pairs": len(coherence),
               "median_min_jaccard": statistics.median(j for j, _, _ in coherence),
               "TPI1_counting_min_resolvable_log2fc":
-                  analysed["TPI1"]["counting_min_resolvable_log2fc"]}
+                  analysed["TPI1"]["counting_min_resolvable_log2fc"],
+              # the contrast as the abundance estimand: estimable for how many, and where the
+              # two estimands part, which genes, each way
+              "n_estimable_abundance": sum(structure[g]["abundance"]["estimable"]
+                                           for g in genes),
+              "estimable_as_abundance_only": sorted(
+                  g for g in genes if structure[g]["abundance"]["estimable"]
+                  and not structure[g]["estimable"]),
+              "estimable_as_fragment_only": sorted(
+                  g for g in genes if structure[g]["estimable"]
+                  and not structure[g]["abundance"]["estimable"])}
 
     return {"format": "isoform-dominance/validation-summary/1",
             "designs": {"bias_5p": list(B), "files": {q: list(v) for q, v in FILES.items()},
@@ -668,7 +683,9 @@ def render(s):
       "counts as theta: median %s, range %sx, Spearman %s. Classes whose least similar pair of "
       "transcripts shares under 5%% of windows: %s; over the %d classes of the primary "
       "comparisons with two or more transcripts, the median share of the least similar "
-      "pair: %s. TPI1's unique-read counting min |log2FC|: %s."
+      "pair: %s. TPI1's unique-read counting min |log2FC|: %s. As the abundance estimand "
+      "(length-corrected class abundance, `--estimand abundance`) the contrast is estimable "
+      "for %d: for %d genes as abundance only (%s), and as fragment totals only for %s."
       % (v["n_transcripts"], v["shortest_transcript"],
          v["n_estimable"], _f(v["median_conditioning"], 1), v["conditioning_range"], TAU,
          100 * v["fraction_over_tau"], _f(v["poisson_unit_median"], 1),
@@ -678,7 +695,10 @@ def render(s):
          ", ".join("%s %s %s" % (x["gene"], x["class"], _f(x["min_jaccard"], 3))
                    for x in v["classes_under_0_05_min_jaccard"]),
          v["n_classes_with_pairs"], _f(v["median_min_jaccard"], 2),
-         _f(v["TPI1_counting_min_resolvable_log2fc"], 2)))
+         _f(v["TPI1_counting_min_resolvable_log2fc"], 2),
+         v["n_estimable_abundance"], len(v["estimable_as_abundance_only"]),
+         ", ".join(v["estimable_as_abundance_only"]) or "none",
+         ", ".join(v["estimable_as_fragment_only"]) or "none"))
     return "\n".join(out)
 
 

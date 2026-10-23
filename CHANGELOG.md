@@ -165,6 +165,23 @@ versioning.
   (FLT1's `iso_733aa`). The config and `annotate --json` are unchanged.
 
 ### Documented
+- **The documentation says which class total a figure is of.** The README's identifiability
+  section has a part on the two estimands, and its release paragraph gives the structural
+  movement of each: with each release's own proposal, of the 84 genes with two classes at every
+  release, whether the contrast and both class totals are estimable changes between 110 and 116
+  for 10 as fragment totals and for 3 as abundance (all 3 among the 10), and NTRK3's abundance
+  estimand is estimable at all six releases. The NTRK2 walkthrough shows the other estimand's
+  line and NOTE and a run with `--estimand abundance` (exit status 0 at `--min-log2fc 0.5`,
+  where the fragment estimand gives 3); the example-genes table gains the abundance estimand's
+  contrast `min |log2FC|` and exit status. `paper.md` distinguishes the fragment-total and
+  abundance-total estimands, says that they can part, that the fragment one decides by default
+  in 2.9 and that the abundance one matches what `extract` and `stats` compare, with its
+  precision figures not yet checked against a quantifier's TPM; it had called the class total
+  an abundance while the code tested the fragment count. `validation/summarize.py` computes
+  where the two estimands part on the survey panel, and the README quotes it.
+- **The README's provenance note runs to 2.9.0, as the CHANGELOG's does**, and the code block
+  of its offline section is no longer inside a quotation, which the documentation site
+  rendered as inline code.
 - **`gls_covariance`'s docstring no longer sets two medians of different scales side by
   side.** It put the homoskedastic factor's median (65.0) beside the Poisson-weighted one's
   (16.4), but the size of the second is set by the scale of theta: 16.4 at theta = 1 per

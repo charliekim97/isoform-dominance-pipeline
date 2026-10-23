@@ -378,6 +378,12 @@ def quotes(s):
                 % (v["n_genes"], WORD[len(low)], low[0]["gene"], low[0]["min_jaccard"],
                    *sorted(tpi1), low[1]["gene"], low[1]["min_jaccard"], low[2]["gene"],
                    low[2]["min_jaccard"], v["n_classes_with_pairs"], v["median_min_jaccard"])))
+    # the two estimands: where they part on the panel, which the README and the gate quote
+    only = v["estimable_as_abundance_only"]
+    out.append((readme, "On the %d-gene panel of `validation/` the contrast is estimable as "
+                        "abundance only for %d genes (%s), and as fragment totals only for %s."
+                % (v["n_genes"], len(only), ", ".join(only),
+                   ", ".join(v["estimable_as_fragment_only"]) or "none")))
     return out
 
 
