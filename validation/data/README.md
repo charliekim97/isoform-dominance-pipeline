@@ -1,7 +1,9 @@
 # Stored simulation outputs and inputs (issue #2)
 
 The outputs the README's simulation figures come from, and the inputs they were made from. They were made on 2026-09-11 to
-2026-09-14 with `../run_simulation.py` and `../simulate_reads.py`, outside this repository, and are kept here unchanged.
+2026-09-14 with `../run_simulation.py` and `../simulate_reads.py`, outside this repository, and are kept here unchanged;
+the 3.0 gate's run, and what was computed from it and from the index's FASTA, on 2026-10-23 and 2026-10-31 (the last
+table).
 
 ## Design
 
@@ -57,9 +59,21 @@ positional or sequence bias model.
 | `sim/class_sizes.json` | per gene, over the 30 replicates of the `bias_5p` = -2.0 design: the median fragments drawn for each class of the primary comparison (`nA`, `nB`), the median true log2 ratio (`true`), the median fragments of the gene (`total`), and how many replicates had a defined true ratio (`n_true`) | `7c83c78a3a28f41a254f69905aa83958b17ca764935fc01deb96f973fff312dc` |
 | `sweep116.json.gz` | gzipped JSON `{"format", "source", "genes": {gene: {"config", "sequences"}}}`: each gene's config and `{transcript_id: cdna}` exactly as the simulation read them, from one file per gene each (SHA-256 of those files below) | `ebbb3654cb1ec816eb71e561aa2481f681a15654db339eb6f4614fc7d565455b` |
 
-`../summarize.py` reads them and recomputes every figure the documentation quotes from them, and `tests/test_validation.py`
-holds the files to the SHA-256 above, the package's predictions to the ones the rows recorded, and the summary to them.
-Salmon is not run in CI.
+The 3.0 gate's run (`../README.md`, "The abundance estimand, and what decides whether it becomes the default"), made
+with v2.9.0, and two files computed to describe it:
+
+| file | holds | SHA-256 |
+|---|---|---|
+| `sim/c1_d1_tpm.json` | the gate's run, `../run_simulation.py run --bias-5p 0 --replicates 30 --threads 12`, made on 2026-10-23 with the design, seeds, Salmon and index of `sim/c1_d1.json`: `genes`, the `NumReads` rows, whose `n`, `realised_sd`, `bias` and `rmse` are `sim/c1_d1.json`'s to the last digit; `genes_tpm`, the summed-TPM rows the gate grades, each with the abundance estimand's prediction; and `effective_length_taken_from`, per gene, the class members the index dropped for an identical copy, each with the copy whose `EffectiveLength` it takes | `db00ce397f34047faa4b0f8a1e5437003c2844008d72a3c5e9880ac3bc8bbacb` |
+| `sim/c1_d1_tpm_detail.json` | for LDHA, NDUFS1 and SMN2 and each replicate of that run: the fragments written for each transcript of the two compared classes, and `quant.sf`'s `EffectiveLength`, `TPM` and `NumReads` of each and of each copy the index kept in place of a dropped one, with the fragments written for the whole gene; and per replicate, the fragments written for the library and the `NumReads` of the records outside the 49 genes, summed by the gene symbol of their FASTA header. Made on 2026-10-31 with `../tpm_run_detail.py` from the run's truths and the `quant.sf` files kept beside it (the harness deletes them) | `62a4720dfaf3ac0d2b14579d2ab7fcb101fe5ca64f8400750a616a0c7f459ff7` |
+| `whole_index.json` | per gene, both estimands' contrast at the simulated design against three backgrounds: the gene's other transcripts (the call `../run_simulation.py` made before any read existed); the FASTA above, its records on scaffolds included (15,034 on alternate loci, 4,574 on patches, 62 others) (`identifiability.analyze`'s `background_fasta`: the package's whole-index answer for the index the simulation was quantified with); and that FASTA's records on chromosomes 1-22, X, Y and MT, the ones `../../README.md`'s "Index scope" keeps to build an index (its command writes them as `Homo_sapiens.GRCh38.cdna.primary.fa`, whose SHA-256 the file gives as `reference_chromosomes`). For the two FASTA backgrounds, the records that became columns, each with its gene symbol and location. Made on 2026-10-31 with `../whole_index.py`, with the package at v2.9.0 | `08a5ce0bcd35a9a46bd4a2ee61e47ed33f5f0660f213273240ee0c6ff49a4eb9` |
+
+`../summarize.py` reads the simulation outputs and recomputes every figure the documentation quotes from them, and
+`tests/test_validation.py` holds the files to the SHA-256 above, the package's predictions to the ones the rows recorded,
+and the summary to them. `../gate_3_0.py` grades `sim/c1_d1_tpm.json`, and `tests/test_gate_run.py` recomputes
+LDHA's, NDUFS1's and SMN2's rows of it from `sim/c1_d1_tpm_detail.json` and holds `whole_index.json`'s gene-background
+half to what the package gives now. Salmon is not run in CI, nor `../whole_index.py` on the index's FASTA, which CI does
+not have.
 
 <details><summary>SHA-256 of the 98 per-gene files bundled in <code>sweep116.json.gz</code></summary>
 

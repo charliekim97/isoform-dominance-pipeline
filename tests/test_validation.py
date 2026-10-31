@@ -59,12 +59,17 @@ def stored_files(base):
             and not any(part.startswith(".") for part in p.relative_to(base).parts)}
 
 
+#: the files each README's table names: in validation/data, the 17 of the simulation and the
+#: 3.0 gate's run with the two files computed to describe it
+STORED = {"example/saved": 17, "validation/data": 20}
+
+
 @pytest.mark.parametrize("folder", ["example/saved", "validation/data"])
 def test_every_file_a_readme_names_is_that_file_and_none_is_unnamed(folder):
     base = ROOT / folder
     table = {k: v for k, v in summarize.sha256_table(base / "README.md").items()
              if k not in GENCODE}
-    assert len(table) == 17
+    assert len(table) == STORED[folder]
     present = stored_files(base)
     assert set(table) == present
     for name, sha in sorted(table.items()):
@@ -81,7 +86,7 @@ def test_a_hidden_file_is_not_a_stored_file(folder, tmp_path):
         (d / ".DS_Store").write_bytes(b"\0\0\0\1Bud1")
     (copy / "._README.md").write_bytes(b"\0\5\26\7")
     assert stored_files(copy) == stored_files(ROOT / folder)
-    assert len(stored_files(copy)) == 17
+    assert len(stored_files(copy)) == STORED[folder]
 
 
 def test_a_changed_stored_file_stops_the_summary(tmp_path):

@@ -23,6 +23,26 @@ versioning.
 
 ## [Unreleased]
 
+### Added
+- **The 3.0 gate's run, and two files that describe it** (`validation/data/README.md`, its last
+  table). `sim/c1_d1_tpm.json` is the run the gate grades, made on 2026-10-23 with 2.9.0's
+  harness, Salmon 2.7.0 and the stored index; its `NumReads` rows measure what the stored
+  uniform run's do, to the last digit. `validation/gate_3_0.py` grades it with exit status 1:
+  SMN2's summed-TPM row has a |bias| (0.474) and a replicate SD (0.751) above its predicted SE
+  (0.442), so the stop rule (step 4) stops the change and `fragment` stays the default; the
+  control is not graded. `sim/c1_d1_tpm_detail.json` holds, per replicate, the fragments and
+  `quant.sf` figures of the compared classes' transcripts of LDHA, NDUFS1 and SMN2, and the
+  reads quantified outside the 49 genes, by gene symbol. `whole_index.json` holds each gene's
+  contrast, both estimands, against three backgrounds: the gene's other transcripts; the index's
+  whole FASTA (`background_fasta`), its records on scaffolds (alternate loci, patches) included,
+  which makes SMN2's, CANX's and PTPRC's contrasts not estimable as abundance and PTPRC's not as
+  fragment totals; and that FASTA's records on the reference chromosomes, the ones the README's
+  "Index scope" keeps to build an index, which make only SMN2's not estimable, as abundance,
+  with SMN1's transcripts among its columns. `validation/whole_index.py` and
+  `validation/tpm_run_detail.py` made the last two; `tests/test_gate_run.py` holds the run's
+  grade, the detail's rows to the run's and the whole-index file's gene-background half to the
+  package.
+
 ### Corrections to earlier entries
 - **Recorded before the 3.0 gate is run.** Step 1 of the gate in `validation/README.md` names
   three transcripts of VEGFA's `iso_317aa` and three of TP53's `iso_354aa` as the members of
