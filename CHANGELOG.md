@@ -43,6 +43,23 @@ versioning.
   grade, the detail's rows to the run's and the whole-index file's gene-background half to the
   package.
 
+### Documented
+- **The 3.0 gate's result** (`validation/README.md`, "The 3.0 gate's result", after the gate's
+  own section, which is unchanged). `validation/summarize.py` grades the stored run with
+  `validation/gate_3_0.py`'s own functions and writes the grade, and apart from it, deciding
+  nothing, what was computed afterwards: the control described; the run's `NumReads` rows
+  against the same predictions; LDHA's and NDUFS1's summed-TPM rows against a truth that
+  follows the fragments of their dropped class members to the copies the index kept, as the
+  correction below said the write-up would; the 49 contrasts against the index's
+  reference-chromosome records and against its whole FASTA (`whole_index.json`); and where the
+  reads that went outside the 49 genes went. `summary.json` holds it as `gate_3_0`, and a second
+  generated block of `validation/README.md`, between `<!-- gate-result:start -->` and
+  `<!-- gate-result:end -->`, shows it; `--write` writes both blocks. A run the gate does not
+  grade is recorded, with exit status 2, not raised. Rows recomputed from the per-transcript
+  detail that are not the run's make `summarize.py` exit 1, as a stored prediction that moved
+  does. `tests/test_validation.py` holds the summary's exit status to `gate_3_0.py`'s on the
+  stored run, and the gate's section, fixed before its run, to its SHA-256.
+
 ### Corrections to earlier entries
 - **Recorded before the 3.0 gate is run.** Step 1 of the gate in `validation/README.md` names
   three transcripts of VEGFA's `iso_317aa` and three of TP53's `iso_354aa` as the members of

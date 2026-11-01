@@ -356,6 +356,738 @@
   "rerun": "chk_d1"
  },
  "format": "isoform-dominance/validation-summary/1",
+ "gate_3_0": {
+  "backgrounds": {
+   "abundance": {
+    "estimable_against": {
+     "reference_chromosomes": [],
+     "whole_index": []
+    },
+    "largest_increases": {
+     "reference_chromosomes": [
+      {
+       "after": 0.2410760869255683,
+       "before": 0.1938923848491937,
+       "gene": "TP53"
+      },
+      {
+       "after": 2.2647058254137935,
+       "before": 2.22911473616877,
+       "gene": "NR1H3"
+      },
+      {
+       "after": 0.35485813353455364,
+       "before": 0.32206728778654375,
+       "gene": "ALDOA"
+      },
+      {
+       "after": 1.2448113952651834,
+       "before": 1.213338291122857,
+       "gene": "EPOR"
+      },
+      {
+       "after": 0.1869482082945218,
+       "before": 0.16747173146326463,
+       "gene": "FLT1"
+      }
+     ],
+     "whole_index": [
+      {
+       "after": 0.24107856863323196,
+       "before": 0.1938923848491937,
+       "gene": "TP53"
+      },
+      {
+       "after": 2.264705842418432,
+       "before": 2.22911473616877,
+       "gene": "NR1H3"
+      },
+      {
+       "after": 0.35485813353455364,
+       "before": 0.32206728778654375,
+       "gene": "ALDOA"
+      },
+      {
+       "after": 1.2448113952651834,
+       "before": 1.213338291122857,
+       "gene": "EPOR"
+      },
+      {
+       "after": 0.18694820836664552,
+       "before": 0.16747173146326463,
+       "gene": "FLT1"
+      }
+     ]
+    },
+    "n_estimable": {
+     "gene_background": 48,
+     "reference_chromosomes": 47,
+     "whole_index": 45
+    },
+    "not_estimable_against": {
+     "reference_chromosomes": [
+      "SMN2"
+     ],
+     "whole_index": [
+      "CANX",
+      "PTPRC",
+      "SMN2"
+     ]
+    },
+    "se_smaller": {
+     "reference_chromosomes": [],
+     "whole_index": []
+    },
+    "verdict_changes": {
+     "reference_chromosomes": [
+      {
+       "after": "not_identifiable",
+       "before": "weakly_identifiable",
+       "gene": "SMN2"
+      }
+     ],
+     "whole_index": [
+      {
+       "after": "not_identifiable",
+       "before": "weakly_identifiable",
+       "gene": "CANX"
+      },
+      {
+       "after": "not_identifiable",
+       "before": "weakly_identifiable",
+       "gene": "PTPRC"
+      },
+      {
+       "after": "not_identifiable",
+       "before": "weakly_identifiable",
+       "gene": "SMN2"
+      }
+     ]
+    }
+   },
+   "competitors": {
+    "CANX": {
+     "reference_chromosomes": {
+      "groups": [
+       {
+        "gene_symbol": "CBY3",
+        "location": "chromosome:GRCh38:5",
+        "records": 2,
+        "windows": 1241
+       },
+       {
+        "gene_symbol": "ALG11",
+        "location": "chromosome:GRCh38:13",
+        "records": 9,
+        "windows": 135
+       },
+       {
+        "gene_symbol": "CSTF1",
+        "location": "chromosome:GRCh38:20",
+        "records": 11,
+        "windows": 99
+       },
+       {
+        "gene_symbol": "CIITA",
+        "location": "chromosome:GRCh38:16",
+        "records": 7,
+        "windows": 91
+       },
+       {
+        "gene_symbol": "ARHGEF39",
+        "location": "chromosome:GRCh38:9",
+        "records": 9,
+        "windows": 81
+       }
+      ],
+      "own": {},
+      "records": 261,
+      "windows": 3280
+     },
+     "whole_index": {
+      "groups": [
+       {
+        "gene_symbol": "CANX",
+        "location": "scaffold:GRCh38:HG30_PATCH",
+        "records": 19,
+        "windows": 20843
+       },
+       {
+        "gene_symbol": "CBY3",
+        "location": "scaffold:GRCh38:HG30_PATCH",
+        "records": 1,
+        "windows": 622
+       },
+       {
+        "gene_symbol": "CBY3",
+        "location": "chromosome:GRCh38:5",
+        "records": 1,
+        "windows": 619
+       },
+       {
+        "gene_symbol": "ALG11",
+        "location": "chromosome:GRCh38:13",
+        "records": 9,
+        "windows": 135
+       },
+       {
+        "gene_symbol": "CSTF1",
+        "location": "chromosome:GRCh38:20",
+        "records": 11,
+        "windows": 99
+       }
+      ],
+      "own": {
+       "scaffold:GRCh38:HG30_PATCH": {
+        "records": 19,
+        "windows": 20843
+       }
+      },
+      "records": 280,
+      "windows": 24123
+     }
+    },
+    "PTPRC": {
+     "reference_chromosomes": {
+      "groups": [],
+      "own": {},
+      "records": 0,
+      "windows": 0
+     },
+     "whole_index": {
+      "groups": [
+       {
+        "gene_symbol": "PTPRC",
+        "location": "scaffold:GRCh38:HSCHR1_3_CTG31",
+        "records": 9,
+        "windows": 9893
+       }
+      ],
+      "own": {
+       "scaffold:GRCh38:HSCHR1_3_CTG31": {
+        "records": 9,
+        "windows": 9893
+       }
+      },
+      "records": 9,
+      "windows": 9893
+     }
+    },
+    "SMN2": {
+     "reference_chromosomes": {
+      "groups": [
+       {
+        "gene_symbol": "SMN1",
+        "location": "chromosome:GRCh38:5",
+        "records": 20,
+        "windows": 23037
+       },
+       {
+        "gene_symbol": null,
+        "location": "chromosome:GRCh38:9",
+        "records": 1,
+        "windows": 3
+       }
+      ],
+      "own": {},
+      "records": 21,
+      "windows": 23040
+     },
+     "whole_index": {
+      "groups": [
+       {
+        "gene_symbol": "SMN1",
+        "location": "chromosome:GRCh38:5",
+        "records": 20,
+        "windows": 23037
+       },
+       {
+        "gene_symbol": "SMN2",
+        "location": "scaffold:GRCh38:HSCHR5_1_CTG1_1",
+        "records": 9,
+        "windows": 7505
+       },
+       {
+        "gene_symbol": "SMN1",
+        "location": "scaffold:GRCh38:HSCHR5_1_CTG1_1",
+        "records": 9,
+        "windows": 6986
+       },
+       {
+        "gene_symbol": "SMN2",
+        "location": "scaffold:GRCh38:HSCHR5_2_CTG1_1",
+        "records": 6,
+        "windows": 4745
+       }
+      ],
+      "own": {
+       "scaffold:GRCh38:HSCHR5_1_CTG1_1": {
+        "records": 9,
+        "windows": 7505
+       },
+       "scaffold:GRCh38:HSCHR5_2_CTG1_1": {
+        "records": 6,
+        "windows": 4745
+       }
+      },
+      "records": 44,
+      "windows": 42273
+     }
+    }
+   },
+   "estimable_as_abundance_only": {
+    "gene_background": [
+     "CANX",
+     "GNAS",
+     "NTRK2",
+     "NTRK3",
+     "SMN2",
+     "TNFRSF1B",
+     "VEGFA"
+    ],
+    "reference_chromosomes": [
+     "CANX",
+     "GNAS",
+     "NTRK2",
+     "NTRK3",
+     "TNFRSF1B",
+     "VEGFA"
+    ],
+    "whole_index": [
+     "GNAS",
+     "NTRK2",
+     "NTRK3",
+     "TNFRSF1B",
+     "VEGFA"
+    ]
+   },
+   "fragment": {
+    "estimable_against": {
+     "reference_chromosomes": [],
+     "whole_index": []
+    },
+    "largest_increases": {
+     "reference_chromosomes": [
+      {
+       "after": 0.35376587832995987,
+       "before": 0.3090724342765668,
+       "gene": "ALDOA"
+      },
+      {
+       "after": 0.21956868762714243,
+       "before": 0.17909130603088044,
+       "gene": "TP53"
+      },
+      {
+       "after": 2.431284355264106,
+       "before": 2.3936456593344433,
+       "gene": "NR1H3"
+      },
+      {
+       "after": 1.2441670473550752,
+       "before": 1.2124983811666097,
+       "gene": "EPOR"
+      },
+      {
+       "after": 0.1872526075013538,
+       "before": 0.1668533528199341,
+       "gene": "FLT1"
+      }
+     ],
+     "whole_index": [
+      {
+       "after": 0.35376587832995987,
+       "before": 0.3090724342765668,
+       "gene": "ALDOA"
+      },
+      {
+       "after": 0.2195712548745099,
+       "before": 0.17909130603088044,
+       "gene": "TP53"
+      },
+      {
+       "after": 2.43128437204641,
+       "before": 2.3936456593344433,
+       "gene": "NR1H3"
+      },
+      {
+       "after": 1.2441670473550752,
+       "before": 1.2124983811666097,
+       "gene": "EPOR"
+      },
+      {
+       "after": 0.18725260757672144,
+       "before": 0.1668533528199341,
+       "gene": "FLT1"
+      }
+     ]
+    },
+    "n_estimable": {
+     "gene_background": 41,
+     "reference_chromosomes": 41,
+     "whole_index": 40
+    },
+    "not_estimable_against": {
+     "reference_chromosomes": [],
+     "whole_index": [
+      "PTPRC"
+     ]
+    },
+    "se_smaller": {
+     "reference_chromosomes": [],
+     "whole_index": []
+    },
+    "verdict_changes": {
+     "reference_chromosomes": [
+      {
+       "after": "weakly_identifiable",
+       "before": "identifiable",
+       "gene": "CASP9"
+      }
+     ],
+     "whole_index": [
+      {
+       "after": "weakly_identifiable",
+       "before": "identifiable",
+       "gene": "CASP9"
+      },
+      {
+       "after": "not_identifiable",
+       "before": "weakly_identifiable",
+       "gene": "PTPRC"
+      }
+     ]
+    }
+   },
+   "n_contrasts": 49
+  },
+  "control": {
+   "numreads": {
+    "bias_below": 39,
+    "n": 39,
+    "not_below": [
+     {
+      "abs_bias": 0.02812660772057285,
+      "bias_below": true,
+      "gene": "CSF1R",
+      "n": 30,
+      "predicted_se": 0.5593702379811792,
+      "realised_sd": 0.5822854565682266,
+      "sd_below": false
+     },
+     {
+      "abs_bias": 0.0175651038965583,
+      "bias_below": true,
+      "gene": "ERBB4",
+      "n": 30,
+      "predicted_se": 0.3464294161268096,
+      "realised_sd": 0.36831987791325493,
+      "sd_below": false
+     },
+     {
+      "abs_bias": 0.030290675966505365,
+      "bias_below": true,
+      "gene": "GHR",
+      "n": 30,
+      "predicted_se": 0.1408643323971595,
+      "realised_sd": 0.16179702356408907,
+      "sd_below": false
+     },
+     {
+      "abs_bias": 0.008797630891544284,
+      "bias_below": true,
+      "gene": "INSR",
+      "n": 30,
+      "predicted_se": 0.20755475657682101,
+      "realised_sd": 0.21265752503528032,
+      "sd_below": false
+     },
+     {
+      "abs_bias": 0.004266514455431025,
+      "bias_below": true,
+      "gene": "PTPRC",
+      "n": 30,
+      "predicted_se": 0.07813958450845215,
+      "realised_sd": 0.12714484531866826,
+      "sd_below": false
+     }
+    ],
+    "sd_below": 34
+   },
+   "summed_tpm": {
+    "bias_below": 39,
+    "n": 39,
+    "not_below": [
+     {
+      "abs_bias": 0.023601558697810665,
+      "bias_below": true,
+      "gene": "CSF1R",
+      "n": 30,
+      "predicted_se": 0.5593702379811792,
+      "realised_sd": 0.5806547335428105,
+      "sd_below": false
+     },
+     {
+      "abs_bias": 0.02866285717104977,
+      "bias_below": true,
+      "gene": "ERBB4",
+      "n": 30,
+      "predicted_se": 0.3464294161268096,
+      "realised_sd": 0.3711188048336618,
+      "sd_below": false
+     },
+     {
+      "abs_bias": 0.008775479259705232,
+      "bias_below": true,
+      "gene": "INSR",
+      "n": 30,
+      "predicted_se": 0.20755475657682101,
+      "realised_sd": 0.21259337046289814,
+      "sd_below": false
+     },
+     {
+      "abs_bias": 0.009929630171397696,
+      "bias_below": true,
+      "gene": "PTPRC",
+      "n": 30,
+      "predicted_se": 0.07813958450845215,
+      "realised_sd": 0.12632929616230737,
+      "sd_below": false
+     }
+    ],
+    "sd_below": 35
+   }
+  },
+  "control_graded": false,
+  "detail_mismatches": [],
+  "exit_status": 1,
+  "graded": true,
+  "kept_copy": {
+   "LDHA": {
+    "gate_truth": {
+     "bias": 0.23161879820960274,
+     "n": 30,
+     "realised_sd": 0.10914984485518439,
+     "rmse": 0.26360824197202576
+    },
+    "graded_as": "control",
+    "kept_copies": {
+     "ENST00000227157": "ENST00000672078",
+     "ENST00000379412": "ENST00000673204",
+     "ENST00000422447": "ENST00000672405",
+     "ENST00000430553": "ENST00000672996",
+     "ENST00000542179": "ENST00000671981"
+    },
+    "kept_copies_in_a_compared_class": [],
+    "kept_copy_truth": {
+     "bias": -0.05928064934221977,
+     "n": 30,
+     "realised_sd": 0.10914984485518439,
+     "rmse": 0.12139276922123596
+    }
+   },
+   "NDUFS1": {
+    "gate_truth": {
+     "bias": 0.1053972362555804,
+     "n": 30,
+     "realised_sd": 0.20364923320859682,
+     "rmse": 0.21190471621625995
+    },
+    "graded_as": "control",
+    "kept_copies": {
+     "ENST00000233190": "ENST00000635748"
+    },
+    "kept_copies_in_a_compared_class": [],
+    "kept_copy_truth": {
+     "bias": 0.06211432641410175,
+     "n": 30,
+     "realised_sd": 0.20364923320859682,
+     "rmse": 0.20635936095684854
+    }
+   }
+  },
+  "largest_difference": 0.0,
+  "not_graded": null,
+  "passes": false,
+  "primary": {
+   "numreads": [
+    {
+     "abs_bias": 0.06872261395244905,
+     "bias_below": true,
+     "gene": "CANX",
+     "n": 30,
+     "predicted_se": 0.33654933009754084,
+     "realised_sd": 0.1376732400876113,
+     "sd_below": true
+    },
+    {
+     "abs_bias": 0.0456682040564691,
+     "bias_below": true,
+     "gene": "GNAS",
+     "n": 30,
+     "predicted_se": 0.11687513781573892,
+     "realised_sd": 0.09778068835671223,
+     "sd_below": true
+    },
+    {
+     "abs_bias": 0.008483827279029577,
+     "bias_below": true,
+     "gene": "NTRK2",
+     "n": 30,
+     "predicted_se": 0.06800669046896411,
+     "realised_sd": 0.06265993891713997,
+     "sd_below": true
+    },
+    {
+     "abs_bias": 0.0016429136019244783,
+     "bias_below": true,
+     "gene": "NTRK3",
+     "n": 30,
+     "predicted_se": 0.034580415643796956,
+     "realised_sd": 0.022860865494260165,
+     "sd_below": true
+    },
+    {
+     "abs_bias": 0.5444499952599244,
+     "bias_below": false,
+     "gene": "SMN2",
+     "n": 29,
+     "predicted_se": 0.4421210852531127,
+     "realised_sd": 0.7957224422424855,
+     "sd_below": false
+    },
+    {
+     "abs_bias": 0.07315041646392251,
+     "bias_below": true,
+     "gene": "TNFRSF1B",
+     "n": 30,
+     "predicted_se": 1.3620361169968047,
+     "realised_sd": 0.31195457982616137,
+     "sd_below": true
+    },
+    {
+     "abs_bias": 0.5492567304763925,
+     "bias_below": false,
+     "gene": "VEGFA",
+     "n": 30,
+     "predicted_se": 0.5013633858000771,
+     "realised_sd": 0.46407206405860224,
+     "sd_below": true
+    }
+   ],
+   "summed_tpm": [
+    {
+     "abs_bias": 0.06830287779790822,
+     "bias_below": true,
+     "gene": "CANX",
+     "n": 30,
+     "predicted_se": 0.33654933009754084,
+     "realised_sd": 0.13737787983042082,
+     "sd_below": true
+    },
+    {
+     "abs_bias": 0.0024606655314520776,
+     "bias_below": true,
+     "gene": "GNAS",
+     "n": 30,
+     "predicted_se": 0.11687513781573892,
+     "realised_sd": 0.06860071524896481,
+     "sd_below": true
+    },
+    {
+     "abs_bias": 0.010953247940078181,
+     "bias_below": true,
+     "gene": "NTRK2",
+     "n": 30,
+     "predicted_se": 0.06800669046896411,
+     "realised_sd": 0.06716749942204407,
+     "sd_below": true
+    },
+    {
+     "abs_bias": 0.007326547013909224,
+     "bias_below": true,
+     "gene": "NTRK3",
+     "n": 30,
+     "predicted_se": 0.034580415643796956,
+     "realised_sd": 0.023987857584554233,
+     "sd_below": true
+    },
+    {
+     "abs_bias": 0.47387005711228825,
+     "bias_below": false,
+     "gene": "SMN2",
+     "n": 29,
+     "predicted_se": 0.4421210852531127,
+     "realised_sd": 0.7509275620809885,
+     "sd_below": false
+    },
+    {
+     "abs_bias": 0.07226938618320888,
+     "bias_below": true,
+     "gene": "TNFRSF1B",
+     "n": 30,
+     "predicted_se": 1.3620361169968047,
+     "realised_sd": 0.3135447959822219,
+     "sd_below": true
+    },
+    {
+     "abs_bias": 0.023761832062211496,
+     "bias_below": true,
+     "gene": "VEGFA",
+     "n": 30,
+     "predicted_se": 0.5013633858000771,
+     "realised_sd": 0.2693606130779483,
+     "sd_below": true
+    }
+   ]
+  },
+  "primary_passes": false,
+  "primary_sd_ok": 6,
+  "reads_outside": {
+   "SMN1": 6967.401000000001,
+   "SMN1_over_SMN2_fragments": 0.057213485083635114,
+   "SMN2_fragments": 121779,
+   "by_symbol": [
+    [
+     "LDHA",
+     123838.54999999997
+    ],
+    [
+     "NDUFS1",
+     87700.44499999999
+    ],
+    [
+     "PTPRC",
+     11552.399000000001
+    ],
+    [
+     "CANX",
+     10472.139999999998
+    ],
+    [
+     "SMN1",
+     6967.401000000001
+    ],
+    [
+     "SMN2",
+     3061.224000000001
+    ]
+   ],
+   "fraction": 0.007008501730189439,
+   "fragments": 35032869,
+   "num_reads": 245527.92299999995,
+   "replicates": 30
+  },
+  "run": "sim/c1_d1_tpm.json",
+  "stopped": [
+   "SMN2"
+  ],
+  "tpm_rows_under_all_replicates": {
+   "EPOR": 25,
+   "PFKL": 3,
+   "SMN2": 29
+  }
+ },
  "genes": {
   "ALDOA": {
    "in_panel": true,
@@ -373,7 +1105,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.6312518840616258
+     "min_resolvable_log2fc": 0.6312518840616255
     },
     "beyond_linear": false,
     "conditioning_factor": 35.76286590552803,
@@ -422,7 +1154,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.516782435962622
+     "min_resolvable_log2fc": 0.5167824359626206
     },
     "beyond_linear": false,
     "conditioning_factor": 7.912143058058787,
@@ -463,7 +1195,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.17975797284386544
+     "min_resolvable_log2fc": 0.17975797284386572
     },
     "beyond_linear": false,
     "conditioning_factor": 40.1754685570785,
@@ -510,7 +1242,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.65963668699118
+     "min_resolvable_log2fc": 0.6596366869911794
     },
     "beyond_linear": true,
     "conditioning_factor": null,
@@ -623,7 +1355,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.27789169004181563
+     "min_resolvable_log2fc": 0.2778916900418156
     },
     "beyond_linear": false,
     "conditioning_factor": 9.68428779161243,
@@ -667,7 +1399,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.6618659185975829
+     "min_resolvable_log2fc": 0.6618659185975809
     },
     "beyond_linear": false,
     "conditioning_factor": 46.92560890826128,
@@ -708,7 +1440,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 1.3648316022948122
+     "min_resolvable_log2fc": 1.3648316022948155
     },
     "beyond_linear": true,
     "conditioning_factor": 193.71447618209626,
@@ -763,7 +1495,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 1.2041382982293682
+     "min_resolvable_log2fc": 1.2041382982293802
     },
     "beyond_linear": true,
     "conditioning_factor": 363.7229829551353,
@@ -935,7 +1667,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 1.0854671538351743
+     "min_resolvable_log2fc": 1.0854671538351595
     },
     "beyond_linear": true,
     "conditioning_factor": 220.80188414318866,
@@ -992,7 +1724,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 1.0963656664431114
+     "min_resolvable_log2fc": 1.096365666443111
     },
     "beyond_linear": true,
     "conditioning_factor": 46.79517851191963,
@@ -1041,7 +1773,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 1.5941571963706305
+     "min_resolvable_log2fc": 1.594157196371733
     },
     "beyond_linear": true,
     "conditioning_factor": 812.9519387867182,
@@ -1105,7 +1837,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 1.2723564284778348
+     "min_resolvable_log2fc": 1.27235642847784
     },
     "beyond_linear": true,
     "conditioning_factor": 75.18289654900408,
@@ -1165,7 +1897,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 2.3781430506007997
+     "min_resolvable_log2fc": 2.378143050600818
     },
     "beyond_linear": true,
     "conditioning_factor": 58.77564030543049,
@@ -1208,7 +1940,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.6790016556085469
+     "min_resolvable_log2fc": 0.6790016556085466
     },
     "beyond_linear": false,
     "conditioning_factor": 3.829079730913794,
@@ -1249,7 +1981,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.9861754697910434
+     "min_resolvable_log2fc": 0.9861754697911379
     },
     "beyond_linear": true,
     "conditioning_factor": 51.90586695250337,
@@ -1300,7 +2032,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.7018607719624906
+     "min_resolvable_log2fc": 0.7018607719627128
     },
     "beyond_linear": false,
     "conditioning_factor": 2.5664263171828594,
@@ -1346,7 +2078,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.3282445936679987
+     "min_resolvable_log2fc": 0.3282445936679985
     },
     "beyond_linear": false,
     "conditioning_factor": 181.39759981383696,
@@ -1389,7 +2121,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.2888098627525015
+     "min_resolvable_log2fc": 0.28880986275250436
     },
     "beyond_linear": false,
     "conditioning_factor": 15.874202061807605,
@@ -1429,7 +2161,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.2760940914984326
+     "min_resolvable_log2fc": 0.27609409149843367
     },
     "beyond_linear": false,
     "conditioning_factor": 68.92735846063967,
@@ -1499,7 +2231,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.2290752701188483
+     "min_resolvable_log2fc": 0.2290752701188475
     },
     "beyond_linear": true,
     "conditioning_factor": null,
@@ -1582,7 +2314,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.7540900366302965
+     "min_resolvable_log2fc": 0.7540900366302979
     },
     "beyond_linear": false,
     "conditioning_factor": 231.92257128601966,
@@ -1649,7 +2381,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.5004817090217214
+     "min_resolvable_log2fc": 0.500481709021721
     },
     "beyond_linear": false,
     "conditioning_factor": 4.876900196820168,
@@ -1688,7 +2420,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.5780370398761574
+     "min_resolvable_log2fc": 0.5780370398761566
     },
     "beyond_linear": false,
     "conditioning_factor": 49.095496353037554,
@@ -1738,7 +2470,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.5692668741099504
+     "min_resolvable_log2fc": 0.56926687410995
     },
     "beyond_linear": false,
     "conditioning_factor": 93.34441225510253,
@@ -1790,7 +2522,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.4068073228905692
+     "min_resolvable_log2fc": 0.40680732289056953
     },
     "beyond_linear": false,
     "conditioning_factor": 4.127844666459681,
@@ -1832,7 +2564,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.43285904873159764
+     "min_resolvable_log2fc": 0.4328590487315967
     },
     "beyond_linear": false,
     "conditioning_factor": 77.03946748286744,
@@ -1875,7 +2607,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.7416014819442026
+     "min_resolvable_log2fc": 0.7416014819442027
     },
     "beyond_linear": false,
     "conditioning_factor": 127.07965898291721,
@@ -1941,7 +2673,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.22523023449747095
+     "min_resolvable_log2fc": 0.2252302344974588
     },
     "beyond_linear": false,
     "conditioning_factor": 117.67699460999815,
@@ -1986,7 +2718,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.6516016320666714
+     "min_resolvable_log2fc": 0.6516016320666713
     },
     "beyond_linear": false,
     "conditioning_factor": 14.195052279776554,
@@ -2028,7 +2760,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.46503208390626233
+     "min_resolvable_log2fc": 0.4650320839062634
     },
     "beyond_linear": false,
     "conditioning_factor": 64.98073262245336,
@@ -2071,7 +2803,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.863309402691188
+     "min_resolvable_log2fc": 0.8633094026911834
     },
     "beyond_linear": true,
     "conditioning_factor": 38.25957451783937,
@@ -2142,7 +2874,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 4.369064882890789
+     "min_resolvable_log2fc": 4.369064882888794
     },
     "beyond_linear": true,
     "conditioning_factor": 293.52358983736036,
@@ -2243,7 +2975,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.13329311331916965
+     "min_resolvable_log2fc": 0.13329311331916974
     },
     "beyond_linear": true,
     "conditioning_factor": null,
@@ -2313,7 +3045,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.06777761466184204
+     "min_resolvable_log2fc": 0.06777761466184176
     },
     "beyond_linear": true,
     "conditioning_factor": null,
@@ -2376,7 +3108,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 140.39179335150672
+     "min_resolvable_log2fc": 140.3917933515067
     },
     "beyond_linear": true,
     "conditioning_factor": 2182.360769787888,
@@ -2450,7 +3182,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.8356616109629003
+     "min_resolvable_log2fc": 0.8356616109628981
     },
     "beyond_linear": true,
     "conditioning_factor": 25.679390639284872,
@@ -2496,7 +3228,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.6145168308413994
+     "min_resolvable_log2fc": 0.6145168308414001
     },
     "beyond_linear": false,
     "conditioning_factor": 68.19619693795104,
@@ -2596,7 +3328,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.15315358563656623
+     "min_resolvable_log2fc": 0.15315358563656614
     },
     "beyond_linear": false,
     "conditioning_factor": 48.697716753195586,
@@ -2646,7 +3378,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.9861640463473752
+     "min_resolvable_log2fc": 0.9861640463473745
     },
     "beyond_linear": true,
     "conditioning_factor": 91.8746872773252,
@@ -2691,7 +3423,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.8665573270961009
+     "min_resolvable_log2fc": 0.8665573270961014
     },
     "beyond_linear": true,
     "conditioning_factor": null,
@@ -2739,7 +3471,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.8516909086967249
+     "min_resolvable_log2fc": 0.8516909086967241
     },
     "beyond_linear": true,
     "conditioning_factor": 110.51514051392158,
@@ -2789,7 +3521,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.19292403661394503
+     "min_resolvable_log2fc": 0.19292403661394528
     },
     "beyond_linear": false,
     "conditioning_factor": 39.153754624332784,
@@ -2836,7 +3568,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.7859180113709412
+     "min_resolvable_log2fc": 0.7859180113709564
     },
     "beyond_linear": false,
     "conditioning_factor": 348.45197837556185,
@@ -2887,7 +3619,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 2.6695907893137374
+     "min_resolvable_log2fc": 2.669590789313678
     },
     "beyond_linear": true,
     "conditioning_factor": null,
@@ -2937,7 +3669,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.3800290743044196
+     "min_resolvable_log2fc": 0.38002907430442456
     },
     "beyond_linear": false,
     "conditioning_factor": 215.16276876134333,
@@ -3004,7 +3736,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 10.896908163302532
+     "min_resolvable_log2fc": 10.896908163297788
     },
     "beyond_linear": true,
     "conditioning_factor": 718.7508090992766,
@@ -3132,7 +3864,7 @@
    "structural": {
     "abundance": {
      "estimable": true,
-     "min_resolvable_log2fc": 0.982672236168151
+     "min_resolvable_log2fc": 0.982672236168153
     },
     "beyond_linear": true,
     "conditioning_factor": null,
@@ -3340,8 +4072,8 @@
   "n_estimable_abundance": 48,
   "n_genes": 49,
   "n_transcripts": 1911,
-  "poisson_design_median": 353.73797002364626,
-  "poisson_design_range": 116.82089061486937,
+  "poisson_design_median": 353.7379700236458,
+  "poisson_design_range": 116.82089061445659,
   "poisson_design_spearman": 0.9222996515679442,
   "poisson_unit_median": 16.402506944038983,
   "poisson_unit_range": 156.6193106226383,
