@@ -86,6 +86,12 @@ versioning.
   of the NOTE) and `identifiability.ESTIMANDS`, each with the gate's count, quoted from the
   summary. `tests/test_validation.py` fails while the package, the README, `docs/` or
   `validation/` outside the gate's own section says that precision has not yet been checked.
+- **Index scope, from the simulation's own index** (README, "Pass `--background-fasta`" and
+  "Two estimands"): computed after the 3.0 gate was graded, against the reference-chromosome
+  transcripts of the index the simulation was quantified with, SMN2's abundance contrast is not
+  estimable, SMN1's transcripts among its columns, and with that index's records on scaffolds
+  CANX's and PTPRC's are not either; SMN2's is the contrast whose summed TPM stopped the gate.
+  The panel's contrasts estimable as abundance only are counted against each background.
 
 ### Corrections to earlier entries
 - **Recorded before the 3.0 gate is run.** Step 1 of the gate in `validation/README.md` names

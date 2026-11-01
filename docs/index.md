@@ -185,10 +185,13 @@ least a window long, the classes by last exon, is such a case; with the classes 
 the cross instead (first exon 1 with last exon 1 and first exon 2 with last exon 2, against the
 other two), neither estimand is estimable. On the 49-gene panel of `validation/` the contrast
 is estimable as abundance only for 7 genes (CANX, GNAS, NTRK2, NTRK3, SMN2, TNFRSF1B, VEGFA),
-and as fragment totals only for none. The converse can occur where windows are dropped (a case
-in `tests/test_estimands.py`). Both are reported: the line under the contrast gives the other
-estimand, the human report says on stderr where the two part, and `--json` holds both under
-`estimands`, with `decision_estimand`. `--estimand` picks the one that decides the figures of
+and as fragment totals only for none. That is judged with each gene's own transcripts as the
+background; against the reference-chromosome transcripts of the simulation's index it is 6
+(SMN2's is not), and with that index's records on scaffolds added, 5 (nor is CANX's). The
+converse can occur where windows are dropped (a case in `tests/test_estimands.py`). Both are
+reported: the line under the contrast gives the other estimand, the human report says on
+stderr where the two part, and `--json` holds both under `estimands`, with
+`decision_estimand`. `--estimand` picks the one that decides the figures of
 the class and contrast lines, `EFFECT SIZE`, `VERDICT` and the exit status: `fragment` unless
 asked, so a run means what it meant in 2.8.0, and `--estimand abundance` asks the question
 `extract` and `stats` answer. Whether the abundance estimand is estimable is decided exactly in
@@ -237,7 +240,14 @@ them on depth and TPM, the `min |log2FC|` figures also on the number of donors, 
 > verdict of one (SDHA, to `not_identifiable`), and the contrast's min |log2FC| by a median
 > 0.003 (ACO2 the most, 3.8 to 8.6). A close paralogue can still decide the answer: SMN1's
 > classes are `weakly_identifiable` against the gene's own transcripts and
-> `not_identifiable` once SMN2's are columns. A record that holds a configured transcript's window found
+> `not_identifiable` once SMN2's are columns. On the 49 genes of `validation/`, computed after
+> the 3.0 gate was graded, the reference-chromosome transcripts of the simulation's index
+> (Ensembl 116's `cdna.all`) made 1 of the 48 contrasts estimable as abundance not estimable —
+> SMN2's, with SMN1's transcripts among its columns — and none of the 41 estimable as fragment
+> totals; with that index's records on scaffolds (alternate loci, patches) added, where CANX's
+> and PTPRC's own copies are, CANX's and PTPRC's abundance contrasts and PTPRC's fragment
+> contrast were not estimable either. SMN2's is the contrast whose summed TPM stopped the 3.0
+> gate (`validation/README.md`, "The 3.0 gate's result"). A record that holds a configured transcript's window found
 > in at most M records of the FASTA (`--max-window-records M`, default 20) becomes a column
 > of the compatibility system, as a transcript of the gene background is, so a competitor
 > found once gives one answer whether it comes from the FASTA or from

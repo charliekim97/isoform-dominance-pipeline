@@ -444,6 +444,12 @@ def gate_quotes(s):
         held, len(tpm), _owned(failed))
     s1, u = s["S1"], summarize.UNIFORM
     skewed = [s1["abs_bias_over_predicted_se"][i] for i in summarize.SKEWED]
+    only = b["estimable_as_abundance_only"]
+    fr_ref_lost = b["fragment"]["not_estimable_against"]["reference_chromosomes"]
+    # the genes whose own copies on scaffolds are among the columns of the whole index
+    copies = [x for x in whole_lost
+              if any(loc.startswith("scaffold:")
+                     for loc in b["competitors"][x]["whole_index"]["own"])]
     return [
         # the abundance estimand's precision: the CLI's NOTE, the package, the README, the
         # tutorial's quotation of the NOTE
@@ -472,6 +478,29 @@ def gate_quotes(s):
          "summed TPM failed that gate (README, "
          % (b["n_contrasts"], len(ref_lost), b["abundance"]["n_estimable"]["gene_background"],
             _owned(ref_lost), _owned(added), _owned(whole_lost), _owned(failed))),
+        # the README: the panel's abundance-only contrasts, and the whole-index answer, against
+        # the simulation's index
+        ("README.md", "against the reference-chromosome transcripts of the simulation's index "
+                      "it is %d (%s is not), and with that index's records on scaffolds added, "
+                      "%d (nor is %s)"
+         % (len(only["reference_chromosomes"]),
+            _owned(x for x in only["gene_background"] if x not in only["reference_chromosomes"]),
+            len(only["whole_index"]),
+            _owned(x for x in only["reference_chromosomes"] if x not in only["whole_index"]))),
+        ("README.md", "made %d of the %d contrasts estimable as abundance not estimable — %s, "
+                      "with %s transcripts among its columns — and %s of the %d estimable as "
+                      "fragment totals"
+         % (len(ref_lost), b["abundance"]["n_estimable"]["gene_background"], _owned(ref_lost),
+            _owned(added), len(fr_ref_lost) or "none",
+            b["fragment"]["n_estimable"]["gene_background"])),
+        ("README.md", "with that index's records on scaffolds (alternate loci, patches) added, "
+                      "where %s own copies are, %s abundance contrasts and %s fragment contrast "
+                      "were not estimable either"
+         % (_owned(copies), _owned(whole_lost),
+            _owned(x for x in b["fragment"]["not_estimable_against"]["whole_index"]
+                   if x not in fr_ref_lost))),
+        ("README.md", "%s is the contrast whose summed TPM stopped the 3.0 gate "
+                      "(`validation/README.md`, \"The 3.0 gate's result\")" % _owned(g["stopped"])),
         # what this shows, and what it does not
         (vreadme, "with the gene's other transcripts as the background, which leaves %s out"
                   % summarize._and(added)),
@@ -486,10 +515,7 @@ def gate_quotes(s):
                   % _owned(x for x in whole_lost if x in tpm and met(tpm[x]))),
         (vreadme, "the copies the index kept in place of %s dropped members are there"
                   % _owned(g["kept_copy"])),
-        (vreadme, "as are %s copies" % _owned(
-            x for x in whole_lost
-            if any(loc.startswith("scaffold:")
-                   for loc in b["competitors"][x]["whole_index"]["own"]))),
+        (vreadme, "as are %s copies" % _owned(copies)),
     ]
 
 
