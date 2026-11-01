@@ -92,6 +92,11 @@ versioning.
   estimable, SMN1's transcripts among its columns, and with that index's records on scaffolds
   CANX's and PTPRC's are not either; SMN2's is the contrast whose summed TPM stopped the gate.
   The panel's contrasts estimable as abundance only are counted against each background.
+- **`paper.md`** says the abundance estimand's precision figures were checked against Salmon's
+  summed TPM in simulation, by a gate fixed before its run, and did not pass, and why the
+  fragment estimand decides by default; and, as found after the grade, what the index's
+  reference-chromosome transcripts and its records on scaffolds do to the simulation's
+  contrasts ("State of the field", "Software design"). Its figures are quoted from the summary.
 
 ### Corrections to earlier entries
 - **Recorded before the 3.0 gate is run.** Step 1 of the gate in `validation/README.md` names

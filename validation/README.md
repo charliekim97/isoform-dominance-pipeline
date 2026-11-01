@@ -19,11 +19,11 @@ predicted for each gene, before any read existed, was recorded beside the realis
 CI does not run Salmon. `tests/test_validation.py` checks that the stored files are the ones `data/README.md` names,
 that the package still predicts for every gene what each stored row recorded (when it does not, the stored
 comparison no longer describes the code that ships), that `summary.json` and the two blocks below are what
-`summarize.py` computes, and that every figure the README, `docs/`, the CLI, the package's docstrings,
-`simulate_reads.py`'s docstring and this file quote from `data/` is the computed one (the comments in `run_simulation.py` are not checked).
-`tests/test_gate_run.py` holds the 3.0 gate's run to its grade, the per-transcript detail to the run's rows, and the
-whole-index file's gene-background half to what the package gives now. `tests/test_harness_smoke.py` runs the harness
-with no quantifier:
+`summarize.py` computes, and that every figure the README, `docs/`, `paper.md`, the CLI, the package's
+docstrings, `simulate_reads.py`'s docstring and this file quote from `data/` is the computed one (the comments in
+`run_simulation.py` are not checked). `tests/test_gate_run.py` holds the 3.0 gate's run to its grade, the
+per-transcript detail to the run's rows, and the whole-index file's gene-background half to what the package gives
+now. `tests/test_harness_smoke.py` runs the harness with no quantifier:
 
 - `run` on LEPR and TGFB1, three replicates at `--depth-scale 0.04`, with only the `salmon` command stubbed to write the fragments the simulator drew as `quant.sf`'s `NumReads` (and `meta_info.json`, `lib_format_counts.json`): two rows, each with bias and RMSE 0.
 - one replicate of the two genes simulated in two processes, at `PYTHONHASHSEED` 0 and 1: the same truth and, decompressed, the same reads (within one environment; not across numpy versions).
@@ -196,7 +196,7 @@ conditioned (1) or badly conditioned (2), and genes the gate fails that the stru
 | S8 | `simulate_reads.py`'s docstring; here |
 | the table | README, "It bounds spread, not accuracy"; here |
 | the survey | the docstrings of `gls_covariance`, `class_coherence`, `min_resolvable_log2fc` and `analyze`; the comment in `_verdict`; the help of `--min-log2fc`; `simulate_reads.py`'s docstring; the README, "Two estimands", and the gate below (the abundance estimand) |
-| the 3.0 gate's result | here, the two paragraphs around its block; README, "Two estimands" and "Pass `--background-fasta`"; the NOTE `identifiability` prints on the abundance estimand, its gene-background NOTE when that estimand decides, and the help of `--estimand` (`cli.py`); `identifiability.ESTIMANDS`'s docstring and the comment on `_PRECISION_CHECK`; `docs/api.md`; `docs/tutorial_NTRK2.md` |
+| the 3.0 gate's result | here, the two paragraphs around its block; README, "Two estimands" and "Pass `--background-fasta`"; the NOTE `identifiability` prints on the abundance estimand, its gene-background NOTE when that estimand decides, and the help of `--estimand` (`cli.py`); `identifiability.ESTIMANDS`'s docstring and the comment on `_PRECISION_CHECK`; `docs/api.md`; `docs/tutorial_NTRK2.md`; `paper.md`, "State of the field" and "Software design" |
 
 ## Read S8 before any comparison of the not-estimable genes with the others
 

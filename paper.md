@@ -112,12 +112,17 @@ fragment count; then the fragment total is not estimable, while the abundance to
 estimable when no invisible direction changes either compared class's abundance. This
 can happen where transcripts of one class that differ in length are crossed with another
 class's. Since version 2.9 both are reported. The fragment-total estimand decides by
-default, for continuity with earlier releases and with the simulation that checked its
-precision figures; the abundance-total estimand, the one that matches what `extract` and
-`stats` compare, decides when asked. Its estimability is decided exactly in the same
-window surrogate, but where only it is estimable that answer rests on counting a
-transcript's length in window positions, and its precision figures have not yet been
-checked against a quantifier's TPM. Two questions then hide
+default, for continuity with earlier releases and because the abundance-total estimand's
+precision figures did not pass their check; the abundance-total estimand, the one that
+matches what `extract` and `stats` compare, decides when asked. Its estimability is decided
+exactly in the same window surrogate, but where only it is estimable that answer rests on
+counting a transcript's length in window positions. Its precision figures were checked
+against Salmon's summed TPM in a simulation of 49 genes, by a gate fixed before its run, and
+did not pass, so the fragment-total estimand stays the default: of the 7 contrasts estimable
+as abundance only against each gene's own transcripts, they held for 6 and not for SMN2's.
+Found after the grade: against the reference-chromosome transcripts of the simulation's
+index, SMN2's contrast is not estimable as abundance, the transcripts of its paralogue SMN1
+becoming columns. Two questions then hide
 under one word. A contrast is *estimable* when it lies in the row space of the
 compatibility system: exact arithmetic, yes or no. It is *measurable* when it is
 recoverable at finite sequencing depth. Transcript-level identifiability is not
@@ -144,7 +149,11 @@ same gene, or in a paralogue, is unique to nothing as far as the quantifier is c
 The gene's other transcripts are fetched as background whenever the tool retrieves
 sequence itself; supplied offline, background must be supplied with them. An arbitrary
 FASTA — ideally the one the index was built from — is streamed without materialising its
-own k-mer set. k-mers are folded to canonical form, because that is what the index
+own k-mer set. Computed after the gate was graded, 1 of the 48 contrasts of the simulation
+estimable as abundance against the gene's own transcripts was not estimable against the
+reference-chromosome transcripts of its index, and 3 were not once that index's records on
+scaffolds were added. The one against the reference chromosomes is SMN2's, whose summed TPM
+did not pass the gate. k-mers are folded to canonical form, because that is what the index
 stores and what an unstranded library requires.
 
 *The read model counts reads, not fragments.* A unique k-mer is informative only when it
