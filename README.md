@@ -194,10 +194,11 @@ asked, so a run means what it meant in 2.8.0, and `--estimand abundance` asks th
 `extract` and `stats` answer. Whether the abundance estimand is estimable is decided exactly in
 this window system, but where only it is estimable that answer rests on counting a transcript's
 length in window positions, and its figures weight a short transcript less than TPM does
-(`identifiability.ESTIMANDS` gives both). Its precision figures have not yet been checked
-against a quantifier's TPM in simulation, as the fragment estimand's were against `NumReads`,
-and `validation/README.md` fixes what that check must show before it becomes the default in
-3.0.
+(`identifiability.ESTIMANDS` gives both). Its precision figures were checked in the
+simulation of `validation/` against Salmon's summed TPM, by a gate fixed before its run, and
+did not pass it, so `fragment` stays the default: they held for 6 of the 7 contrasts graded and
+not for SMN2's (`validation/README.md`, "The 3.0 gate's result", which also gives what was
+found after the grade).
 
 Exit codes: **0** no `--min-log2fc` given, or it is resolved · **3** `--min-log2fc` given and
 not resolved at the stated design · **2** precondition failure: a transcript shorter than

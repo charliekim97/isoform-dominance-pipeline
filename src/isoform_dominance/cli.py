@@ -492,19 +492,38 @@ _ESTIMAND_SHORT = {"fragment": "fragment (class fragment totals)",
                    "abundance": "abundance (length-corrected class abundance, whose class "
                                 "ratio summed TPM estimates)"}
 
-#: said of the abundance estimand wherever its figures are used or offered
-_ABUNDANCE_PENDING = ("Its estimability is decided exactly in this window system, but where "
+#: said of the abundance estimand wherever its figures are used or offered: what its
+#: estimability rests on, and the grade the 3.0 gate gave its precision figures
+_ABUNDANCE_CHECKED = ("Its estimability is decided exactly in this window system, but where "
                       "only it is estimable that answer rests on counting each transcript's "
-                      "length in window positions (identifiability.ESTIMANDS); its precision "
-                      "figures have not yet been checked against a quantifier's TPM in "
-                      "simulation, as the fragment estimand's were against NumReads "
-                      "(validation/README.md).")
+                      "length in window positions (identifiability.ESTIMANDS). Its precision "
+                      "figures were checked against a quantifier's TPM in simulation, by the "
+                      "gate that would have made it the default, and did not pass, so fragment "
+                      "stays the default: they held for 6 of the 7 contrasts graded and not "
+                      "for SMN2's (validation/README.md, \"The 3.0 gate's result\").")
+
+
+#: what was measured of the whole-index answer, said in the gene-background NOTE of the
+#: estimand that decides: for the fragment one, the rule of issue #3 on 100 two-class
+#: configs; for the abundance one, the 49 genes of validation/ after the 3.0 gate's grade
+_WHOLE_INDEX_MEASURED = {
+    "fragment": "On 100 two-class configs at Ensembl 116 the whole-index background changed no "
+                "exit status at --min-log2fc 0.5 and one verdict, but a close paralogue can "
+                "decide the answer (README, \"Pass --background-fasta\").",
+    "abundance": "On the 49 genes of validation/, computed after the 3.0 gate was graded, the "
+                 "reference-chromosome transcripts of their index made 1 of the 48 contrasts "
+                 "estimable as abundance not estimable, SMN2's, with SMN1's transcripts among "
+                 "its columns, and the index's records on scaffolds made CANX's and PTPRC's not "
+                 "estimable too. SMN2's is the contrast whose summed TPM failed that gate "
+                 "(README, \"Pass --background-fasta\").",
+}
 
 
 def _estimand_notes(res):
     """The NOTEs on the two estimands of a report: where they differ on whether the
     compared class totals and the contrast are estimable, and, when the abundance estimand
-    decides, that its precision is not yet validated."""
+    decides or is offered, what its estimability rests on and that its precision figures did
+    not pass their check in simulation."""
     est = res.get("estimands") or {}
     if set(est) != {"fragment", "abundance"}:
         return []
@@ -524,7 +543,7 @@ def _estimand_notes(res):
     notes = []
     if deciding == "abundance":
         notes.append("the abundance estimand decides (--estimand abundance). "
-                     + _ABUNDANCE_PENDING)
+                     + _ABUNDANCE_CHECKED)
     # what the two answers say, and nothing they do not: an estimand that is estimable is
     # changed by no direction this system cannot see; one that is not is changed by some,
     # and as the two differ only in each transcript's length, a direction that changes one
@@ -545,7 +564,7 @@ def _estimand_notes(res):
                ", which decide here" if deciding == "fragment" else "",
                _why(abundance_only, "abundance", "a fragment total"),
                (" --estimand abundance decides by the abundance estimand. "
-                + _ABUNDANCE_PENDING) if deciding == "fragment" else ""))
+                + _ABUNDANCE_CHECKED) if deciding == "fragment" else ""))
     if fragment_only:
         notes.append(
             "%s %s estimable as fragment totals and not as length-corrected class abundance: "
@@ -723,13 +742,11 @@ def _report(a, res):
         scope = ("this gene's other transcripts"
                  if bg["n_background_transcripts"] else "the configured groups only")
         print("  NOTE: uniqueness judged against %s, not the whole index: pseudogenes, "
-              "paralogues and homologous loci outside this gene are not accounted for. On "
-              "100 two-class configs at Ensembl 116 the whole-index background changed no "
-              "exit status at --min-log2fc 0.5 and one verdict, but a close paralogue can "
-              "decide the answer (README, \"Pass --background-fasta\"). Pass "
-              "--background-fasta <the transcript FASTA the Salmon index was built from, "
-              "without the genome decoys> for the whole-index answer."
-              % scope, file=sys.stderr)
+              "paralogues and homologous loci outside this gene are not accounted for. %s "
+              "Pass --background-fasta <the transcript FASTA the Salmon index was built "
+              "from, without the genome decoys> for the whole-index answer."
+              % (scope, _WHOLE_INDEX_MEASURED[res.get("decision_estimand", "fragment")]),
+              file=sys.stderr)
     d = res["design"]
     print("  design: %s %dbp reads, fragments %.0f+-%.0f, depth %.0fM, TPM %.3g, n=%d"
           % ("paired" if d["paired"] else "single", d["read_length"],
@@ -1101,8 +1118,9 @@ def build_parser():
                         "2.8.0's), or 'abundance', the length-corrected class abundance, whose "
                         "class ratio is the ratio that summed TPM estimates, which extract and "
                         "stats compare. Both are "
-                        "reported; the abundance estimand's precision figures await a check "
-                        "against a quantifier's TPM in simulation")
+                        "reported; the abundance estimand's precision figures did not pass "
+                        "their check against a quantifier's TPM in simulation "
+                        "(validation/README.md)")
     s.add_argument("--tau", type=float, default=identifiability.DEFAULT_CONDITIONING_TAU,
                    help="structural conditioning factor above which a class is only weakly "
                         "identifiable; a diagnostic that does not affect the exit status")

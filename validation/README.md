@@ -19,8 +19,8 @@ predicted for each gene, before any read existed, was recorded beside the realis
 CI does not run Salmon. `tests/test_validation.py` checks that the stored files are the ones `data/README.md` names,
 that the package still predicts for every gene what each stored row recorded (when it does not, the stored
 comparison no longer describes the code that ships), that `summary.json` and the two blocks below are what
-`summarize.py` computes, and that every figure the README, the CLI, the package's docstrings, `simulate_reads.py`'s
-docstring and this file quote from `data/` is the computed one (the comments in `run_simulation.py` are not checked).
+`summarize.py` computes, and that every figure the README, `docs/`, the CLI, the package's docstrings,
+`simulate_reads.py`'s docstring and this file quote from `data/` is the computed one (the comments in `run_simulation.py` are not checked).
 `tests/test_gate_run.py` holds the 3.0 gate's run to its grade, the per-transcript detail to the run's rows, and the
 whole-index file's gene-background half to what the package gives now. `tests/test_harness_smoke.py` runs the harness
 with no quantifier:
@@ -196,7 +196,7 @@ conditioned (1) or badly conditioned (2), and genes the gate fails that the stru
 | S8 | `simulate_reads.py`'s docstring; here |
 | the table | README, "It bounds spread, not accuracy"; here |
 | the survey | the docstrings of `gls_covariance`, `class_coherence`, `min_resolvable_log2fc` and `analyze`; the comment in `_verdict`; the help of `--min-log2fc`; `simulate_reads.py`'s docstring; the README, "Two estimands", and the gate below (the abundance estimand) |
-| the 3.0 gate's result | here, the two paragraphs around its block |
+| the 3.0 gate's result | here, the two paragraphs around its block; README, "Two estimands"; the NOTE `identifiability` prints on the abundance estimand, its gene-background NOTE when that estimand decides, and the help of `--estimand` (`cli.py`); `identifiability.ESTIMANDS`'s docstring and the comment on `_PRECISION_CHECK`; `docs/api.md`; `docs/tutorial_NTRK2.md` |
 
 ## Read S8 before any comparison of the not-estimable genes with the others
 

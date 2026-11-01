@@ -199,12 +199,15 @@ def test_a_changed_stored_figure_changes_the_summary(tmp_path, analysed):
 # (4) every quoted figure is the computed one
 # --------------------------------------------------------------------------- #
 def text_of(path):
-    """A file's text as one line: line breaks, comment markers and the seams of implicitly
-    concatenated string literals taken out, runs of white space made one space."""
+    """A file's text as one line: line breaks, comment markers, Markdown's quotation markers
+    and the seams of implicitly concatenated string literals taken out, runs of white space
+    made one space."""
     t = path.read_text(encoding="utf-8")
     if path.suffix == ".py":
         t = re.sub(r'"\s*\n\s*"', "", t)
         t = re.sub(r"\n\s*#:?", " ", t)
+    elif path.suffix == ".md":
+        t = re.sub(r"\n>[ \t]?", "\n", t)
     return " ".join(t.split())
 
 
@@ -436,7 +439,39 @@ def gate_quotes(s):
              for x, c in b["competitors"].items()
              if x in ref_lost and c["reference_chromosomes"]["groups"]]
     vreadme = "validation/README.md"
+    held = sum(met(r) for r in tpm.values())
+    graded = "they held for %d of the %d contrasts graded and not for %s" % (
+        held, len(tpm), _owned(failed))
+    s1, u = s["S1"], summarize.UNIFORM
+    skewed = [s1["abs_bias_over_predicted_se"][i] for i in summarize.SKEWED]
     return [
+        # the abundance estimand's precision: the CLI's NOTE, the package, the README, the
+        # tutorial's quotation of the NOTE
+        ("src/isoform_dominance/cli.py", graded + " (validation/README.md, "),
+        ("src/isoform_dominance/identifiability.py", graded + " (``validation/README.md``, "),
+        ("README.md", graded + " (`validation/README.md`, \"The 3.0 gate's result\""),
+        ("docs/tutorial_NTRK2.md", graded + " (validation/README.md, \"The 3.0 gate's result\")"),
+        # what _PRECISION_CHECK's met rests on: S1's uniform design against the gate's control
+        # standard, and its skewed designs
+        ("src/isoform_dominance/identifiability.py",
+         "of S1's %d genes, a |bias| above the predicted SE for %d and an SD below it for %d, "
+         "where the gate's control asks for a |bias| below it for at least %d and an SD below "
+         "it for at least %d" % (s1["n"], s1["abs_bias_over_predicted_se"][u],
+                                 s1["realised_sd_under_predicted_se"][u],
+                                 summarize.G.CONTROL_BIAS_AT_LEAST,
+                                 summarize.G.CONTROL_SD_AT_LEAST)),
+        ("src/isoform_dominance/identifiability.py",
+         "(S1: a |bias| above the predicted SE for %d to %d of the %d)"
+         % (min(skewed), max(skewed), s1["n"])),
+        # the gene-background NOTE when the abundance estimand decides
+        ("src/isoform_dominance/cli.py",
+         "On the %d genes of validation/, computed after the 3.0 gate was graded, the "
+         "reference-chromosome transcripts of their index made %d of the %d contrasts "
+         "estimable as abundance not estimable, %s, with %s transcripts among its columns, and "
+         "the index's records on scaffolds made %s not estimable too. %s is the contrast whose "
+         "summed TPM failed that gate (README, "
+         % (b["n_contrasts"], len(ref_lost), b["abundance"]["n_estimable"]["gene_background"],
+            _owned(ref_lost), _owned(added), _owned(whole_lost), _owned(failed))),
         # what this shows, and what it does not
         (vreadme, "with the gene's other transcripts as the background, which leaves %s out"
                   % summarize._and(added)),
@@ -840,3 +875,33 @@ def test_the_gate_block_says_what_the_brief_numbers_are(computed):
     top = b["competitors"]["SMN2"]["reference_chromosomes"]["groups"][0]
     assert (top["gene_symbol"], top["location"], top["records"]) == (
         "SMN1", "chromosome:GRCh38:5", 20)
+
+
+#: what was said of the abundance estimand's precision until the 3.0 gate graded it
+NOT_YET_CHECKED = re.compile(
+    r"not yet been checked|have not been checked|await a check|not yet validated", re.I)
+#: the files that must not say it any more; CHANGELOG.md and the gate's own section, records
+#: of before the grade, are not among them
+GUARDED = ("src/isoform_dominance/*.py", "README.md", "docs/*.md", "validation/*.py",
+           "validation/README.md")
+
+
+def not_yet_checked(root=ROOT):
+    hits = []
+    for pattern in GUARDED:
+        for path in sorted(root.glob(pattern)):
+            t = text_of(path)
+            if path.relative_to(root).as_posix() == "validation/README.md":
+                gate = " ".join(gate_section(path.read_text(encoding="utf-8")).split())
+                assert t.count(gate) == 1
+                t = t.replace(gate, "")
+            hits += ["%s: %s" % (path.relative_to(root).as_posix(), m.group(0))
+                     for m in NOT_YET_CHECKED.finditer(t)]
+    return hits
+
+
+def test_nothing_says_the_abundance_estimands_precision_is_not_yet_checked():
+    assert not_yet_checked() == []
+    # the gate's section still says it, as it did before its run
+    assert NOT_YET_CHECKED.search(gate_section(
+        (VALIDATION / "README.md").read_text(encoding="utf-8")))

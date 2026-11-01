@@ -43,6 +43,28 @@ versioning.
   grade, the detail's rows to the run's and the whole-index file's gene-background half to the
   package.
 
+### Changed
+- **The abundance estimand's precision figures, as the 3.0 gate graded them.** In `--json`,
+  each estimand block's `precision_checked_in_simulation` is now `true` for the abundance
+  estimand too: 2.9.0's `false` meant "not yet checked", and `true` means "checked", not
+  "met". A new key, `precision_check`, follows it in each block (`definition`,
+  `precision_checked_in_simulation`, `precision_check`, `groups`, `contrast`,
+  `effect_resolvable`, `verdict`, `reasons`): `{"against": "NumReads", "coverage": "uniform",
+  "met": true, "where": "validation/README.md, S1"}` for the fragment estimand and
+  `{"against": "summed TPM", "coverage": "uniform", "met": false, "where": "validation/README.md,
+  The 3.0 gate's result"}` for the abundance one (`identifiability._PRECISION_CHECK`; each
+  report holds its own copy). A reader
+  of 2.9.0's JSON finds one value changed and one key added in each block, and nothing else.
+  Stdout is unchanged. On stderr, the NOTE on the abundance estimand -- when it decides, and
+  where only it is estimable while the fragment estimand decides -- says its precision figures
+  were checked against a quantifier's TPM in simulation, by the gate that would have made it
+  the default, and did not pass, with the gate's count, where it said they had not yet been
+  checked. When the abundance estimand decides and no `--background-fasta` is given, the
+  gene-background NOTE gives what was computed, after the grade, of the whole-index answer for
+  the 49 genes of `validation/`, in place of the 100-config figure, which is the fragment
+  estimand's and is still given when it decides. The `--estimand` help says the abundance
+  estimand's precision figures did not pass their check.
+
 ### Documented
 - **The 3.0 gate's result** (`validation/README.md`, "The 3.0 gate's result", after the gate's
   own section, which is unchanged). `validation/summarize.py` grades the stored run with
@@ -59,6 +81,11 @@ versioning.
   detail that are not the run's make `summarize.py` exit 1, as a stored prediction that moved
   does. `tests/test_validation.py` holds the summary's exit status to `gate_3_0.py`'s on the
   stored run, and the gate's section, fixed before its run, to its SHA-256.
+- **The abundance estimand's precision figures: checked, and not passed** -- in the README
+  ("Two estimands"), `docs/api.md` (`precision_check`), `docs/tutorial_NTRK2.md` (its quotations
+  of the NOTE) and `identifiability.ESTIMANDS`, each with the gate's count, quoted from the
+  summary. `tests/test_validation.py` fails while the package, the README, `docs/` or
+  `validation/` outside the gate's own section says that precision has not yet been checked.
 
 ### Corrections to earlier entries
 - **Recorded before the 3.0 gate is run.** Step 1 of the gate in `validation/README.md` names

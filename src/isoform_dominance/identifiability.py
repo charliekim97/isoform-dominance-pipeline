@@ -1106,8 +1106,9 @@ ESTIMANDS = ("fragment", "abundance")
 
 ``"fragment"``: a class's expected fragment count, ``sum over t in g of theta_t``, with
 ``theta_t`` the expected count of the system's observation unit from transcript ``t``.  It is
-what the package asked through 2.8.0, what a quantifier's ``NumReads`` sums, and what the
-simulation in ``validation/`` measured; it is the default.
+what the package asked through 2.8.0 and what a quantifier's ``NumReads`` sums, against
+which S1 of the simulation in ``validation/`` measured its precision figures; it is the
+default.
 
 ``"abundance"``: a class's length-corrected abundance, ``sum over t in g of theta_t / l_t``,
 with ``l_t`` the effective length of ``t`` -- the number of positions the observation unit
@@ -1140,9 +1141,11 @@ last exon, is such a case; with the classes taken across the cross instead (``X1
 against ``X1Y2 + X2Y1``), neither estimand is estimable.  On a 49-gene panel the contrast
 was estimable as abundance only for 7 genes (NTRK2 and NTRK3 among them), and as fragment
 totals only for none; the converse can hold where windows are dropped and a column sums to
-less than one (``tests/test_estimands.py`` has a case).  Whichever is estimable, the
-precision figures of the abundance estimand have not yet been checked against a quantifier's
-TPM in simulation, as the fragment estimand's were against ``NumReads``.
+less than one (``tests/test_estimands.py`` has a case).  The precision figures of the
+abundance estimand were checked against a quantifier's summed TPM in that simulation, by the
+gate that would have made it the default, and did not pass it, so the fragment estimand stays
+the default: they held for 6 of the 7 contrasts graded and not for SMN2's
+(``validation/README.md``, "The 3.0 gate's result").
 """
 
 _ESTIMAND_DEFINITION = {
@@ -1153,9 +1156,25 @@ _ESTIMAND_DEFINITION = {
 }
 
 #: whether the precision figures of each estimand were checked against a quantifier in the
-#: simulation of ``validation/``: the fragment estimand's against NumReads; the abundance
-#: estimand's not yet (``validation/README.md`` says what will decide)
-_PRECISION_CHECKED = {"fragment": True, "abundance": False}
+#: simulation of ``validation/``: both were -- the fragment estimand's against the stored
+#: run's NumReads, which S1 describes; the abundance estimand's against summed TPM, by the 3.0
+#: gate, fixed before its run.  What each check gave is :data:`_PRECISION_CHECK`
+_PRECISION_CHECKED = {"fragment": True, "abundance": True}
+
+#: what each estimand's precision figures were checked against, at what coverage, whether
+#: they ``met`` the standard the 3.0 gate set -- at uniform coverage, every transcript at TPM
+#: 10 -- and where the check is written up.  The fragment estimand's: of S1's 39 genes, a
+#: |bias| above the predicted SE for 0 and an SD below it for 35, where the gate's control
+#: asks for a |bias| below it for at least 38 and an SD below it for at least 31.  The
+#: abundance estimand's: the gate's grade.  Under skewed coverage the fragment estimand's
+#: figures do not meet it either (S1: a |bias| above the predicted SE for 20 to 33 of the
+#: 39); the abundance estimand was not run under skew.  Each report holds a copy
+_PRECISION_CHECK = {
+    "fragment": {"against": "NumReads", "coverage": "uniform", "met": True,
+                 "where": "validation/README.md, S1"},
+    "abundance": {"against": "summed TPM", "coverage": "uniform", "met": False,
+                  "where": "validation/README.md, The 3.0 gate's result"},
+}
 
 #: the label of each estimand in a report's reasons: the fragment one's are 2.8.0's
 _ESTIMAND_LABEL = {
@@ -1183,8 +1202,9 @@ def _estimand_report(name, A, svd, cov, theta, indicator, n_positions, pc, repor
     """One estimand's estimability, precision and verdicts: ``indicator`` maps each class to
     its 0/1 column indicator, ``n_positions`` gives each column's window positions (see
     :func:`_coefficients`), ``report`` holds each class's read-model numbers, which the
-    verdict reads.  Returns ``{"definition", "groups", "contrast", "effect_resolvable",
-    "verdict", "reasons"}`` and ``precision_checked_in_simulation``; each class's and the
+    verdict reads.  Returns ``{"definition", "precision_checked_in_simulation",
+    "precision_check", "groups", "contrast", "effect_resolvable", "verdict", "reasons"}``,
+    ``precision_check`` a copy of :data:`_PRECISION_CHECK`'s entry; each class's and the
     contrast's fields are in the order a report has always given them."""
     label, contrast_label = _ESTIMAND_LABEL[name]
     groups = {}
@@ -1239,7 +1259,8 @@ def _estimand_report(name, A, svd, cov, theta, indicator, n_positions, pc, repor
                else "weakly_identifiable" if "weakly_identifiable" in verdicts
                else "identifiable")
     return {"definition": _ESTIMAND_DEFINITION[name],
-            "precision_checked_in_simulation": _PRECISION_CHECKED[name], "groups": groups,
+            "precision_checked_in_simulation": _PRECISION_CHECKED[name],
+            "precision_check": dict(_PRECISION_CHECK[name]), "groups": groups,
             "contrast": contrast, "effect_resolvable": effect_resolvable,
             "verdict": overall, "reasons": reasons}
 
@@ -1614,8 +1635,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         estimable but practically not.
 
         ``estimands`` holds both estimands of :data:`ESTIMANDS`, each as ``{definition,
-        precision_checked_in_simulation, groups, contrast, effect_resolvable, verdict,
-        reasons}`` -- per class and for the
+        precision_checked_in_simulation, precision_check, groups, contrast,
+        effect_resolvable, verdict, reasons}`` (``precision_check``: what the estimand's
+        precision figures were checked against in simulation, at what coverage, whether
+        they met the check, and where it is written up) -- per class and for the
         contrast the fields that depend on the estimand (``estimable``, ``residual``,
         ``conditioning_factor``, ``rank``, ``label``, ``gls_relative_se``, ``finite_se``,
         ``min_resolvable_log2fc``, ``beyond_linear``, ``verdict``, ``reasons``) -- and
