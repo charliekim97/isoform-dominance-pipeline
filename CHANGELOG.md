@@ -97,6 +97,13 @@ versioning.
   fragment estimand decides by default; and, as found after the grade, what the index's
   reference-chromosome transcripts and its records on scaffolds do to the simulation's
   contrasts ("State of the field", "Software design"). Its figures are quoted from the summary.
+- **`paper.md`, shortened** to 1,576 words from 2,410 (2,279 before the sentences above), by the
+  count `tests/test_paper.py` describes: under the 1,600 that leaves room for the AI usage
+  disclosure JOSS asks for, which is restored before submission, within its 750-1,750. Its
+  sentences are the earlier ones shortened, with one added in "State of the field" on why this
+  is a package of its own rather than a contribution to an existing one; it cites the same 23
+  references. "Research impact" is "Research impact statement", JOSS's name for the section.
+  `tests/test_paper.py` holds the length, the sections and their order, and the references.
 
 ### Corrections to earlier entries
 - **Recorded before the 3.0 gate is run.** Step 1 of the gate in `validation/README.md` names
