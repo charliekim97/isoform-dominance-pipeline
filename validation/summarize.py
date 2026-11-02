@@ -679,21 +679,52 @@ def backgrounds(whole):
 
 def reads_outside(detail):
     """Where the run's reads went outside the 49 genes: over its replicates, the
-    ``NumReads`` of the records outside them against the library's fragments, the six gene
-    symbols with the most, and SMN1's against the fragments drawn from SMN2."""
+    ``NumReads`` of the records outside them against the library's fragments, and the six
+    gene symbols with the most.  Of those, the ones on records the index kept in place of a
+    transcript of the 49 genes with the same sequence (``outside_stand_ins``): their reads
+    are that transcript's.  SMN1's records that stand for SMN2's transcripts are told apart
+    from its others, which alone are measured against the fragments drawn from SMN2, and
+    SMN2's records outside the 49 genes that stand for none of their transcripts are
+    counted."""
     total, by = 0.0, {}
     for rep in detail["outside_num_reads"]:
         for s, n in rep.items():
             total += n
             by[s] = by.get(s, 0.0) + n
     fragments = sum(detail["fragments_written"])
-    smn2 = sum(r["gene_fragments_written"] for r in detail["genes"]["SMN2"]["replicates"])
+    smn2 = detail["genes"]["SMN2"]
+    smn2_fragments = sum(r["gene_fragments_written"] for r in smn2["replicates"])
+    compared = {t for c in smn2["primary_comparison"] for t in smn2["classes"][c]}
+    stand_reads, by_stand = 0.0, {}
+    smn1 = {"records": set(), "transcripts": set(), "fragments": 0}
+    for rep in detail["outside_stand_ins"]:
+        for k, v in rep.items():
+            stand_reads += v["num_reads"]
+            by_stand[v["symbol"]] = by_stand.get(v["symbol"], 0.0) + v["num_reads"]
+            if v["symbol"] == "SMN1":
+                smn1["records"].add(k)
+                for t, w in v["stands_for"].items():
+                    if w["gene"] != "SMN2":
+                        raise ValueError("SMN1's record %s stands for %s's %s, not SMN2's"
+                                         % (k, w["gene"], t))
+                    smn1["transcripts"].add(t)
+                    smn1["fragments"] += w["fragments_written"]
+    smn1_other = by.get("SMN1", 0.0) - by_stand.get("SMN1", 0.0)
     return {"replicates": len(detail["outside_num_reads"]), "num_reads": total,
             "fragments": fragments, "fraction": total / fragments,
             "by_symbol": [[s, n] for s, n in sorted(by.items(),
                                                     key=lambda x: (-x[1], x[0]))[:6]],
-            "SMN1": by.get("SMN1", 0.0), "SMN2_fragments": smn2,
-            "SMN1_over_SMN2_fragments": by.get("SMN1", 0.0) / smn2}
+            "stand_in_records": len(set().union(*detail["outside_stand_ins"])),
+            "stand_in_num_reads": stand_reads,
+            "SMN1": by.get("SMN1", 0.0), "SMN2_fragments": smn2_fragments,
+            "SMN1_stand_ins": {"records": len(smn1["records"]),
+                               "num_reads": by_stand.get("SMN1", 0.0),
+                               "transcripts": len(smn1["transcripts"]),
+                               "in_compared_classes": len(smn1["transcripts"] & compared),
+                               "fragments": smn1["fragments"]},
+            "SMN1_other": smn1_other,
+            "SMN1_other_over_SMN2_fragments": smn1_other / smn2_fragments,
+            "SMN2_other": by.get("SMN2", 0.0) - by_stand.get("SMN2", 0.0)}
 
 
 def gate_result(run, data=DATA, source=None):
@@ -1191,17 +1222,27 @@ def render_gate(s):
                 _and("%.3f" % k[x]["gate_truth"]["realised_sd"] for x in names))))
     out += _background_lines(g["backgrounds"], g["backgrounds"]["n_contrasts"])
     r = g["reads_outside"]
-    no_fragment = "SMN1" not in s["genes"]
+    m = r["SMN1_stand_ins"]
     out.append(
         "- Where the reads went (`data/sim/c1_d1_tpm_detail.json`): over the %d replicates, "
         "%s `NumReads`, %.2f%% of the %s fragments of the libraries, went to records outside "
-        "the %d genes; by the gene symbol of those records, %s. SMN1's transcripts, %swere "
-        "given %.1f%% as many as the %s fragments drawn from SMN2." % (
+        "the %d genes; by the gene symbol of those records, %s. %s of them went to %d records "
+        "that the index kept in place of transcripts of the %d genes with the same sequence, "
+        "so that they hold those transcripts' fragments under another name; %s of SMN1's are "
+        "among them, on %d records that stand for %d of SMN2's transcripts, %s, from which %s "
+        "fragments were drawn. SMN1's other records were given %s, %.2f%% of the %s fragments "
+        "drawn from SMN2, and SMN2's records outside the %d genes that stand for none of "
+        "their transcripts, %s." % (
             r["replicates"], "{:,.0f}".format(r["num_reads"]), 100 * r["fraction"],
             "{:,}".format(r["fragments"]), len(s["genes"]),
             _and("%s %s" % (sym, "{:,.0f}".format(n)) for sym, n in r["by_symbol"]),
-            "from which no fragment was drawn, " if no_fragment else "",
-            100 * r["SMN1_over_SMN2_fragments"], "{:,}".format(r["SMN2_fragments"])))
+            "{:,.0f}".format(r["stand_in_num_reads"]), r["stand_in_records"], len(s["genes"]),
+            "{:,.0f}".format(m["num_reads"]), m["records"], m["transcripts"],
+            "none of them in a compared class" if not m["in_compared_classes"] else
+            "%d of them in a compared class" % m["in_compared_classes"],
+            "{:,}".format(m["fragments"]), "{:,.0f}".format(r["SMN1_other"]),
+            100 * r["SMN1_other_over_SMN2_fragments"], "{:,}".format(r["SMN2_fragments"]),
+            len(s["genes"]), "{:,.0f}".format(r["SMN2_other"])))
     return "\n".join(out)
 
 

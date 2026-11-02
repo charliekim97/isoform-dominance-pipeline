@@ -17,8 +17,13 @@ fragments the simulator wrote for each transcript of the two compared classes, a
 copy the index kept in place of a dropped one, with the fragments written for the whole
 gene.  For every replicate, the fragments written for the library, and the ``NumReads``
 ``quant.sf`` gives the records outside the 49 genes, summed by the gene symbol of their
-FASTA header.  Nothing here grades or summarises; ``tests/test_gate_run.py`` recomputes
-these genes' rows from this file with the harness's own truth and holds them to the run's.
+FASTA header.  Some of those records are not another gene's at all: the index kept them in
+place of a transcript of the 49 genes with the same sequence, which it dropped, so their
+reads are that transcript's under another name and another symbol.  For each replicate,
+``outside_stand_ins`` gives each such record's ``NumReads`` and symbol, and the transcripts
+it stands for, with each one's gene and the fragments written for it.  Nothing here grades
+or summarises; ``tests/test_gate_run.py`` recomputes these genes' rows from this file with
+the harness's own truth and holds them to the run's.
 """
 import argparse
 import gzip
@@ -87,6 +92,17 @@ def kept_copies(index):
     return out
 
 
+def stand_ins(kept, panel):
+    """``{record: [transcripts]}``: each record outside ``panel`` that the index kept in
+    place of transcripts of ``panel`` it dropped for the same sequence, with those
+    transcripts.  ``kept`` is :func:`kept_copies`'s ``{dropped: kept}``."""
+    out = {}
+    for dropped, k in kept.items():
+        if dropped in panel and k not in panel:
+            out.setdefault(k, []).append(dropped)
+    return {k: sorted(v) for k, v in sorted(out.items())}
+
+
 def detail(run_dir, index, fasta, genes=GENES, data=DATA):
     with open(os.path.join(data, "README.md"), encoding="utf-8") as f:
         want = re.search(r"^\| `%s` \|.*\| `([0-9a-f]{64})` \|$" % re.escape(RUN), f.read(),
@@ -99,11 +115,13 @@ def detail(run_dir, index, fasta, genes=GENES, data=DATA):
         run = json.load(f)
     with gzip.open(os.path.join(data, "sweep116.json.gz"), "rt", encoding="utf-8") as f:
         source = json.load(f)["genes"]
-    panel = {_strip(t) for e in source.values() for t in e["sequences"]}
+    gene_of = {_strip(t): g for g, e in source.items() for t in e["sequences"]}
+    panel = set(gene_of)
     kept = kept_copies(index)
+    carriers = stand_ins(kept, panel)
     names = symbols(fasta)
     out = {"run": {"file": RUN, "sha256": got}, "genes": {}, "fragments_written": [],
-           "outside_num_reads": []}
+           "outside_num_reads": [], "outside_stand_ins": []}
     for gene in genes:
         cfg = source[gene]["config"]
         pc = list(cfg["primary_comparison"])
@@ -132,6 +150,13 @@ def detail(run_dir, index, fasta, genes=GENES, data=DATA):
                 s = names.get(k) or k
                 outside[s] = outside.get(s, 0.0) + n
         out["outside_num_reads"].append({s: round(n, 3) for s, n in sorted(outside.items())})
+        out["outside_stand_ins"].append({
+            k: {"num_reads": round(quant[k][2], 3), "symbol": names.get(k) or k,
+                "stands_for": {t: {"gene": gene_of[t], "fragments_written":
+                                   truth["genes"][gene_of[t]]["fragments_per_transcript"]
+                                   .get(t, 0)}
+                               for t in stands}}
+            for k, stands in carriers.items()})
     return out
 
 

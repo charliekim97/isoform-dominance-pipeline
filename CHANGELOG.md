@@ -21,6 +21,23 @@ versioning.
 > whose groups have the wrong shape (none, an empty one, one given as a string or an object,
 > an id that is not a non-empty string without white space).
 
+## [Unreleased]
+
+### Corrections to earlier entries
+- **Where the 3.0 gate's run put SMN2's reads** (`validation/README.md`, "The 3.0 gate's
+  result"). The README said SMN1's transcripts, from which no fragment was drawn, were given
+  5.7% as many reads as the 121,779 fragments drawn from SMN2. Of those 6,967 `NumReads`, 6,829
+  went to three SMN1 records that the index kept in place of three of SMN2's transcripts with
+  the same sequence, none of them in a compared class, from which 7,284 fragments were drawn:
+  they are SMN2's reads under SMN1's names. SMN1's other records were given 138, 0.11% of
+  SMN2's fragments, and SMN2's own records on alternate loci that stand for none of its
+  transcripts 2,915. Of the 245,528 reads that went outside the 49 genes, 225,428 went to 36
+  such stand-ins. The grade and every other figure are unchanged.
+  `sim/c1_d1_tpm_detail.json` now records the stand-ins (`outside_stand_ins`); it was remade
+  from the same files, every other field unchanged. `validation/summarize.py` tells the
+  stand-ins apart, and `tests/test_gate_run.py` holds them to the bundle and to each symbol's
+  reads.
+
 ## [2.11.0] - 2026-11-02
 
 ### Added

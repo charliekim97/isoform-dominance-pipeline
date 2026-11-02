@@ -1045,8 +1045,17 @@
   "primary_sd_ok": 6,
   "reads_outside": {
    "SMN1": 6967.401000000001,
-   "SMN1_over_SMN2_fragments": 0.057213485083635114,
+   "SMN1_other": 137.95699999999943,
+   "SMN1_other_over_SMN2_fragments": 0.0011328472068254743,
+   "SMN1_stand_ins": {
+    "fragments": 7284,
+    "in_compared_classes": 0,
+    "num_reads": 6829.444000000001,
+    "records": 3,
+    "transcripts": 3
+   },
    "SMN2_fragments": 121779,
+   "SMN2_other": 2914.758000000001,
    "by_symbol": [
     [
      "LDHA",
@@ -1076,7 +1085,9 @@
    "fraction": 0.007008501730189439,
    "fragments": 35032869,
    "num_reads": 245527.92299999995,
-   "replicates": 30
+   "replicates": 30,
+   "stand_in_num_reads": 225428.08899999995,
+   "stand_in_records": 36
   },
   "run": "sim/c1_d1_tpm.json",
   "stopped": [

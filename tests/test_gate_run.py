@@ -130,10 +130,60 @@ def test_the_detail_has_every_replicates_reads_outside_the_49_genes():
     for g in DETAIL["genes"].values():
         for rep in g["replicates"]:
             assert sum(rep["fragments"].values()) <= rep["gene_fragments_written"]
-    # LDHA's and NDUFS1's copies outside the bundle go by those genes' symbols; SMN1, which
-    # no fragment was drawn from, is not one of the 49
+    # LDHA's and NDUFS1's copies outside the bundle go by those genes' symbols; SMN1 is not
+    # one of the 49, though some of its records stand for SMN2's transcripts (below)
     assert {"LDHA", "NDUFS1", "SMN1"} <= set().union(*out)
     assert "SMN1" not in SOURCE
+
+
+def _gene_of():
+    return {t.split(".")[0]: g for g, e in SOURCE.items() for t in e["sequences"]}
+
+
+def test_a_stand_in_is_outside_the_49_genes_and_stands_for_their_dropped_transcripts():
+    """Each replicate lists the same records: outside the bundle, each kept by the index in
+    place of transcripts of the 49 genes it dropped for the same sequence, which are of
+    the gene named, and of no compared class when the index kept them outside it."""
+    gene_of = _gene_of()
+    stand = DETAIL["outside_stand_ins"]
+    assert len(stand) == len(DETAIL["outside_num_reads"]) == 30
+    records = set(stand[0])
+    assert records and all(set(rep) == records for rep in stand)
+    assert not records & set(gene_of)
+    for rep in stand:
+        for v in rep.values():
+            assert v["num_reads"] >= 0 and v["stands_for"]
+            for t, w in v["stands_for"].items():
+                assert gene_of[t] == w["gene"] and w["fragments_written"] >= 0
+    # the compared-class members LDHA and NDUFS1 lost to copies outside the bundle are
+    # among them, standing for those members
+    for gene in ("LDHA", "NDUFS1"):
+        for t, k in DETAIL["genes"][gene]["kept_copies"].items():
+            assert t in stand[0][k]["stands_for"], (gene, t, k)
+
+
+def test_a_stand_ins_reads_are_within_its_symbols_reads_outside():
+    """``outside_num_reads`` sums every record outside the 49 genes by symbol, stand-ins
+    included, so a symbol's stand-ins hold no more than its sum, replicate by replicate."""
+    for out, stand in zip(DETAIL["outside_num_reads"], DETAIL["outside_stand_ins"],
+                          strict=True):
+        by = {}
+        for v in stand.values():
+            by[v["symbol"]] = by.get(v["symbol"], 0.0) + v["num_reads"]
+        for s, n in by.items():
+            assert n <= out.get(s, 0.0) + 1e-6 * len(stand), (s, n, out.get(s))
+
+
+def test_smn1s_reads_are_mostly_smn2s_own_under_smn1s_names():
+    """The README's count: SMN1's records that stand for SMN2's transcripts hold nearly all
+    of SMN1's reads; its other records got about a thousandth of SMN2's fragments."""
+    r = summarize.reads_outside(DETAIL)
+    m = r["SMN1_stand_ins"]
+    assert (m["records"], m["transcripts"], m["in_compared_classes"]) == (3, 3, 0)
+    assert m["num_reads"] > 0.95 * r["SMN1"]
+    assert math.isclose(r["SMN1_other"] + m["num_reads"], r["SMN1"], rel_tol=1e-12)
+    assert r["SMN1_other_over_SMN2_fragments"] < 0.002
+    assert 0 < r["SMN2_other"] < dict(r["by_symbol"])["SMN2"]
 
 
 # --------------------------------------------------------------------------- #
