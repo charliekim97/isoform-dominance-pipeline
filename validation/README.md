@@ -330,6 +330,44 @@ index kept in place of LDHA's and NDUFS1's dropped members are there (`CHANGELOG
 the run), as are CANX's and PTPRC's copies. The run of step 7, the six skewed designs and kallisto, decides nothing
 and was not made with this run.
 
+## What produced SMN2's failure (D1), fixed before its run
+
+Step 4 of the gate says that why a quantifier's TPM departs from an estimable abundance is found first. In the gate's
+run, SMN2's own records on alternate loci took 2,915 reads, and SMN1's records, besides those that stand for SMN2's
+transcripts, 138 ("Where the reads went", above). D1 asks whether the index's records beyond SMN2's own transcripts
+produced the failure. It is fixed here, and in `d1_smn2.py`, before any of its libraries is quantified.
+
+- **Reads.** The gate's run's 30 libraries, made again from their seeds with the harness the run used (v2.9.0), and
+  checked, replicate by replicate, to hold the fragments the stored truths name.
+- **Indexes.** Built as the stored one was (`run_simulation.py index`: Salmon 2.7.0, k 31, no decoys, duplicates not
+  kept), from Ensembl 116's `cdna.all` less the records an arm leaves out (`d1_smn2.py fasta`, which refuses another
+  input or another result):
+  - `ref`: 33 records, the SMN1 and SMN2 records off chromosome 5, their copies on the alternate loci
+    HSCHR5_1_CTG1_1 and HSCHR5_2_CTG1_1, which the README's "Index scope" leaves out of an index. The SHA-256 of the
+    left-out ids, sorted, one per line, is `e1961e0f15a0f7fd59b1c2a21e8cb1395f7880bb29c52f1cfbf50a0d91e5b434`; of
+    the FASTA's text, `697899f6d73e1125808be11bd4ca873f13b185283287c6ac328b82c143d46075`. The index holds 453,527
+    records.
+  - `gene`: 56 records, every SMN1 record and SMN2's records off chromosome 5, so that of the two genes the index
+    holds SMN2's 23 transcripts on chromosome 5 and nothing else, as the prediction did. The SHA-256 of the left-out
+    ids is `d62aa9718e9e8644382fe27932a8c1a696c3264bb88eb9642c3c4be522c858fe`; of the FASTA's text,
+    `687ae4df6d456a5574951e08b3b68573f329e7761ac429e8125d62f7e3d79572`. The index holds 453,507 records.
+- **Quantification.** As the gate's run: each library by Salmon 2.7.0 with the harness's arguments, 12 threads.
+- **The grade.** SMN2's summed-TPM row in each arm, against the predicted SE the gate fixed, 0.442
+  (`gate_3_0_predictions.json`), as step 3 grades a row: it meets it when its |bias| and its replicate SD are both
+  below it. A gene with fewer than 3 replicates that count has no row and does not meet it.
+- **What it says.** If `gene` meets it, the failure was the index's: with SMN1 and SMN2 held to SMN2's own
+  transcripts, the prediction's scope, SMN2's summed TPM met its figure, and `ref` says whether the README's index
+  scope is enough. If `gene` does not, D1 does not put the failure on the index, and what produced it stays
+  unmeasured. The `NumReads` rows, and the other 48 genes' rows against the gate's run, are reported and decide
+  nothing.
+- **What it does not decide.** The default: a later change of it needs a gate of its own, fixed before its run.
+- **Once.** Each arm is run once. A second run counts only to correct a fault found before the grade is printed (a
+  library without the stored fragments, a `quant.sf` not made against its arm's index, a run that stopped), and both
+  runs are reported.
+
+`d1_smn2.py grade` applies this, with exit status 0 when `gene` meets the figure, 1 when it does not, and 2 when the
+runs are not the ones named here.
+
 ## What these outputs do not cover
 
 - **Depth**: one depth, 30M fragments with every transcript at TPM 10.

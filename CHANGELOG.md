@@ -23,6 +23,14 @@ versioning.
 
 ## [Unreleased]
 
+### Added
+- **D1, fixed before its run** (`validation/README.md`, "What produced SMN2's failure (D1)";
+  `validation/d1_smn2.py`; `tests/test_d1_smn2.py`). Step 4 of the 3.0 gate asks why SMN2's
+  summed TPM missed its predicted SE before any later change of the default. D1 quantifies the
+  gate's run's libraries again against two indexes built from `cdna.all` less SMN1's and SMN2's
+  records beyond SMN2's own transcripts (33 and 56 records), and grades SMN2's row in each
+  against the SE the gate fixed. Nothing in `src/` changes.
+
 ### Corrections to earlier entries
 - **Where the 3.0 gate's run put SMN2's reads** (`validation/README.md`, "The 3.0 gate's
   result"). The README said SMN1's transcripts, from which no fragment was drawn, were given
