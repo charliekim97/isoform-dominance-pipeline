@@ -120,19 +120,30 @@ In `~/.claude/settings.json` or `.claude/settings.local.json`:
 ## 5. Open items
 
 What is open, and in which round it is to be closed, is in `ROADMAP-PKG-092926.md`
-(kept outside this repository). As of 2.9.0:
+(kept outside this repository). As of 2.10.0:
 
-- The gate that decides whether 3.0 makes the abundance estimand the default
+- The gate that decided whether 3.0 makes the abundance estimand the default
   (`validation/README.md`, "The abundance estimand, and what decides whether it becomes
-  the default") has not been run. It is run once, as that section says, and graded by
-  `validation/gate_3_0.py`. The gate's text and its predictions,
-  `validation/gate_3_0_predictions.json`, are fixed: do not edit or regenerate either,
-  whatever the code computes later. If a later change of the code moves a prediction,
+  the default") was run once, on 2026-10-23, and `validation/gate_3_0.py` graded it with
+  exit status 1: SMN2's summed-TPM row met neither criterion, so the stop rule (step 4)
+  stopped the change. "The 3.0 gate's result", in the same file, gives the grade and what
+  was computed after it; `validation/summarize.py --write` generates its block.
+- The gate's text and its predictions, `validation/gate_3_0_predictions.json`, are fixed:
+  do not edit or regenerate either, whatever the code computes later.
+  `test_the_gate_section_is_the_text_fixed_before_its_run` holds the gate's section to its
+  SHA-256. If a later change of the code moves a prediction,
   `test_the_gate_grades_against_predictions_fixed_with_it` fails; change that test, not
   the file.
-- `fragment` is the default estimand until the gate passes; `--estimand fragment` stays
-  in 3.0 whatever the gate says.
-- `paper.md` is about 2,300 words, above the 750-1750 JOSS asks for.
+- The gate cannot be graded again by repeating its run: `gate_3_0.check_reproduces`
+  grades no run whose `NumReads` rows are not the stored run's. A later change of the
+  default needs a gate of its own, fixed before its run, on new seeds, a new design or
+  other data. `fragment` is the default until then, and `--estimand fragment` stays in
+  3.0 whatever such a gate says.
+- Step 7 of the gate, the six skewed designs and kallisto, which decide nothing, has not
+  been run.
+- `paper.md` is 1,583 words as `tests/test_paper.py` counts them. Its AI usage
+  disclosure is an HTML comment until it is restored as a section before submission; the
+  test holds the paper to 1,600 words until then and to 1,750 after.
 
 JOSS submission is gated on public history of more than six months: the repository was
 created 2026-06-12T19:52Z, so the earliest eligible date is 2026-12-13.
