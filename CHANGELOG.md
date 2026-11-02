@@ -21,7 +21,7 @@ versioning.
 > whose groups have the wrong shape (none, an empty one, one given as a string or an object,
 > an id that is not a non-empty string without white space).
 
-## [Unreleased]
+## [2.10.0] - 2026-11-01
 
 ### Added
 - **The 3.0 gate's run, and two files that describe it** (`validation/data/README.md`, its last
