@@ -10,6 +10,7 @@ Reports are compared as ``json.dumps``: a class with no informative read puts Na
 ``unique_read_counting_se``, and NaN is not equal to itself, so two equal reports can be
 unequal by ``==``.
 """
+import gzip
 import json
 import random
 import urllib.request
@@ -616,6 +617,33 @@ def test_a_kept_error_holds_none_of_its_joint_calls_tables(tmp_path, monkeypatch
     held = [sorted(n for n, v in f.f_locals.items() if n in _TABLES and v is not None)
             for frames in joint for f in frames]
     assert held == [[], []]
+
+
+# --------------------------------------------------------------------------- #
+# another window, strand or compression
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("other", [{"k": 25}, {"window": 25}, {"canonical": False},
+                                   {"gzip": True}],
+                         ids=["k25", "window25", "strand-aware", "gzipped"])
+def test_each_job_gets_the_report_analyze_gives_at_any_window_strand_or_compression(
+        tmp_path, other):
+    other = dict(other)
+    records = []
+    jobs = [_system(n, seed, records)[0] for n, seed in ((1, 3), (2, 5), (3, 8))]
+    jobs.append(_loop_job(records))
+    text = "".join(records)
+    if other.pop("gzip", False):
+        path = tmp_path / "bg.fa.gz"
+        with gzip.open(path, "wt", encoding="utf-8") as f:
+            f.write(text)
+    else:
+        path = tmp_path / "bg.fa"
+        path.write_text(text)
+    shared = dict(other, background_fasta=str(path))
+    with_out, outs = _with_inputs_out(jobs)
+    got = list(I.analyze_many(with_out, **shared))
+    _same_as_analyze(with_out, got, outs, shared)
+    assert any(r["background"]["fasta_competitors"] for r in got)
 
 
 # --------------------------------------------------------------------------- #

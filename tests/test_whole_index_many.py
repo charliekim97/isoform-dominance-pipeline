@@ -459,7 +459,7 @@ def test_many_copy_calls_from_one_read_of_the_headers_give_each_its_answer(tmp_p
                 assert list(mv) == list(versions)           # in the same order
                 checked["versions"] += bool(versions)
     assert {k: total[k] for k in COPIES_KINDS if total[k] < 10} == {}
-    assert min(checked.values()) > 20, checked
+    assert all(checked[k] > 20 for k in ("copies", "versions", "errors")), checked
 
 
 def test_copy_calls_whose_name_differs_need_the_headers_again_and_get_them(tmp_path):

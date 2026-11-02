@@ -25,12 +25,13 @@ versioning.
 
 ### Added
 - **`identifiability.analyze_many`: many configs against one background FASTA, its reads
-  shared.** `analyze_many(jobs, batch_size=16, errors="raise", **shared)` yields, in job order,
-  for each job -- a config, or a pair `(config, own)` -- the report `analyze(config, **shared,
-  **own)` gives it, to the same `json.dumps` text; an `inputs_out` in `own` is filled per job,
-  as `analyze` fills it. A batch of `batch_size` jobs (`identifiability.DEFAULT_BATCH_SIZE`,
-  16) opens the FASTA, whatever its number of jobs, once for the first pass, once for the
-  second when a job needs one, both again for each further round of the loop that takes a
+  shared.** `analyze_many(jobs, *, batch_size=16, errors="raise", **shared)` yields, in job
+  order, for each job -- a config, or a pair `(config, own)` -- the report `analyze(config,
+  **shared, **own)` gives it, to the same `json.dumps` text; an `inputs_out` in `own` is filled
+  per job, as `analyze` fills it. A batch of `batch_size` jobs
+  (`identifiability.DEFAULT_BATCH_SIZE`, 16) opens the FASTA, whatever its number of jobs, once
+  for the first pass (not at all when no job has a window to look for), once for the second
+  when a job needs one, both again for each further round of the loop that takes a
   gene-background transcript's sequence from the FASTA, and once for its headers, and takes the
   file's SHA-256 once; `analyze` reads the FASTA for one config as it did. `background_fasta`,
   `decoys`, `k`, `window` and `canonical` are the batch's arguments, and `inputs_out` a job's.
