@@ -174,6 +174,84 @@ def fasta_copies(path, target_ids, gene_names=(), versions=None):
     return copies_in(heads, target_ids, gene_names, versions)
 
 
+def _fasta_copies_many(path, requests):
+    """:func:`fasta_copies` for several requests on one FASTA, from one read of its headers.
+
+    ``requests`` are ``(target_ids, gene_names, versions)``, :func:`fasta_copies`' other
+    arguments.  Returns a list, per request, of what :func:`fasta_copies` returns for it, or
+    the exception (an ``Exception``) raised in handling it alone, and fills each request's
+    ``versions`` as :func:`fasta_copies` does; an exception raised in reading the file or
+    parsing a header is raised.
+
+    Each header is parsed once (its first ``|``-field's first word, and
+    :func:`parse_header`), and every parsed record is held, indexed by its gene name and,
+    for the requests' target transcripts only, by transcript and by first word, so that a
+    request's records -- those of its transcripts and of its gene names, in file order --
+    are looked up, not read again: also when :func:`copies_in` would read the headers a
+    second time.  The file is not read when no request is left to answer.
+    """
+    out = [None] * len(requests)
+    asks = []
+    for i, (target_ids, gene_names, versions) in enumerate(requests):
+        try:
+            # copies_in's own expressions: an error is the one fasta_copies raises
+            targets = {_unversioned(t) for t in target_ids}
+            names = {n for n in gene_names or () if n}
+        except Exception as e:
+            out[i] = e
+            continue
+        asks.append((i, targets, names, versions))
+    if not asks:
+        return out
+
+    # every record is held, and indexed by its gene name, since a request's names grow with
+    # what the headers say; by transcript and by first word, only the requests' targets are
+    wanted = set().union(*(targets for _, targets, _, _ in asks))
+    records, by_transcript, by_name, by_first = [], {}, {}, {}
+    n = 0
+    with open_text(path) as fh:
+        for line in fh:
+            if not line.startswith(">"):
+                continue
+            head = line[1:]
+            first = head.strip().split("|")[0].split()
+            if first and _unversioned(first[0]) in wanted:
+                by_first.setdefault(_unversioned(first[0]), []).append((n, first[0]))
+            n += 1
+            r = parse_header(head)
+            if r:
+                if r["transcript"] in wanted:
+                    by_transcript.setdefault(r["transcript"], []).append(len(records))
+                by_name.setdefault(r["gene_name"], []).append(len(records))
+                records.append(r)
+
+    def relevant(targets, names):
+        # _relevant's records: a target transcript, or a record carrying one of names
+        at = set()
+        for t in targets:
+            at.update(by_transcript.get(t, ()))
+        for g in names:
+            at.update(by_name.get(g, ()))
+        return [records[j] for j in sorted(at)]
+
+    for i, targets, names, versions in asks:
+        try:
+            if versions is not None:
+                for _, v in sorted(x for t in targets for x in by_first.get(t, ())):
+                    versions.setdefault(_unversioned(v), set()).add(v)
+            recs = relevant(targets, names)
+            found = {r["gene_name"] for r in recs if r["transcript"] in targets}
+            if found - names:
+                names |= found
+                recs = relevant(targets, names)
+            out[i] = same_name_copies(recs, targets, names)
+        except Exception as e:
+            out[i] = e
+    # the headers go with this frame: an error a caller keeps holds the frame
+    records = by_transcript = by_name = by_first = recs = None
+    return out
+
+
 def placed_by_gtf(copies, regions):
     """:func:`same_name_copies`' result, each gene placed by a GTF.
 
