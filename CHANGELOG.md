@@ -21,7 +21,7 @@ versioning.
 > whose groups have the wrong shape (none, an empty one, one given as a string or an object,
 > an id that is not a non-empty string without white space).
 
-## [Unreleased]
+## [2.11.0] - 2026-11-02
 
 ### Added
 - **`identifiability.analyze_many`: many configs against one background FASTA, its reads
