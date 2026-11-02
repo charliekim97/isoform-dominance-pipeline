@@ -616,3 +616,37 @@ def test_a_kept_error_holds_none_of_its_joint_calls_tables(tmp_path, monkeypatch
     held = [sorted(n for n, v in f.f_locals.items() if n in _TABLES and v is not None)
             for frames in joint for f in frames]
     assert held == [[], []]
+
+
+# --------------------------------------------------------------------------- #
+# requests, and a GTF that changes while it is read
+# --------------------------------------------------------------------------- #
+def test_a_request_of_another_kind_is_refused_not_answered(monkeypatch):
+    with pytest.raises(ValueError, match="kind"):
+        I._answer(("another", ("x",), {}))
+
+    def analysis(config, **kw):
+        yield ("another", ("x",), {})
+
+    monkeypatch.setattr(I, "_analysis", analysis)
+    with pytest.raises(ValueError, match="kind"):
+        list(I.analyze_many([CFG2], errors="return"))
+
+
+def test_a_gtf_that_loses_the_gene_between_two_reads_is_a_value_error(monkeypatch):
+    # the gene is found by its id under another name, so the GTF is read again by name; a
+    # file that no longer gives the gene then is named, where 2.10.0 let StopIteration out
+    cfg = dict(annotate.build_config_from_gtf("LEPR", GTF), gene="NOT_LEPR")
+    files = {"gtf": GTF, "transcripts_fasta": MINI_FASTA}
+    real, calls = I.af.scan, []
+
+    def scan(*a, **k):
+        calls.append(k)
+        return real(*a, **k) if len(calls) % 2 == 1 else []
+
+    monkeypatch.setattr(I.af, "scan", scan)
+    with pytest.raises(ValueError, match="changed") as alone:
+        I.analyze(cfg, **files)
+    got = list(I.analyze_many([(cfg, files)], errors="return"))
+    assert [(type(e), e.args) for e in got] == [(ValueError, alone.value.args)]
+    assert len(calls) == 4                  # by id, then by name; for each call

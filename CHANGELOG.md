@@ -43,6 +43,11 @@ versioning.
   `analyze`'s, counts the batch's reads of the FASTA -- a batch of two configs reads it as
   often as one of twelve -- and holds the rest of the contract. `docs/api.md` describes it.
 
+### Changed
+- **A GTF that gives `identifiability` a gene on one read and not on the next** -- which
+  happens only when the file is changed while it is read -- is a `ValueError` naming the file
+  and the gene. Through 2.10.0 a `StopIteration` came out of `analyze` there.
+
 ## [2.10.0] - 2026-11-01
 
 ### Added

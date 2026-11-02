@@ -1674,7 +1674,13 @@ def _gtf_gene(config, needed, gtf, species):
         # whole gene, and the genes of that name
         recs = [r for r in af.scan(gtf, symbol=g["display_name"], gene_id=g["id"])
                 if not r["_par_y"]]
-        g = next(r for r in recs if r["id"] == g["id"])
+        gid = g["id"]
+        g = next((r for r in recs if r["id"] == gid), None)
+        if g is None:
+            # read twice, the file gave the gene the first time and not the second (through
+            # 2.10.0 a StopIteration came out of analyze here)
+            raise ValueError("%s gave gene %s on one read and not on the next: was the file "
+                             "changed while it was read?" % (gtf, gid))
     same = {r["id"]: r["seq_region_name"] for r in recs
             if r["display_name"] == g["display_name"] and r["id"] != g["id"]}
     return g, same
@@ -1952,7 +1958,9 @@ def _answer(request):
         return _whole_index(*args, **kwargs)
     if kind == "copies":
         return index_scope.fasta_copies(*args, **kwargs)
-    return io.file_sha256(*args, **kwargs)
+    if kind == "sha256":
+        return io.file_sha256(*args, **kwargs)
+    raise ValueError("an _analysis request of an unknown kind: %r" % (kind,))
 
 
 def _analysis(config, k=DEFAULT_K, sequences=None, *,
@@ -2583,6 +2591,10 @@ def _analyze_batch(items, shared):
             asked = [j for j in jobs if j.request is not None]
             if not asked:
                 break
+            unknown = sorted({j.request[0] for j in asked} - {"whole_index", "copies"})
+            if unknown:
+                raise ValueError("an _analysis request of an unknown kind: %s"
+                                 % ", ".join(repr(k) for k in unknown))
             # every whole-index request first: the header pass waits, needing none of them
             whole = [j for j in asked if j.request[0] == "whole_index"]
             if whole:
