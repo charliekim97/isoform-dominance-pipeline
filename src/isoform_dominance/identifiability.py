@@ -611,6 +611,9 @@ class _WholeIndexJob:
         for seq, _ in added.values():
             query.update(kmer_track(seq, self.window, self.canonical))
         query -= self.column_windows    # those were settled in pass 1
+        # what only the first pass needed: a batch of :func:`_whole_index_many` holds every
+        # job until its second pass is over
+        self.sharing = self.m = self.first_of = self._name = None
         return query
 
     def pass2(self, place, seq, hits):
@@ -701,6 +704,7 @@ def _whole_index_many(path, jobs, window, canonical, decoys, seed=FASTA_SEED):
     if plan:
         reading = sorted(plan)
         find = _window_finder(owner, window, canonical, seed, owners=owner)
+        owner = None                    # the finder holds what it needs of it
         for place, tid, lines, decoy in _fasta_records(path, decoys):
             if decoy is not None:
                 for j in reading:
@@ -735,6 +739,9 @@ def _whole_index_many(path, jobs, window, canonical, decoys, seed=FASTA_SEED):
                     job.pass1(place, tid, seq, mine.get(j, set()), None)
                 except Exception as e:
                     fail(j, e)
+    # the first pass's tables go before the second pass builds its own (an error kept by a
+    # caller holds this frame, so none is left in it either)
+    find = mine = rel = seq = lines = by_tid = by_len = None
 
     # ---- pass 2: the added records' own windows -------------------------- #
     plan, owner = {}, {}
@@ -753,6 +760,7 @@ def _whole_index_many(path, jobs, window, canonical, decoys, seed=FASTA_SEED):
             owner.setdefault(w, []).append(j)
     if plan:
         find = _window_finder(owner, window, canonical, seed, owners=owner)
+        owner = None
         for place, tid, lines, decoy in _fasta_records(path, decoys):
             if decoy is not None or not lines:
                 continue
@@ -768,12 +776,16 @@ def _whole_index_many(path, jobs, window, canonical, decoys, seed=FASTA_SEED):
                     job.pass2(place, seq, mine[j])
                 except Exception as e:
                     fail(j, e)
+    find = mine = seq = lines = plan = owner = None
 
     for j, job in list(live.items()):
         try:
             out[j] = job.result()
         except Exception as e:
             fail(j, e)
+    # the jobs' state, beyond their results, goes with this frame; an error a caller keeps
+    # holds the frame, and so would hold every job's
+    live = job = jobs = None
     return out
 
 

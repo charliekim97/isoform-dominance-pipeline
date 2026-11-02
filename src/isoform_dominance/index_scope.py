@@ -184,10 +184,11 @@ def _fasta_copies_many(path, requests):
     parsing a header is raised.
 
     Each header is parsed once (its first ``|``-field's first word, and
-    :func:`parse_header`), and every parsed record is held, so that a request's records --
-    those of its transcripts and of its gene names, in file order -- are looked up, not
-    read again: also when :func:`copies_in` would read the headers a second time.  The
-    file is not read when no request is left to answer.
+    :func:`parse_header`), and every parsed record is held, indexed by its gene name and,
+    for the requests' target transcripts only, by transcript and by first word, so that a
+    request's records -- those of its transcripts and of its gene names, in file order --
+    are looked up, not read again: also when :func:`copies_in` would read the headers a
+    second time.  The file is not read when no request is left to answer.
     """
     out = [None] * len(requests)
     asks = []
@@ -203,6 +204,9 @@ def _fasta_copies_many(path, requests):
     if not asks:
         return out
 
+    # every record is held, and indexed by its gene name, since a request's names grow with
+    # what the headers say; by transcript and by first word, only the requests' targets are
+    wanted = set().union(*(targets for _, targets, _, _ in asks))
     records, by_transcript, by_name, by_first = [], {}, {}, {}
     n = 0
     with open_text(path) as fh:
@@ -211,12 +215,13 @@ def _fasta_copies_many(path, requests):
                 continue
             head = line[1:]
             first = head.strip().split("|")[0].split()
-            if first:
+            if first and _unversioned(first[0]) in wanted:
                 by_first.setdefault(_unversioned(first[0]), []).append((n, first[0]))
             n += 1
             r = parse_header(head)
             if r:
-                by_transcript.setdefault(r["transcript"], []).append(len(records))
+                if r["transcript"] in wanted:
+                    by_transcript.setdefault(r["transcript"], []).append(len(records))
                 by_name.setdefault(r["gene_name"], []).append(len(records))
                 records.append(r)
 
@@ -242,6 +247,8 @@ def _fasta_copies_many(path, requests):
             out[i] = same_name_copies(recs, targets, names)
         except Exception as e:
             out[i] = e
+    # the headers go with this frame: an error a caller keeps holds the frame
+    records = by_transcript = by_name = by_first = recs = None
     return out
 
 

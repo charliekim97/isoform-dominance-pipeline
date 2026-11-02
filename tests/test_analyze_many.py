@@ -576,3 +576,43 @@ def test_an_error_pulling_the_jobs_comes_after_the_reports_of_those_pulled(tmp_p
         next(many)
     assert [_yielded(r) for r in got] == [
         _outcome(I.analyze, CFG2, background_fasta=fa, tpm=t, **kw) for t in (10.0, 2.0, 3.0)]
+
+
+# --------------------------------------------------------------------------- #
+# what an error kept by the caller holds
+# --------------------------------------------------------------------------- #
+#: the tables of the joint calls: the header pass's, and each whole-index pass's
+_TABLES = {"records", "by_transcript", "by_name", "by_first", "live", "plan", "owner", "find",
+           "by_tid", "by_len"}
+
+
+def _frames(error):
+    tb = error.__traceback__
+    while tb is not None:
+        yield tb.tb_frame
+        tb = tb.tb_next
+
+
+def test_a_kept_error_holds_none_of_its_joint_calls_tables(tmp_path, monkeypatch):
+    # a job's error in a joint call is yielded with its traceback, which holds the joint
+    # call's frame for as long as the caller keeps the error: the frame must not hold the
+    # batch's tables -- every header of the FASTA, or every job's state
+    fa, kw = _small(tmp_path)
+    real = I._WholeIndexJob.pass1
+
+    def pass1(self, *a, **k):
+        if self.max_window_records == 7:
+            raise RuntimeError("this job's own")
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(I._WholeIndexJob, "pass1", pass1)
+    got = list(I.analyze_many([CFG2, (dict(CFG2, gene=["GENEX"]), {}),
+                               (CFG2, {"max_window_records": 7}), CFG2],
+                              errors="return", background_fasta=fa, **kw))
+    assert [type(r) for r in got] == [dict, TypeError, RuntimeError, dict]
+    joint = [[f for f in _frames(e) if f.f_code.co_name == name]
+             for e, name in ((got[1], "_fasta_copies_many"), (got[2], "_whole_index_many"))]
+    assert [len(frames) for frames in joint] == [1, 1]
+    held = [sorted(n for n, v in f.f_locals.items() if n in _TABLES and v is not None)
+            for frames in joint for f in frames]
+    assert held == [[], []]
