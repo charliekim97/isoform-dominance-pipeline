@@ -347,15 +347,17 @@ changes a compared class's abundance (`identifiability.ESTIMANDS` says more). It
 1/l_t, are scaled to the norm of the fragment functional's, which moves no estimability and no
 relative standard error, only the conditioning factor, onto the fragment one's footing. Both
 are computed and given under `estimands`, each as
-`{definition, precision_checked_in_simulation, groups, contrast, effect_resolvable, verdict, reasons}`
+`{definition, precision_checked_in_simulation, precision_check, groups, contrast, effect_resolvable, verdict, reasons}`
 with only the fields above per class and for the contrast; `decision_estimand` names the one
 that decides. With the default, every field 2.8.0 wrote is the fragment estimand's, as it was.
 Where only the abundance estimand is estimable, that answer rests on counting a transcript's
 length in window positions, and its figures weight a short transcript less than TPM does
-(`identifiability.ESTIMANDS` gives both). Its precision figures have not yet been checked
-against a quantifier's TPM in simulation (its `precision_checked_in_simulation` is `False`, the
-fragment one's `True`); `validation/README.md` says what that check must show before it becomes
-the default in 3.0. Any other value is a `ValueError`.
+(`identifiability.ESTIMANDS` gives both). Both estimands' `precision_checked_in_simulation` is
+`True`: 2.9.0's `False` for the abundance one meant "not yet checked", and `True` means only
+"checked", not "met". `precision_check` says what the check gave, as `{against, coverage, met,
+where}`: for the fragment estimand, the stored run as S1 of `validation/README.md` describes it
+(`NumReads`, `uniform`, met); for the abundance estimand, the grade of the gate fixed before its
+run (`summed TPM`, `uniform`, not met). Any other value is a `ValueError`.
 
 `min_resolvable_log2fc` is `1.96 * SE / sqrt(n_donors)` on the log2 scale: the |log2 fold
 change| whose estimate's 95% interval just excludes zero. A true effect of exactly that

@@ -6,26 +6,31 @@ predicted for each gene, before any read existed, was recorded beside the realis
 
 - `data/`: the stored outputs and the inputs they were made from, kept unchanged; `data/README.md` gives the design
   and the SHA-256 of every file.
-- `run_simulation.py`, `simulate_reads.py`: the harness that made them. It now also records the class ratio of summed
-  TPM, which the stored outputs do not hold (below, "Remaking a design").
-- `gate_3_0.py`: grades a TPM run against the gate for 3.0 (below, "The abundance estimand ...").
+- `run_simulation.py`, `simulate_reads.py`: the harness that made them. It also records the class ratio of summed TPM
+  (below, "Remaking a design"), which the 3.0 gate's run, `data/sim/c1_d1_tpm.json`, holds beside the `NumReads` rows.
+- `gate_3_0.py`: grades a TPM run against the gate for 3.0 (below, "The abundance estimand ..."); its grade of the
+  stored run is under "The 3.0 gate's result".
+- `tpm_run_detail.py`, `whole_index.py`: made the two files computed to describe that run (`data/README.md`, its last
+  table): the per-transcript detail of three of its genes, and the 49 genes against the index's FASTA.
 - `summarize.py`: recomputes, from `data/` and the installed package, every figure the documentation quotes from
-  this simulation, and the four-row comparison of issue #2. `summary.json` is its output, and the block below is
-  generated from it.
+  this simulation, the four-row comparison of issue #2 and the 3.0 gate's result. `summary.json` is its output, and
+  the two blocks below are generated from it.
 
 CI does not run Salmon. `tests/test_validation.py` checks that the stored files are the ones `data/README.md` names,
 that the package still predicts for every gene what each stored row recorded (when it does not, the stored
-comparison no longer describes the code that ships), that `summary.json` and the block below are what
-`summarize.py` computes, and that every figure the README, the CLI, the package's docstrings, `simulate_reads.py`'s
-docstring and this file quote from `data/` is the computed one (the comments in `run_simulation.py` are not checked).
-`tests/test_harness_smoke.py` runs the harness with no quantifier:
+comparison no longer describes the code that ships), that `summary.json` and the two blocks below are what
+`summarize.py` computes, and that every figure the README, `docs/`, `paper.md`, the CLI, the package's
+docstrings, `simulate_reads.py`'s docstring and this file quote from `data/` is the computed one (the comments in
+`run_simulation.py` are not checked). `tests/test_gate_run.py` holds the 3.0 gate's run to its grade, the
+per-transcript detail to the run's rows, and the whole-index file's gene-background half to what the package gives
+now. `tests/test_harness_smoke.py` runs the harness with no quantifier:
 
 - `run` on LEPR and TGFB1, three replicates at `--depth-scale 0.04`, with only the `salmon` command stubbed to write the fragments the simulator drew as `quant.sf`'s `NumReads` (and `meta_info.json`, `lib_format_counts.json`): two rows, each with bias and RMSE 0.
 - one replicate of the two genes simulated in two processes, at `PYTHONHASHSEED` 0 and 1: the same truth and, decompressed, the same reads (within one environment; not across numpy versions).
 
 ```bash
 python validation/summarize.py            # print the summary
-python validation/summarize.py --write    # rewrite summary.json and the block below
+python validation/summarize.py --write    # rewrite summary.json and the two blocks below
 ```
 
 ## Remaking a design
@@ -191,6 +196,7 @@ conditioned (1) or badly conditioned (2), and genes the gate fails that the stru
 | S8 | `simulate_reads.py`'s docstring; here |
 | the table | README, "It bounds spread, not accuracy"; here |
 | the survey | the docstrings of `gls_covariance`, `class_coherence`, `min_resolvable_log2fc` and `analyze`; the comment in `_verdict`; the help of `--min-log2fc`; `simulate_reads.py`'s docstring; the README, "Two estimands", and the gate below (the abundance estimand) |
+| the 3.0 gate's result | here, the two paragraphs around its block; README, "Two estimands" and "Pass `--background-fasta`"; the NOTE `identifiability` prints on the abundance estimand, its gene-background NOTE when that estimand decides, and the help of `--estimand` (`cli.py`); `identifiability.ESTIMANDS`'s docstring and the comment on `_PRECISION_CHECK`; `docs/api.md`; `docs/tutorial_NTRK2.md`; `paper.md`, "State of the field" and "Software design" |
 
 ## Read S8 before any comparison of the not-estimable genes with the others
 
@@ -275,11 +281,61 @@ abundance standard with `NumReads` although their fragment contrast is not estim
 abundance estimand's precision figures at a flat truth; it does not show that being estimable as abundance is what
 makes those 7 comparisons recoverable.
 
+## The 3.0 gate's result
+
+The run was made once, on 2026-10-23 with v2.9.0, as step 1 of the gate says, and is graded below by the gate's own
+script: the default does not change. A later change of the default needs, as the gate says, "a gate of its own,
+fixed before its run". This gate cannot be graded again by repeating its run: the same seeds give the same reads in
+one environment, and the gate's reproduction check (`gate_3_0.check_reproduces`) grades no run whose `NumReads` rows
+are not the stored run's, so a second look needs new seeds, a new design or other data. What was computed after the
+grade is set apart below it and decides nothing.
+
+<!-- gate-result:start -->
+Generated by `python validation/summarize.py --write` from `validation/data`; `tests/test_validation.py` fails when it no longer agrees.
+
+**The grade.** `data/sim/c1_d1_tpm.json` is the run the gate names: its `NumReads` rows reproduce the stored uniform run (largest difference 0 log2). `gate_3_0.py` grades it with exit status 1.
+
+| primary gene | predicted SE | summed TPM \|bias\| | SD | n | \|bias\| below | SD below |
+|---|---|---|---|---|---|---|
+| CANX | 0.337 | 0.068 | 0.137 | 30 | yes | yes |
+| GNAS | 0.117 | 0.002 | 0.069 | 30 | yes | yes |
+| NTRK2 | 0.068 | 0.011 | 0.067 | 30 | yes | yes |
+| NTRK3 | 0.035 | 0.007 | 0.024 | 30 | yes | yes |
+| SMN2 | 0.442 | 0.474 | 0.751 | 29 | no | no |
+| TNFRSF1B | 1.362 | 0.072 | 0.314 | 30 | yes | yes |
+| VEGFA | 0.501 | 0.024 | 0.269 | 30 | yes | yes |
+
+The |bias| is below the predicted SE for 6 of the 7 and the SD for 6. SMN2's |bias| and SD are at or above its predicted SE, so the stop rule (step 4) stops the change: 3.0 keeps `fragment` as the default. The control is not graded: step 6 grades it only when the primary set passes.
+
+**Beside the grade, deciding nothing.**
+
+- The control, described: a |bias| below the predicted SE for 39 of its 39 genes and an SD below it for 35 (not CSF1R, 0.581 against 0.559; ERBB4, 0.371 against 0.346; INSR, 0.213 against 0.208; PTPRC, 0.126 against 0.078).
+- The run's `NumReads` rows against the same predictions: a |bias| below for 5 of the primary set and an SD below for 6; for the control, 39 and 34. VEGFA's `NumReads` |bias|, 0.549, is above its predicted SE, 0.501; with summed TPM it is 0.024.
+- LDHA's and NDUFS1's summed-TPM rows (control genes) against a truth that gives the fragments of the class members the index dropped (5 of LDHA's members and 1 of NDUFS1's) to the copies it kept, which no compared class holds (`CHANGELOG.md`, the correction recorded before the run): bias -0.059 and +0.062, against +0.232 and +0.105 with the gate's truth (the run's rows); the SD is the same.
+- Three backgrounds (`data/whole_index.json`), computed after the grade. Estimable as abundance and as fragment totals: 48 and 41 of the 49 contrasts with the gene's other transcripts as the background (as every prediction here was made); 47 and 41 against the reference-chromosome records of the index's FASTA, where SMN2's abundance contrast is not estimable, with SMN1's transcripts among its columns (20 SMN1 records on chromosome 5, with 23,037 of the 23,040 windows its competing records share with the configured transcripts); 45 and 40 against the whole FASTA, its records on scaffolds included, where CANX's and PTPRC's abundance contrasts and PTPRC's fragment contrast are not estimable either, their own copies on scaffolds among their columns (19 CANX records on HG30_PATCH, with 20,843 of the 24,123 windows CANX's competing records share with the configured transcripts; 9 PTPRC records on HSCHR1_3_CTG31, with all 9,893 of PTPRC's). None becomes estimable and no predicted SE becomes smaller; the largest increases (log2), the same against both FASTA backgrounds: as abundance TP53 0.194 to 0.241, NR1H3 2.229 to 2.265, ALDOA 0.322 to 0.355; as fragment totals ALDOA 0.309 to 0.354, TP53 0.179 to 0.220, NR1H3 2.394 to 2.431. Beyond those, one verdict changes: CASP9's as fragment totals, `identifiable` to `weakly_identifiable`, against both. Of the 7 contrasts estimable as abundance only with the gene's transcripts as the background, 6 are so against the reference chromosomes (not SMN2's) and 5 against the whole FASTA (not CANX's either).
+- Where the reads went (`data/sim/c1_d1_tpm_detail.json`): over the 30 replicates, 245,528 `NumReads`, 0.70% of the 35,032,869 fragments of the libraries, went to records outside the 49 genes; by the gene symbol of those records, LDHA 123,839, NDUFS1 87,700, PTPRC 11,552, CANX 10,472, SMN1 6,967 and SMN2 3,061. SMN1's transcripts, from which no fragment was drawn, were given 5.7% as many as the 121,779 fragments drawn from SMN2.
+<!-- gate-result:end -->
+
+**What this shows, and what it does not.** These are findings made after the grade. The predictions the gate fixed
+were made, as every prediction of this simulation was, with the gene's other transcripts as the background, which
+leaves SMN1 out. The one contrast that failed, SMN2's, is one the package does not call estimable as abundance once
+the background is the index's reference-chromosome transcripts. What produced that failure was not measured: SMN2's
+`NumReads` row had already failed before the TPM run (step 4 of the gate). The finding is therefore also one of
+scope: a prediction made from the gene alone can promise what the index cannot give, and the answer to set beside a
+quantifier's is the one `--background-fasta` gives with the index's transcript FASTA. Nor does it make the grade a
+pass: CANX's contrast is not estimable against the whole index, yet its summed-TPM row was accurate; not estimable
+means that the contrast is not determined in general, not that every truth is missed. The simulation's index holds
+records on scaffolds (alternate loci, patches), which the README's "Index scope" says to leave out: the copies the
+index kept in place of LDHA's and NDUFS1's dropped members are there (`CHANGELOG.md`, the correction recorded before
+the run), as are CANX's and PTPRC's copies. The run of step 7, the six skewed designs and kallisto, decides nothing
+and was not made with this run.
+
 ## What these outputs do not cover
 
 - **Depth**: one depth, 30M fragments with every transcript at TPM 10.
 - **Class ratio**: the classes as flat TPM gives them; the harness's `--ratio` was not run.
-- **Index**: no decoys, Ensembl 116's whole cDNA FASTA.
+- **Index**: no decoys, Ensembl 116's whole cDNA FASTA, its records on scaffolds (alternate loci, patches) included,
+  which the README's "Index scope" leaves out of an index.
 - **Genes**: one panel of 49.
 - **Quantifiers**: Salmon 2.7.0 and kallisto 0.52.0 only.
 - **Coverage**: monotone positional skew only (`bias_5p`); no GC or fragment-sequence bias, and no other shape.

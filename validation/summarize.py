@@ -2,12 +2,18 @@
 
     python validation/summarize.py            # print the summary
     python validation/summarize.py --write    # and write validation/summary.json and the
-                                              # generated block of validation/README.md
+                                              # two generated blocks of validation/README.md
 
 Reads ``validation/data`` (``data/README.md`` says what is there and how it was made) and
 the package that is installed; runs no quantifier.  It stops when a stored file is not the
 one ``data/README.md`` names by SHA-256.  ``tests/test_validation.py`` holds the summary,
 and every figure quoted from it, to what this computes.
+
+The 3.0 gate's result (:func:`gate_result`, the summary's ``gate_3_0``) is the stored run
+graded by ``gate_3_0.py``'s own functions against the predictions fixed with the gate, and,
+apart from the grade and deciding nothing, what was computed from the run's per-transcript
+detail and from the index's FASTA (``data/sim/c1_d1_tpm_detail.json``,
+``data/whole_index.json``).
 
 For each of the 49 genes the package is asked two things about the sequence the
 simulation read: what the v2.1.1 gate said (:func:`old_gate`) and what the structural
@@ -16,7 +22,8 @@ harness made before any read existed (``run_simulation.predicted``), so it has t
 what every stored row recorded; when it does not, the stored comparison no longer
 describes the code that ships, and :func:`summarize` says which gene and which field.
 
-Every figure is over one panel: the genes with a row in all seven Salmon designs.  The rank
+Every figure but the gate's result is over one panel: the genes with a row in all seven Salmon
+designs.  The rank
 statistics are the harness's own (``run_simulation.ranks``, ``spearman``,
 ``mannwhitney``: average ranks, two-sided normal approximation with no continuity
 correction).
@@ -42,17 +49,24 @@ DATA = os.path.join(HERE, "data")
 SUMMARY = os.path.join(HERE, "summary.json")
 README = os.path.join(HERE, "README.md")
 START, END = "<!-- summary:start -->", "<!-- summary:end -->"
+GATE_START, GATE_END = "<!-- gate-result:start -->", "<!-- gate-result:end -->"
 
 
-def _harness():
-    spec = importlib.util.spec_from_file_location(
-        "_run_simulation", os.path.join(HERE, "run_simulation.py"))
+def _module(name):
+    spec = importlib.util.spec_from_file_location("_" + name, os.path.join(HERE, name + ".py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
+def _harness():
+    return _module("run_simulation")
+
+
 H = _harness()
+#: the 3.0 gate's grader, whose functions grade the stored run here as they do from the
+#: command line
+G = _module("gate_3_0")
 
 #: bias_5p of the seven designs, 3' skew to 5' skew, and the stored file of each
 B = (-2.0, -1.0, -0.3, 0.0, 0.3, 1.0, 2.0)
@@ -496,6 +510,9 @@ def summarize(data=DATA, analysed=None):
                   g for g in genes if structure[g]["estimable"]
                   and not structure[g]["abundance"]["estimable"])}
 
+    with open(os.path.join(data, GATE_RUN), encoding="utf-8") as f:
+        gate = gate_result(json.load(f), data, genes)
+
     return {"format": "isoform-dominance/validation-summary/1",
             "designs": {"bias_5p": list(B), "files": {q: list(v) for q, v in FILES.items()},
                         "rerun": RERUN, "predicted_at": DESIGN},
@@ -507,7 +524,246 @@ def summarize(data=DATA, analysed=None):
                       "kallisto_genes": kallisto_panel, "kallisto_n": len(kallisto_panel)},
             "S1": s1, "S2": s2, "S3": s3, "S4": s4, "S5": s5, "S6": s6, "S7": s7, "S8": s8,
             "table": table, "table_comparison": comparison, "table_notes": notes,
-            "survey": survey}
+            "survey": survey, "gate_3_0": gate}
+
+
+# --------------------------------------------------------------------------- #
+# the 3.0 gate's result
+# --------------------------------------------------------------------------- #
+#: the gate's run, the per-transcript detail of three of its genes, and the 49 genes against
+#: the index's FASTA (data/README.md, its last table)
+GATE_RUN = "sim/c1_d1_tpm.json"
+GATE_DETAIL = "sim/c1_d1_tpm_detail.json"
+WHOLE_INDEX = "whole_index.json"
+#: the control genes the index lost class members of to copies outside every class (the
+#: CHANGELOG's correction recorded before the run), shown against a truth that follows them
+KEPT_COPY_GENES = ("LDHA", "NDUFS1")
+#: the genes whose contrast the index's FASTA makes not estimable, whose competitors are
+#: counted
+COMPETED = ("SMN2", "CANX", "PTPRC")
+#: the three backgrounds of whole_index.json, the gene's own first
+BACKGROUNDS = ("gene_background", "reference_chromosomes", "whole_index")
+FASTA_BACKGROUNDS = BACKGROUNDS[1:]
+#: how close a row recomputed from the detail must be to the run's (tests/test_gate_run.py's)
+DETAIL_TOLERANCE = 1e-12
+
+
+def _row(ests, errs):
+    """A row's statistics, as ``run_simulation.summarise`` computes them: ``n``,
+    ``realised_sd`` (SD of the estimated log2 ratio), ``bias`` (median error), ``rmse``."""
+    return {"n": len(ests), "realised_sd": statistics.stdev(ests),
+            "bias": statistics.median(errs),
+            "rmse": math.sqrt(sum(x * x for x in errs) / len(errs))}
+
+
+def kept_copy_truth(groups, pc, written, efflen, took):
+    """The summed-TPM truth with a dropped member's share -- its fragments over the
+    effective length of the copy the index kept (``took``, as ``run_simulation.tpm_truth``
+    returns it) -- given to the compared class that holds the kept copy, and to none when
+    no class does.  A member the quantifier lists counts in its own class, as in the
+    gate's truth."""
+    out = dict.fromkeys(pc, 0.0)
+    for c in pc:
+        for t in groups[c]:
+            source = took.get(t, t)
+            share = written.get(t, 0) / efflen[source]
+            for d in pc:
+                if source in groups[d]:
+                    out[d] += share
+    return out
+
+
+def detail_rows(detail, source, gene):
+    """A gene's rows recomputed from the per-transcript detail: ``genes`` (``NumReads``
+    against the fragments drawn), ``genes_tpm`` (summed TPM against the gate's truth,
+    ``run_simulation.tpm_truth``) and ``kept_copy`` (summed TPM against
+    :func:`kept_copy_truth`)."""
+    g = detail["genes"][gene]
+    pc, groups, kept = g["primary_comparison"], g["classes"], g["kept_copies"]
+    seqs = {t.split(".")[0]: s for t, s in source[gene]["sequences"].items()}
+    per = {"genes": ([], []), "genes_tpm": ([], []), "kept_copy": ([], [])}
+    for rep in g["replicates"]:
+        q, f = rep["quant"], rep["fragments"]
+        eff = {t: v[0] for t, v in q.items()}
+        gate_truth, took = H.tpm_truth(groups, pc, seqs, f, eff, kept)
+        truth = {"genes": {c: sum(f.get(t, 0) for t in groups[c]) for c in pc},
+                 "genes_tpm": gate_truth,
+                 "kept_copy": kept_copy_truth(groups, pc, f, eff, took)}
+        for key, col in (("genes", 2), ("genes_tpm", 1), ("kept_copy", 1)):
+            est = {c: sum(q[t][col] for t in groups[c] if t in q) for c in pc}
+            tru = truth[key]
+            if all(est[c] > 0 and tru[c] > 0 for c in pc):
+                e = math.log2(est[pc[0]] / est[pc[1]])
+                per[key][0].append(e)
+                per[key][1].append(e - math.log2(tru[pc[0]] / tru[pc[1]]))
+    return {key: _row(e, x) for key, (e, x) in per.items()}
+
+
+def _against(rows, predicted):
+    """``G._grade``'s comparison of rows with predicted SEs, as a table: per gene its
+    predicted SE, ``abs_bias``, ``realised_sd``, ``n`` and whether each is below the SE
+    (``None`` for the figures of a gene without a row)."""
+    out = []
+    for gene, (r, b, s) in G._grade(rows, predicted).items():
+        out.append({"gene": gene, "predicted_se": predicted[gene],
+                    "abs_bias": None if r is None else abs(r["bias"]),
+                    "realised_sd": None if r is None else r["realised_sd"],
+                    "n": 0 if r is None else r["n"], "bias_below": b, "sd_below": s})
+    return out
+
+
+def _counts(table):
+    return {"n": len(table), "bias_below": sum(r["bias_below"] for r in table),
+            "sd_below": sum(r["sd_below"] for r in table),
+            "not_below": [r for r in table if not (r["bias_below"] and r["sd_below"])]}
+
+
+def _competitors(gene, records):
+    """The records that became a contrast's columns: how many, the windows they share with
+    the configured transcripts (counted per record), the gene's own copies by location, and
+    the five largest groups by gene symbol and location, most windows first."""
+    groups = {}
+    for v in records.values():
+        k = (v["gene_symbol"], v["location"])
+        n, w = groups.get(k, (0, 0))
+        groups[k] = (n + 1, w + v["windows"])
+    ranked = sorted(groups.items(), key=lambda x: (-x[1][1], x[0][0] or "", x[0][1]))
+    return {"records": len(records), "windows": sum(v["windows"] for v in records.values()),
+            "own": {loc: {"records": n, "windows": w}
+                    for (s, loc), (n, w) in sorted(groups.items(), key=lambda x: x[0][1])
+                    if s == gene},
+            "groups": [{"gene_symbol": s, "location": loc, "records": n, "windows": w}
+                       for (s, loc), (n, w) in ranked[:5]]}
+
+
+def backgrounds(whole):
+    """The 49 contrasts against the three backgrounds of ``whole_index.json``, per
+    estimand: how many are estimable against each; which become not estimable, and which
+    estimable, against each FASTA background; among the genes estimable against all three,
+    any whose predicted SE is smaller against a FASTA background, and the five largest
+    increases (log2); the verdicts that change.  Then the genes estimable as abundance only,
+    per background, and the competing records of :data:`COMPETED`."""
+    genes = whole["genes"]
+    out = {"n_contrasts": len(genes)}
+    for est in I.ESTIMANDS:
+        estimable = {b: {g for g, v in genes.items() if v[b][est]["estimable"]}
+                     for b in BACKGROUNDS}
+        everywhere = set.intersection(*estimable.values())
+        before = estimable["gene_background"]
+        e = {"n_estimable": {b: len(estimable[b]) for b in BACKGROUNDS},
+             "not_estimable_against": {b: sorted(before - estimable[b])
+                                       for b in FASTA_BACKGROUNDS},
+             "estimable_against": {b: sorted(estimable[b] - before) for b in FASTA_BACKGROUNDS},
+             "se_smaller": {}, "largest_increases": {}, "verdict_changes": {}}
+        for b in FASTA_BACKGROUNDS:
+            se = {g: (genes[g]["gene_background"][est]["predicted_se"],
+                      genes[g][b][est]["predicted_se"]) for g in sorted(everywhere)}
+            e["se_smaller"][b] = [g for g, (x, y) in se.items() if y < x]
+            e["largest_increases"][b] = [
+                {"gene": g, "before": x, "after": y}
+                for g, (x, y) in sorted(se.items(), key=lambda i: (-(i[1][1] - i[1][0]),
+                                                                   i[0]))[:5]]
+            e["verdict_changes"][b] = [
+                {"gene": g, "before": v["gene_background"][est]["verdict"],
+                 "after": v[b][est]["verdict"]} for g, v in sorted(genes.items())
+                if v[b][est]["verdict"] != v["gene_background"][est]["verdict"]]
+        out[est] = e
+    out["estimable_as_abundance_only"] = {
+        b: sorted(g for g, v in genes.items()
+                  if v[b]["abundance"]["estimable"] and not v[b]["fragment"]["estimable"])
+        for b in BACKGROUNDS}
+    out["competitors"] = {g: {b: _competitors(g, genes[g][b]["fasta_competitors"])
+                              for b in FASTA_BACKGROUNDS} for g in COMPETED}
+    return out
+
+
+def reads_outside(detail):
+    """Where the run's reads went outside the 49 genes: over its replicates, the
+    ``NumReads`` of the records outside them against the library's fragments, the six gene
+    symbols with the most, and SMN1's against the fragments drawn from SMN2."""
+    total, by = 0.0, {}
+    for rep in detail["outside_num_reads"]:
+        for s, n in rep.items():
+            total += n
+            by[s] = by.get(s, 0.0) + n
+    fragments = sum(detail["fragments_written"])
+    smn2 = sum(r["gene_fragments_written"] for r in detail["genes"]["SMN2"]["replicates"])
+    return {"replicates": len(detail["outside_num_reads"]), "num_reads": total,
+            "fragments": fragments, "fraction": total / fragments,
+            "by_symbol": [[s, n] for s, n in sorted(by.items(),
+                                                    key=lambda x: (-x[1], x[0]))[:6]],
+            "SMN1": by.get("SMN1", 0.0), "SMN2_fragments": smn2,
+            "SMN1_over_SMN2_fragments": by.get("SMN1", 0.0) / smn2}
+
+
+def gate_result(run, data=DATA, source=None):
+    """The 3.0 gate's result: ``run`` graded by ``gate_3_0.py``'s own functions, and, beside
+    the grade and deciding nothing, what was computed from the run, its per-transcript
+    detail and the index's FASTA.  A run the gate does not grade is recorded, not raised,
+    as ``gate_3_0.main`` reports it (exit status 2).
+
+    The rows of LDHA, NDUFS1 and SMN2 are recomputed from the detail with the gate's truth;
+    ``detail_mismatches`` lists every figure not within :data:`DETAIL_TOLERANCE` of the
+    run's, which :func:`main` treats as it treats a stored prediction that moved."""
+    if source is None:
+        source = load(data)[0]
+    with open(os.path.join(data, GATE_DETAIL), encoding="utf-8") as f:
+        detail = json.load(f)
+    with open(os.path.join(data, WHOLE_INDEX), encoding="utf-8") as f:
+        whole = json.load(f)
+    out = {"run": GATE_RUN, "graded": False, "not_graded": None, "largest_difference": None,
+           "exit_status": 2, "passes": None, "stopped": None, "primary_sd_ok": None,
+           "primary_passes": None, "control_graded": None}
+    predictions = None
+    try:
+        predictions = G.frozen_predictions()
+        G.check_run(run, predictions)
+        out["largest_difference"] = G.check_reproduces(
+            run, stored=os.path.join(data, "sim", "c1_d1.json"))
+    except G.NotGradeable as e:
+        out["not_graded"] = str(e)
+    else:
+        result = G.grade(run, predictions)
+        out.update(graded=True, exit_status=0 if result["passes"] else 1,
+                   passes=result["passes"], stopped=result["stopped"],
+                   primary_sd_ok=result["primary_sd_ok"],
+                   primary_passes=result["primary_passes"],
+                   control_graded=result["control"] is not None)
+    tpm = {r["gene"]: r for r in run.get("genes_tpm") or ()}
+    reads = {r["gene"]: r for r in run.get("genes") or ()}
+    if predictions is not None:
+        out["primary"] = {"summed_tpm": _against(tpm, predictions["primary"]),
+                          "numreads": _against(reads, predictions["primary"])}
+        out["control"] = {"summed_tpm": _counts(_against(tpm, predictions["control"])),
+                          "numreads": _counts(_against(reads, predictions["control"]))}
+    out["tpm_rows_under_all_replicates"] = {
+        g: r["n"] for g, r in sorted(tpm.items()) if r["n"] < run["design"]["replicates"]}
+
+    out["kept_copy"], mismatches = {}, []
+    for gene in sorted(detail["genes"]):
+        mine = detail_rows(detail, source, gene)
+        for key in ("genes", "genes_tpm"):
+            theirs = {"genes": reads, "genes_tpm": tpm}[key].get(gene)
+            for k in ("n", "realised_sd", "bias", "rmse"):
+                if theirs is None or not abs(mine[key][k] - theirs[k]) <= (
+                        0 if k == "n" else DETAIL_TOLERANCE):
+                    mismatches.append([gene, key, k, None if theirs is None else theirs[k],
+                                       mine[key][k]])
+        if gene in KEPT_COPY_GENES:
+            g = detail["genes"][gene]
+            out["kept_copy"][gene] = {
+                "graded_as": None if predictions is None else next(
+                    (part for part in ("primary", "control") if gene in predictions[part]),
+                    None),
+                "kept_copies": g["kept_copies"],
+                "kept_copies_in_a_compared_class": sorted(
+                    k for k in set(g["kept_copies"].values())
+                    if any(k in g["classes"][c] for c in g["primary_comparison"])),
+                "gate_truth": mine["genes_tpm"], "kept_copy_truth": mine["kept_copy"]}
+    out["detail_mismatches"] = mismatches
+    out["backgrounds"] = backgrounds(whole)
+    out["reads_outside"] = reads_outside(detail)
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -702,44 +958,312 @@ def render(s):
     return "\n".join(out)
 
 
+# --------------------------------------------------------------------------- #
+# the generated block of the 3.0 gate's result
+# --------------------------------------------------------------------------- #
+def _and(items):
+    """``a``, ``a and b``, ``a, b and c``."""
+    items = list(items)
+    if len(items) < 2:
+        return "".join(items)
+    return "%s and %s" % (", ".join(items[:-1]), items[-1])
+
+
+def _place(location):
+    """``chromosome:GRCh38:5`` as ``chromosome 5``; a scaffold by its name."""
+    kind, _, name = location.split(":")[:3]
+    return "chromosome %s" % name if kind == "chromosome" else name
+
+
+def _against_se(rows, key):
+    """``GENE, figure against SE`` for each row, or that it has none."""
+    return "; ".join("%s, no row" % r["gene"] if r[key] is None else
+                     "%s, %.3f against %.3f" % (r["gene"], r[key], r["predicted_se"])
+                     for r in rows)
+
+
+def _grade_lines(g):
+    w = []
+    if not g["graded"]:
+        w.append("**The grade.** `data/%s` is not graded: %s. `gate_3_0.py` exits with status "
+                 "%d." % (g["run"], g["not_graded"], g["exit_status"]))
+        return w
+    w.append("**The grade.** `data/%s` is the run the gate names: its `NumReads` rows "
+             "reproduce the stored uniform run (largest difference %.2g log2). `gate_3_0.py` "
+             "grades it with exit status %d." % (g["run"], g["largest_difference"],
+                                                 g["exit_status"]))
+    w.append("")
+    prim = g["primary"]["summed_tpm"]
+    w.append("| primary gene | predicted SE | summed TPM \\|bias\\| | SD | n | "
+             "\\|bias\\| below | SD below |")
+    w.append("|---|---|---|---|---|---|---|")
+    for r in prim:
+        w.append("| %s | %.3f | %s | %s | %d | %s | %s |" % (
+            r["gene"], r["predicted_se"], _f(r["abs_bias"], 3), _f(r["realised_sd"], 3),
+            r["n"], "yes" if r["bias_below"] else "no", "yes" if r["sd_below"] else "no"))
+    w.append("")
+    by = {r["gene"]: r for r in prim}
+    said = ["The |bias| is below the predicted SE for %d of the %d and the SD for %d."
+            % (sum(r["bias_below"] for r in prim), len(prim), g["primary_sd_ok"])]
+    outcome = ("3.0 makes `abundance` the default" if g["passes"]
+               else "3.0 keeps `fragment` as the default")
+    if g["stopped"]:
+        parts = []
+        for gene in g["stopped"]:
+            r = by[gene]
+            failed = [x for x, ok in (("|bias|", r["bias_below"]), ("SD", r["sd_below"]))
+                      if not ok]
+            parts.append("%s has no row" % gene if r["abs_bias"] is None else
+                         "%s's %s %s at or above its predicted SE"
+                         % (gene, " and ".join(failed), "are" if len(failed) > 1 else "is"))
+        said.append("%s, so the stop rule (step 4) stops the change: %s."
+                    % (_and(parts), outcome))
+    elif not g["primary_passes"]:
+        said.append("The primary set fails step 3: %s." % outcome)
+    else:
+        c = g["control"]["summed_tpm"]
+        said.append("The primary set passes, and the control (step 6) has a |bias| below the "
+                    "predicted SE for %d of its %d genes and an SD below it for %d: %s."
+                    % (c["bias_below"], c["n"], c["sd_below"], outcome))
+    if not g["control_graded"]:
+        said.append("The control is not graded: step 6 grades it only when the primary set "
+                    "passes.")
+    w.append(" ".join(said))
+    return w
+
+
+def _background_lines(b, n_genes):
+    ab, fr = b["abundance"], b["fragment"]
+    label = {"reference_chromosomes": "against the reference-chromosome records of the "
+                                      "index's FASTA",
+             "whole_index": "against the whole FASTA, its records on scaffolds included"}
+    parts, prev = [], {"abundance": [], "fragment": []}
+    for bg in FASTA_BACKGROUNDS:
+        lost = {est: [x for x in b[est]["not_estimable_against"][bg] if x not in prev[est]]
+                for est in I.ESTIMANDS}
+        either = " either" if any(prev.values()) else ""
+        clauses = []
+        for est, name in (("abundance", "abundance"), ("fragment", "fragment")):
+            if lost[est]:
+                clauses.append("%s %s contrast%s" % (_and("%s's" % x for x in lost[est]), name,
+                                                     "s" if len(lost[est]) > 1 else ""))
+        where = ""
+        if clauses:
+            n_lost = sum(len(v) for v in lost.values())
+            where = ", where %s %s not estimable%s" % (_and(clauses),
+                                                       "are" if n_lost > 1 else "is", either)
+            genes = [x for x in dict.fromkeys(lost["abundance"] + lost["fragment"])
+                     if x in b["competitors"] and b["competitors"][x][bg]["groups"]]
+            tops = []
+            for i, x in enumerate(genes):
+                c = b["competitors"][x][bg]
+                top = c["groups"][0]
+                n, of = "{:,}".format(top["windows"]), "{:,}".format(c["windows"])
+                share = (("all %s" % of if n == of else "%s of the %s" % (n, of))
+                         + (" windows its competing records share with the configured "
+                            "transcripts" if len(genes) == 1 else
+                            " windows %s's competing records share with the configured "
+                            "transcripts" % x if i == 0 else " of %s's" % x))
+                tops.append((x, top, "%d %s records on %s, with %s"
+                             % (top["records"], top["gene_symbol"] or "unnamed",
+                                _place(top["location"]), share)))
+            own = all(t["gene_symbol"] == x and t["location"].startswith("scaffold:")
+                      for x, t, _ in tops)
+            other = sorted({t["gene_symbol"] or "unnamed" for _, t, _ in tops})
+            if tops:
+                where += ", %s among %s columns (%s)" % (
+                    "their own copies on scaffolds" if own and len(tops) > 1 else
+                    "its own copies on scaffolds" if own else
+                    "with %s's transcripts" % _and(other),
+                    "their" if len(tops) > 1 else "its", "; ".join(d for _, _, d in tops))
+        parts.append("%d and %d %s%s" % (ab["n_estimable"][bg], fr["n_estimable"][bg],
+                                         label[bg], where))
+        for est in I.ESTIMANDS:
+            prev[est] = b[est]["not_estimable_against"][bg]
+    w = ["- Three backgrounds (`data/whole_index.json`), computed after the grade. Estimable "
+         "as abundance and as fragment totals: %d and %d of the %d contrasts with the gene's "
+         "other transcripts as the background (as every prediction here was made); %s."
+         % (ab["n_estimable"]["gene_background"], fr["n_estimable"]["gene_background"],
+            n_genes, "; ".join(parts))]
+    gained = sorted({x for est in I.ESTIMANDS for v in b[est]["estimable_against"].values()
+                     for x in v})
+    smaller = sorted({x for est in I.ESTIMANDS for v in b[est]["se_smaller"].values()
+                      for x in v})
+    said = ["None becomes estimable" if not gained else
+            "%s become%s estimable" % (_and(gained), "" if len(gained) > 1 else "s"),
+            "no predicted SE becomes smaller" if not smaller else
+            "the predicted SE of %s becomes smaller" % _and(smaller)]
+
+    def increases(est, bg):
+        return ", ".join("%s %.3f to %.3f" % (r["gene"], r["before"], r["after"])
+                         for r in b[est]["largest_increases"][bg][:3])
+    alike = all(increases(est, "reference_chromosomes") == increases(est, "whole_index")
+                for est in I.ESTIMANDS)
+    if alike:
+        rise = ("the largest increases (log2), the same against both FASTA backgrounds: as "
+                "abundance %s; as fragment totals %s" % (increases("abundance", "whole_index"),
+                                                         increases("fragment", "whole_index")))
+    else:
+        rise = "the largest increases (log2): %s" % "; ".join(
+            "%s as %s %s" % (label[bg], est, increases(est, bg))
+            for bg in FASTA_BACKGROUNDS for est in I.ESTIMANDS)
+    w[0] += " %s and %s; %s." % (said[0], said[1], rise)
+    changes = {}
+    for est in I.ESTIMANDS:
+        for bg in FASTA_BACKGROUNDS:
+            for r in b[est]["verdict_changes"][bg]:
+                if r["gene"] not in b[est]["not_estimable_against"][bg]:
+                    changes.setdefault((r["gene"], est, r["before"], r["after"]), []).append(bg)
+    if changes:
+        w[0] += " Beyond those, %s verdict%s change%s: %s." % (
+            "one" if len(changes) == 1 else len(changes), "" if len(changes) == 1 else "s",
+            "s" if len(changes) == 1 else "",
+            "; ".join("%s's %s, `%s` to `%s`, %s" % (
+                gene, "as abundance" if est == "abundance" else "as fragment totals", x, y,
+                "against both" if len(bgs) == 2 else label[bgs[0]])
+                for (gene, est, x, y), bgs in sorted(changes.items())))
+    only = b["estimable_as_abundance_only"]
+    first = only["gene_background"]
+    steps, prev = [], first
+    for bg, name in (("reference_chromosomes", "the reference chromosomes"),
+                     ("whole_index", "the whole FASTA")):
+        out_ = [x for x in prev if x not in only[bg]]
+        in_ = [x for x in only[bg] if x not in first]
+        steps.append("%d%s against %s%s%s" % (
+            len(only[bg]), "" if steps else " are so", name,
+            " (not %s%s)" % (_and("%s's" % x for x in out_),
+                             " either" if prev is not first else "") if out_ else "",
+            " (and %s, new)" % _and(in_) if in_ else ""))
+        prev = only[bg]
+    w[0] += (" Of the %d contrasts estimable as abundance only with the gene's transcripts as "
+             "the background, %s." % (len(first), " and ".join(steps)))
+    return w
+
+
+def render_gate(s):
+    """The Markdown between the gate-result markers of validation/README.md."""
+    g = s["gate_3_0"]
+    out = ["Generated by `python validation/summarize.py --write` from `validation/data`; "
+           "`tests/test_validation.py` fails when it no longer agrees.", ""]
+    out += _grade_lines(g)
+    if "primary" not in g:
+        return "\n".join(out)
+    out += ["", "**Beside the grade, deciding nothing.**", ""]
+    c, cn = g["control"]["summed_tpm"], g["control"]["numreads"]
+    out.append("- The control, described: a |bias| below the predicted SE for %d of its %d "
+               "genes%s and an SD below it for %d%s." % (
+                   c["bias_below"], c["n"], _not(c["not_below"], "abs_bias"), c["sd_below"],
+                   _not(c["not_below"], "realised_sd")))
+    pt, pn = g["primary"]["summed_tpm"], g["primary"]["numreads"]
+    line = ("- The run's `NumReads` rows against the same predictions: a |bias| below for %d "
+            "of the primary set and an SD below for %d; for the control, %d and %d."
+            % (sum(r["bias_below"] for r in pn), sum(r["sd_below"] for r in pn),
+               cn["bias_below"], cn["sd_below"]))
+    for t, n in zip(pt, pn, strict=True):
+        for key, flag, name in (("abs_bias", "bias_below", "|bias|"),
+                                ("realised_sd", "sd_below", "SD")):
+            if t[flag] != n[flag] and n[key] is not None and t[key] is not None:
+                line += (" %s's `NumReads` %s, %.3f, is %s its predicted SE, %.3f; with summed "
+                         "TPM it is %.3f." % (n["gene"], name, n[key],
+                                              "below" if n[flag] else "above",
+                                              n["predicted_se"], t[key]))
+    out.append(line)
+    k = g["kept_copy"]
+    names = list(k)
+    graded = {v["graded_as"] for v in k.values()}
+    kept_in = any(v["kept_copies_in_a_compared_class"] for v in k.values())
+    same_sd = all(abs(v["gate_truth"]["realised_sd"] - v["kept_copy_truth"]["realised_sd"])
+                  <= DETAIL_TOLERANCE for v in k.values())
+    out.append(
+        "- %s summed-TPM rows (%s) against a truth that gives the fragments of the class "
+        "members the index dropped (%s) to the copies it kept, %s (`CHANGELOG.md`, the "
+        "correction recorded before the run): bias %s, against %s with the gate's truth (the "
+        "run's rows); %s." % (
+            _and("%s's" % x for x in names),
+            "control genes" if graded == {"control"} else "genes of the run",
+            _and("%d of %s's members" % (len(k[x]["kept_copies"]), x) if i == 0 else
+                 "%d of %s's" % (len(k[x]["kept_copies"]), x) for i, x in enumerate(names)),
+            "which some compared class holds" if kept_in else "which no compared class holds",
+            _and("%+.3f" % k[x]["kept_copy_truth"]["bias"] for x in names),
+            _and("%+.3f" % k[x]["gate_truth"]["bias"] for x in names),
+            "the SD is the same" if same_sd else "the SD %s against %s" % (
+                _and("%.3f" % k[x]["kept_copy_truth"]["realised_sd"] for x in names),
+                _and("%.3f" % k[x]["gate_truth"]["realised_sd"] for x in names))))
+    out += _background_lines(g["backgrounds"], g["backgrounds"]["n_contrasts"])
+    r = g["reads_outside"]
+    no_fragment = "SMN1" not in s["genes"]
+    out.append(
+        "- Where the reads went (`data/sim/c1_d1_tpm_detail.json`): over the %d replicates, "
+        "%s `NumReads`, %.2f%% of the %s fragments of the libraries, went to records outside "
+        "the %d genes; by the gene symbol of those records, %s. SMN1's transcripts, %swere "
+        "given %.1f%% as many as the %s fragments drawn from SMN2." % (
+            r["replicates"], "{:,.0f}".format(r["num_reads"]), 100 * r["fraction"],
+            "{:,}".format(r["fragments"]), len(s["genes"]),
+            _and("%s %s" % (sym, "{:,.0f}".format(n)) for sym, n in r["by_symbol"]),
+            "from which no fragment was drawn, " if no_fragment else "",
+            100 * r["SMN1_over_SMN2_fragments"], "{:,}".format(r["SMN2_fragments"])))
+    return "\n".join(out)
+
+
+def _not(rows, key):
+    """`` (not GENE, figure against SE; ...)`` for the rows not below their predicted SE on
+    ``key``; empty when every row is."""
+    flag = {"abs_bias": "bias_below", "realised_sd": "sd_below"}[key]
+    out = [r for r in rows if not r[flag]]
+    return " (not %s)" % _against_se(out, key) if out else ""
+
+
 def as_json(summary):
     """``summary.json``'s text: keys sorted, a number that is not finite as null."""
     return json.dumps(io.finite_json(summary), indent=1, sort_keys=True,
                       allow_nan=False, ensure_ascii=False) + "\n"
 
 
-def with_block(text, block):
-    """``text`` with the part between the summary markers replaced by ``block``."""
-    head, rest = text.split(START, 1)
-    _, tail = rest.split(END, 1)
-    return "%s%s\n%s\n%s%s" % (head, START, block, END, tail)
+def with_block(text, block, start=START, end=END):
+    """``text`` with the part between the markers ``start`` and ``end`` (by default the
+    summary's) replaced by ``block``."""
+    head, rest = text.split(start, 1)
+    _, tail = rest.split(end, 1)
+    return "%s%s\n%s\n%s%s" % (head, start, block, end, tail)
 
 
 def write(summary, path=SUMMARY, readme=README):
+    """Write ``summary.json`` and both generated blocks of validation/README.md."""
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(as_json(summary))
     with open(readme, encoding="utf-8") as f:
         text = f.read()
+    text = with_block(text, render(summary))
+    text = with_block(text, render_gate(summary), GATE_START, GATE_END)
     with open(readme, "w", encoding="utf-8", newline="\n") as f:
-        f.write(with_block(text, render(summary)))
+        f.write(text)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--write", action="store_true",
-                    help="write validation/summary.json and the block of validation/README.md")
+                    help="write validation/summary.json and the two blocks of "
+                         "validation/README.md")
     a = ap.parse_args(argv)
     s = summarize()
     print(render(s))
+    print()
+    print(render_gate(s))
     if s["consistency"]["mismatches"]:
         print("\nThe stored predictions are not what the package gives now:", file=sys.stderr)
         for m in s["consistency"]["mismatches"][:20]:
             print("  %s %s %s: stored %r, now %r" % tuple(m), file=sys.stderr)
+    bad = s["gate_3_0"]["detail_mismatches"]
+    if bad:
+        print("\nThe 3.0 gate's run is not what its per-transcript detail gives:",
+              file=sys.stderr)
+        for m in bad[:20]:
+            print("  %s %s %s: the run's %r, the detail's %r" % tuple(m), file=sys.stderr)
     if a.write:
         write(s)
-        print("\nwrote %s and the block of %s" % (SUMMARY, README), file=sys.stderr)
-    return 1 if s["consistency"]["mismatches"] else 0
+        print("\nwrote %s and the two blocks of %s" % (SUMMARY, README), file=sys.stderr)
+    return 1 if s["consistency"]["mismatches"] or bad else 0
 
 
 if __name__ == "__main__":

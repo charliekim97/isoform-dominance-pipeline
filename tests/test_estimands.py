@@ -149,9 +149,57 @@ def test_each_estimand_says_what_it_is():
     assert frag["contrast"]["label"] == "the class contrast"
     assert "length-corrected abundance" in ab["definition"]
     assert "expected fragment count" in frag["definition"]
-    # only the fragment estimand's precision figures were checked in simulation
+    # both estimands' precision figures were checked in simulation, which says nothing of
+    # whether they met the check: precision_check does
     assert frag["precision_checked_in_simulation"] is True
-    assert ab["precision_checked_in_simulation"] is False
+    assert ab["precision_checked_in_simulation"] is True
+    assert frag["precision_check"] == {"against": "NumReads", "coverage": "uniform",
+                                       "met": True, "where": "validation/README.md, S1"}
+    assert ab["precision_check"] == {"against": "summed TPM", "coverage": "uniform",
+                                     "met": False,
+                                     "where": "validation/README.md, The 3.0 gate's result"}
+    for e in (frag, ab):
+        assert list(e["precision_check"]) == ["against", "coverage", "met", "where"]
+
+
+def test_each_report_has_its_own_copy_of_the_precision_check():
+    """A caller that changes one report's ``precision_check`` changes no other report, and
+    not the package's record of the check."""
+    config, seqs = crossed()
+    first = _analyze(config, seqs)
+    want = json.loads(json.dumps(I._PRECISION_CHECK))
+    for name in I.ESTIMANDS:
+        assert first["estimands"][name]["precision_check"] is not I._PRECISION_CHECK[name]
+        first["estimands"][name]["precision_check"]["met"] = "changed"
+    assert I._PRECISION_CHECK == want
+    second = _analyze(config, seqs)
+    assert {n: second["estimands"][n]["precision_check"] for n in I.ESTIMANDS} == want
+
+
+def test_the_precision_check_is_the_committed_simulation_summarys():
+    """``met`` is what ``validation/summary.json`` says (``tests/test_validation.py`` holds
+    the summary to what the stored outputs give): the abundance estimand's, the 3.0 gate's
+    grade; the fragment estimand's, whether S1's uniform design meets the standard the gate
+    set for its control, the same 39 genes."""
+    import importlib.util
+    summary = json.loads((ROOT / "validation" / "summary.json").read_text(encoding="utf-8"))
+    spec = importlib.util.spec_from_file_location("_gate_3_0",
+                                                  ROOT / "validation" / "gate_3_0.py")
+    gate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gate)
+    assert summary["gate_3_0"]["graded"] is True
+    assert I._PRECISION_CHECK["abundance"]["met"] is summary["gate_3_0"]["passes"]
+    s1, u = summary["S1"], summary["designs"]["bias_5p"].index(0.0)
+    bias_below = s1["n"] - s1["abs_bias_over_predicted_se"][u]
+    sd_below = s1["realised_sd_under_predicted_se"][u]
+    assert I._PRECISION_CHECK["fragment"]["met"] is (
+        bias_below >= gate.CONTROL_BIAS_AT_LEAST and sd_below >= gate.CONTROL_SD_AT_LEAST)
+    # each check is where it says, under that title
+    text = (ROOT / "validation" / "README.md").read_text(encoding="utf-8")
+    assert "\n### S1. " in text and "\n## The 3.0 gate's result\n" in text
+    for name in I.ESTIMANDS:
+        assert I._PRECISION_CHECK[name]["coverage"] == "uniform"
+        assert I._PRECISION_CHECK[name]["where"].startswith("validation/README.md, ")
 
 
 def test_each_estimand_holds_only_its_own_fields():
@@ -162,8 +210,9 @@ def test_each_estimand_holds_only_its_own_fields():
     assert "class_mean_efflen" in res["contrast"]
     for name in I.ESTIMANDS:
         e = res["estimands"][name]
-        assert list(e) == ["definition", "precision_checked_in_simulation", "groups",
-                           "contrast", "effect_resolvable", "verdict", "reasons"]
+        assert list(e) == ["definition", "precision_checked_in_simulation",
+                           "precision_check", "groups", "contrast", "effect_resolvable",
+                           "verdict", "reasons"]
         for g in ("Y1", "Y2"):
             assert list(e["groups"][g]) == list(ESTIMAND_FIELDS), (name, g)
         assert list(e["contrast"]) == list(ESTIMAND_FIELDS), name
@@ -238,7 +287,9 @@ def test_the_command_says_which_estimand_decides_and_reports_the_other(tmp_path)
             "direction changes it as a fragment total, by moving abundance between transcripts "
             "that differ in length.") in note
     assert "--estimand abundance decides by the abundance estimand" in note
-    assert "have not yet been checked against a quantifier's TPM" in note
+    assert ("Its precision figures were checked against a quantifier's TPM in simulation, by "
+            "the gate that would have made it the default, and did not pass, so fragment stays "
+            "the default") in note
     assert "EFFECT SIZE: |log2FC| 5.000 NOT resolved" in out
 
 
@@ -263,11 +314,44 @@ def test_the_abundance_estimand_decides_when_asked(tmp_path):
             "`stats` compare -- and not as fragment totals: no direction this system cannot "
             "see changes any of them as abundance") in note
     assert "which decide here" not in note
-    # what its estimability rests on, and that its precision is not yet checked
+    # what its estimability rests on, and what the check of its precision gave
     assert ("Its estimability is decided exactly in this window system, but where only it is "
             "estimable that answer rests on counting each transcript's length in window "
-            "positions (identifiability.ESTIMANDS); its precision figures have not yet been "
-            "checked against a quantifier's TPM in simulation") in note
+            "positions (identifiability.ESTIMANDS). Its precision figures were checked against "
+            "a quantifier's TPM in simulation, by the gate that would have made it the default, "
+            "and did not pass, so fragment stays the default: they held for 6 of the 7 "
+            "contrasts graded and not for SMN2's (validation/README.md, \"The 3.0 gate's "
+            "result\").") in note
+
+
+#: the second sentence of the gene-background NOTE, by the estimand that decides
+BACKGROUND_NOTE = {
+    "fragment": "On 100 two-class configs at Ensembl 116 the whole-index background changed no "
+                "exit status at --min-log2fc 0.5 and one verdict, but a close paralogue can "
+                "decide the answer (README, \"Pass --background-fasta\").",
+    "abundance": "On the 49 genes of validation/, computed after the 3.0 gate was graded, the "
+                 "reference-chromosome transcripts of their index made 1 of the 48 contrasts "
+                 "estimable as abundance not estimable, SMN2's, with SMN1's transcripts among "
+                 "its columns, and the index's records on scaffolds made CANX's and PTPRC's not "
+                 "estimable too. SMN2's is the contrast whose summed TPM failed that gate "
+                 "(README, \"Pass --background-fasta\").",
+}
+
+
+@pytest.mark.parametrize("estimand", ["fragment", "abundance"])
+def test_the_gene_background_note_is_the_deciding_estimands(tmp_path, estimand):
+    """Without --background-fasta the NOTE gives what was measured of the whole-index answer
+    for the estimand that decides: the 100 configs for the fragment one, the 49 genes of the
+    simulation, after the 3.0 gate, for the abundance one."""
+    _, _, err = _cli(tmp_path, "--estimand", estimand)
+    note = " ".join(err.split())
+    assert ("NOTE: uniqueness judged against the configured groups only, not the whole index: "
+            "pseudogenes, paralogues and homologous loci outside this gene are not accounted "
+            "for. " + BACKGROUND_NOTE[estimand] + " Pass --background-fasta <the transcript "
+            "FASTA the Salmon index was built from, without the genome decoys> for the "
+            "whole-index answer.") in note
+    other = "abundance" if estimand == "fragment" else "fragment"
+    assert BACKGROUND_NOTE[other] not in note
 
 
 def test_json_reports_both_and_names_the_deciding_one(tmp_path):
@@ -283,7 +367,9 @@ def test_json_reports_both_and_names_the_deciding_one(tmp_path):
     c = rep["estimands"]["fragment"]["contrast"]
     assert c["min_resolvable_log2fc"] is None and c["finite_se"] is False
     assert c["estimable"] is False
-    assert rep["estimands"]["abundance"]["precision_checked_in_simulation"] is False
+    assert rep["estimands"]["abundance"]["precision_checked_in_simulation"] is True
+    assert {n: rep["estimands"][n]["precision_check"]["met"] for n in I.ESTIMANDS} == {
+        "fragment": True, "abundance": False}
     # after every key 2.8.0 wrote
     assert list(rep)[-2:] == ["decision_estimand", "estimands"]
 

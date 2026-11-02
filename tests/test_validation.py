@@ -5,9 +5,12 @@ ships: (1) the stored files are the ones their READMEs name by SHA-256; (2) the 
 predicts, for each of the 49 genes, what every stored row recorded; (3) ``validation/summary.json``
 and the block of ``validation/README.md`` are what ``validation/summarize.py`` computes; and (4)
 every figure that the README, the CLI, the package's docstrings, the harness and
-``validation/README.md`` quote from ``validation/data`` is the computed one.
+``validation/README.md`` quote from ``validation/data`` is the computed one.  (5) The 3.0
+gate's result: the summary grades the stored run as ``validation/gate_3_0.py`` does, and the
+gate's own text, fixed before its run, is unchanged.
 """
 import copy
+import hashlib
 import importlib.util
 import json
 import pathlib
@@ -29,6 +32,8 @@ def _module(name):
 
 
 summarize = _module("summarize")
+gate = _module("gate_3_0")
+GATE_RUN = VALIDATION / "data" / "sim" / "c1_d1_tpm.json"
 
 
 @pytest.fixture(scope="module")
@@ -150,10 +155,26 @@ def test_summary_json_is_what_summarize_computes(computed):
     assert differences(json.loads(summarize.as_json(computed)), want, "summary") == []
 
 
-def test_the_readme_block_is_the_rendered_summary(computed):
+def test_the_readme_blocks_are_the_rendered_summary(computed):
     text = (VALIDATION / "README.md").read_text(encoding="utf-8")
-    block = text.split(summarize.START)[1].split(summarize.END)[0]
-    assert block == "\n" + summarize.render(computed) + "\n"
+    for start, end, render in ((summarize.START, summarize.END, summarize.render),
+                               (summarize.GATE_START, summarize.GATE_END,
+                                summarize.render_gate)):
+        assert text.count(start) == text.count(end) == 1, start
+        block = text.split(start)[1].split(end)[0]
+        assert block == "\n" + render(computed) + "\n", start
+
+
+def test_write_writes_both_blocks(computed, tmp_path):
+    """``--write`` rewrites the summary's block and the gate's, and leaves the rest."""
+    readme = tmp_path / "README.md"
+    text = (VALIDATION / "README.md").read_text(encoding="utf-8")
+    stale = summarize.with_block(summarize.with_block(text, "old"), "old", summarize.GATE_START,
+                                 summarize.GATE_END)
+    assert stale != text
+    readme.write_text(stale, encoding="utf-8")
+    summarize.write(computed, path=tmp_path / "summary.json", readme=readme)
+    assert readme.read_text(encoding="utf-8") == text
 
 
 def test_a_changed_stored_figure_changes_the_summary(tmp_path, analysed):
@@ -178,12 +199,15 @@ def test_a_changed_stored_figure_changes_the_summary(tmp_path, analysed):
 # (4) every quoted figure is the computed one
 # --------------------------------------------------------------------------- #
 def text_of(path):
-    """A file's text as one line: line breaks, comment markers and the seams of implicitly
-    concatenated string literals taken out, runs of white space made one space."""
+    """A file's text as one line: line breaks, comment markers, Markdown's quotation markers
+    and the seams of implicitly concatenated string literals taken out, runs of white space
+    made one space."""
     t = path.read_text(encoding="utf-8")
     if path.suffix == ".py":
         t = re.sub(r'"\s*\n\s*"', "", t)
         t = re.sub(r"\n\s*#:?", " ", t)
+    elif path.suffix == ".md":
+        t = re.sub(r"\n>[ \t]?", "\n", t)
     return " ".join(t.split())
 
 
@@ -389,7 +413,128 @@ def quotes(s):
                         "abundance only for %d genes (%s), and as fragment totals only for %s."
                 % (v["n_genes"], len(only), ", ".join(only),
                    ", ".join(v["estimable_as_fragment_only"]) or "none")))
+    out += gate_quotes(s)
     return out
+
+
+def _owned(names):
+    return summarize._and("%s's" % x for x in names)
+
+
+def gate_quotes(s):
+    """The quotes of the 3.0 gate's result, outside its generated block."""
+    g = s["gate_3_0"]
+    b = g["backgrounds"]
+    tpm = {r["gene"]: r for r in g["primary"]["summed_tpm"]}
+    reads = {r["gene"]: r for r in g["primary"]["numreads"]}
+
+    def met(r):
+        return r["bias_below"] and r["sd_below"]
+    failed = [x for x, r in tpm.items() if not met(r)]
+    ref_lost = b["abundance"]["not_estimable_against"]["reference_chromosomes"]
+    whole_lost = [x for x in b["abundance"]["not_estimable_against"]["whole_index"]
+                  if x not in ref_lost]
+    # the records the reference chromosomes add to the failed contrast's columns, by symbol
+    added = [c["reference_chromosomes"]["groups"][0]["gene_symbol"]
+             for x, c in b["competitors"].items()
+             if x in ref_lost and c["reference_chromosomes"]["groups"]]
+    vreadme = "validation/README.md"
+    held = sum(met(r) for r in tpm.values())
+    graded = "they held for %d of the %d contrasts graded and not for %s" % (
+        held, len(tpm), _owned(failed))
+    s1, u = s["S1"], summarize.UNIFORM
+    skewed = [s1["abs_bias_over_predicted_se"][i] for i in summarize.SKEWED]
+    only = b["estimable_as_abundance_only"]
+    fr_ref_lost = b["fragment"]["not_estimable_against"]["reference_chromosomes"]
+    # the genes whose own copies on scaffolds are among the columns of the whole index
+    copies = [x for x in whole_lost
+              if any(loc.startswith("scaffold:")
+                     for loc in b["competitors"][x]["whole_index"]["own"])]
+    return [
+        # the abundance estimand's precision: the CLI's NOTE, the package, the README, the
+        # tutorial's quotation of the NOTE
+        ("src/isoform_dominance/cli.py", graded + " (validation/README.md, "),
+        ("src/isoform_dominance/identifiability.py", graded + " (``validation/README.md``, "),
+        ("README.md", graded + " (`validation/README.md`, \"The 3.0 gate's result\""),
+        ("docs/tutorial_NTRK2.md", graded + " (validation/README.md, \"The 3.0 gate's result\")"),
+        # what _PRECISION_CHECK's met rests on: S1's uniform design against the gate's control
+        # standard, and its skewed designs
+        ("src/isoform_dominance/identifiability.py",
+         "of S1's %d genes, a |bias| above the predicted SE for %d and an SD below it for %d, "
+         "where the gate's control asks for a |bias| below it for at least %d and an SD below "
+         "it for at least %d" % (s1["n"], s1["abs_bias_over_predicted_se"][u],
+                                 s1["realised_sd_under_predicted_se"][u],
+                                 summarize.G.CONTROL_BIAS_AT_LEAST,
+                                 summarize.G.CONTROL_SD_AT_LEAST)),
+        ("src/isoform_dominance/identifiability.py",
+         "(S1: a |bias| above the predicted SE for %d to %d of the %d)"
+         % (min(skewed), max(skewed), s1["n"])),
+        # the gene-background NOTE when the abundance estimand decides
+        ("src/isoform_dominance/cli.py",
+         "On the %d genes of validation/, computed after the 3.0 gate was graded, the "
+         "reference-chromosome transcripts of their index made %d of the %d contrasts "
+         "estimable as abundance not estimable, %s, with %s transcripts among its columns, and "
+         "the index's records on scaffolds made %s not estimable too. %s is the contrast whose "
+         "summed TPM failed that gate (README, "
+         % (b["n_contrasts"], len(ref_lost), b["abundance"]["n_estimable"]["gene_background"],
+            _owned(ref_lost), _owned(added), _owned(whole_lost), _owned(failed))),
+        # the README: the panel's abundance-only contrasts, and the whole-index answer, against
+        # the simulation's index
+        ("README.md", "against the reference-chromosome transcripts of the simulation's index "
+                      "it is %d (%s is not), and with that index's records on scaffolds added, "
+                      "%d (nor is %s)"
+         % (len(only["reference_chromosomes"]),
+            _owned(x for x in only["gene_background"] if x not in only["reference_chromosomes"]),
+            len(only["whole_index"]),
+            _owned(x for x in only["reference_chromosomes"] if x not in only["whole_index"]))),
+        ("README.md", "made %d of the %d contrasts estimable as abundance not estimable — %s, "
+                      "with %s transcripts among its columns — and %s of the %d estimable as "
+                      "fragment totals"
+         % (len(ref_lost), b["abundance"]["n_estimable"]["gene_background"], _owned(ref_lost),
+            _owned(added), len(fr_ref_lost) or "none",
+            b["fragment"]["n_estimable"]["gene_background"])),
+        ("README.md", "with that index's records on scaffolds (alternate loci, patches) added, "
+                      "where %s own copies are, %s abundance contrasts and %s fragment contrast "
+                      "were not estimable either"
+         % (_owned(copies), _owned(whole_lost),
+            _owned(x for x in b["fragment"]["not_estimable_against"]["whole_index"]
+                   if x not in fr_ref_lost))),
+        ("README.md", "%s is the contrast whose summed TPM stopped the 3.0 gate "
+                      "(`validation/README.md`, \"The 3.0 gate's result\")" % _owned(g["stopped"])),
+        # paper.md: the check of the abundance estimand's precision, and what was found after it
+        ("paper.md", "against Salmon's summed TPM in a simulation of %d genes, by a gate fixed "
+                     "before its run, and did not pass" % len(s["genes"])),
+        ("paper.md", "of the %d contrasts estimable as abundance only against each gene's own "
+                     "transcripts, they held for %d and not for %s"
+         % (len(tpm), held, _owned(failed))),
+        ("paper.md", "Found after the grade: against the reference-chromosome transcripts of the "
+                     "simulation's index, %s contrast is not estimable as abundance, the "
+                     "transcripts of its paralogue %s becoming columns"
+         % (_owned(ref_lost), summarize._and(added))),
+        ("paper.md", "Computed after the gate was graded, %d of the %d contrasts of the "
+                     "simulation estimable as abundance against the gene's own transcripts was "
+                     "not estimable against the reference-chromosome transcripts of its index, "
+                     "and %d were not once that index's records on scaffolds were added. The "
+                     "one against the reference chromosomes is %s, whose summed TPM did not "
+                     "pass the gate"
+         % (len(ref_lost), b["abundance"]["n_estimable"]["gene_background"],
+            len(ref_lost) + len(whole_lost), _owned(ref_lost))),
+        # what this shows, and what it does not
+        (vreadme, "with the gene's other transcripts as the background, which leaves %s out"
+                  % summarize._and(added)),
+        (vreadme, "The %s contrast that failed, %s," % ({1: "one"}.get(len(failed), len(failed)),
+                                                        _owned(failed))),
+        (vreadme, "%s, is one the package does not call estimable as abundance once the "
+                  "background is the index's reference-chromosome transcripts" % _owned(ref_lost)),
+        (vreadme, "%s `NumReads` row had already failed before the TPM run (step 4 of the gate)"
+                  % _owned(x for x in g["stopped"] if not met(reads[x]))),
+        (vreadme, "Nor does it make the grade a pass: %s contrast is not estimable against the "
+                  "whole index, yet its summed-TPM row was accurate"
+                  % _owned(x for x in whole_lost if x in tpm and met(tpm[x]))),
+        (vreadme, "the copies the index kept in place of %s dropped members are there"
+                  % _owned(g["kept_copy"])),
+        (vreadme, "as are %s copies" % _owned(copies)),
+    ]
 
 
 def test_the_gate_grades_against_predictions_fixed_with_it(computed):
@@ -611,3 +756,196 @@ def test_a_changed_figure_is_a_missing_quote(computed):
         t = copy.deepcopy(computed)
         change(t)
         assert not all(q in texts[p] for p, q in quotes(t)), change
+
+
+# --------------------------------------------------------------------------- #
+# (5) the 3.0 gate's result
+# --------------------------------------------------------------------------- #
+#: the gate's section of validation/README.md, from its title line to the blank line before
+#: the next title, as fixed before its run: the gate's text is not edited after it
+GATE_TITLE = "## The abundance estimand, and what decides whether it becomes the default"
+GATE_TEXT_LENGTH = 7441
+GATE_TEXT_SHA256 = "5cfba30e5b485c250958c50b50a560e2173a80fd628f7e76e01042b64333d149"
+
+
+def gate_section(text):
+    t = text[text.index(GATE_TITLE):]
+    return t[:t.index("\n## ", 1)]
+
+
+def test_the_gate_section_is_the_text_fixed_before_its_run():
+    t = gate_section((VALIDATION / "README.md").read_text(encoding="utf-8"))
+    assert t.isascii() and len(t) == GATE_TEXT_LENGTH
+    assert hashlib.sha256(t.encode("ascii")).hexdigest() == GATE_TEXT_SHA256
+    # the result follows it, under its own title
+    text = (VALIDATION / "README.md").read_text(encoding="utf-8")
+    assert text.index(GATE_TITLE) < text.index("## The 3.0 gate's result") \
+        < text.index("## What these outputs do not cover")
+
+
+def test_the_summary_grades_the_run_as_the_gate_does(computed, capsys):
+    """The exit status is the one ``gate_3_0.py`` gives the stored run, and each grade is
+    the gate's own."""
+    g = computed["gate_3_0"]
+    status = gate.main([str(GATE_RUN)])
+    capsys.readouterr()
+    assert g["exit_status"] == status == 1
+    run = json.loads(GATE_RUN.read_text(encoding="utf-8"))
+    result = gate.grade(run, gate.frozen_predictions())
+    assert g["graded"] is True and g["not_graded"] is None and g["largest_difference"] == 0
+    assert (g["passes"], g["stopped"], g["primary_sd_ok"], g["primary_passes"],
+            g["control_graded"]) == (result["passes"], result["stopped"],
+                                     result["primary_sd_ok"], result["primary_passes"],
+                                     result["control"] is not None)
+    assert [r["gene"] for r in g["primary"]["summed_tpm"]] == list(
+        gate.frozen_predictions()["primary"])
+    for row in g["primary"]["summed_tpm"]:
+        r, bias_ok, sd_ok = result["primary"][row["gene"]]
+        assert (row["bias_below"], row["sd_below"]) == (bias_ok, sd_ok), row["gene"]
+        assert (row["abs_bias"], row["realised_sd"], row["n"]) == (
+            abs(r["bias"]), r["realised_sd"], r["n"]), row["gene"]
+    assert g["detail_mismatches"] == []
+
+
+def test_a_run_the_gate_does_not_grade_is_recorded_not_raised(computed):
+    """``NotGradeable`` is the summary's to record, as ``gate_3_0.main`` reports it: a run
+    whose NumReads rows are not the stored run's is not graded, exit status 2."""
+    run = json.loads(GATE_RUN.read_text(encoding="utf-8"))
+    next(r for r in run["genes"] if r["gene"] == "LEPR")["bias"] += 0.5
+    g = summarize.gate_result(run)
+    assert (g["graded"], g["exit_status"], g["passes"]) == (False, 2, None)
+    assert "it was not made as stored" in g["not_graded"]
+    text = summarize.render_gate(dict(computed, gate_3_0=g))
+    assert "is not graded: the run's NumReads rows differ" in text
+    assert "exits with status 2" in text and "exit status 1" not in text
+
+
+def test_a_changed_summed_tpm_row_changes_the_gate_block(computed):
+    """SMN2's summed-TPM bias changed in the run the summary is given: the block it renders
+    is not the committed one."""
+    run = json.loads(GATE_RUN.read_text(encoding="utf-8"))
+    next(r for r in run["genes_tpm"] if r["gene"] == "SMN2")["bias"] *= 0.5
+    g = summarize.gate_result(run)
+    assert g["primary"] != computed["gate_3_0"]["primary"]
+    text = (VALIDATION / "README.md").read_text(encoding="utf-8")
+    block = text.split(summarize.GATE_START)[1].split(summarize.GATE_END)[0]
+    assert block != "\n" + summarize.render_gate(dict(computed, gate_3_0=g)) + "\n"
+
+
+def test_the_kept_copy_truth_moves_the_bias_and_not_the_sd(computed):
+    """LDHA's and NDUFS1's rows against the truth that follows a dropped member's fragments
+    to the copy the index kept: the estimates are the run's, so the SD is the run's; the
+    truth leaves those fragments out of both classes, so the bias moves.  The gate's truth
+    recomputed from the detail gives the run's rows."""
+    run = {r["gene"]: r for r in json.loads(GATE_RUN.read_text(encoding="utf-8"))["genes_tpm"]}
+    k = computed["gate_3_0"]["kept_copy"]
+    assert sorted(k) == ["LDHA", "NDUFS1"]
+    for gene, v in k.items():
+        assert v["graded_as"] == "control" and v["kept_copies_in_a_compared_class"] == []
+        assert v["kept_copies"], gene
+        for f in ("n", "realised_sd", "bias", "rmse"):
+            assert abs(v["gate_truth"][f] - run[gene][f]) <= summarize.DETAIL_TOLERANCE, gene
+        assert v["kept_copy_truth"]["realised_sd"] == pytest.approx(v["gate_truth"]["realised_sd"],
+                                                                    abs=1e-12)
+        assert abs(v["kept_copy_truth"]["bias"] - v["gate_truth"]["bias"]) > 0.04, gene
+    assert (round(k["LDHA"]["kept_copy_truth"]["bias"], 3),
+            round(k["NDUFS1"]["kept_copy_truth"]["bias"], 3)) == (-0.059, 0.062)
+
+
+def test_the_kept_copy_truth_gives_a_share_to_the_class_holding_the_copy():
+    groups = {"A": ["a1", "a2"], "B": ["b1", "b2"]}
+    written = {"a1": 10, "a2": 20, "b1": 30, "b2": 40}
+    efflen = {"a1": 10.0, "b1": 10.0, "b2": 20.0, "x": 5.0}
+    # a2 dropped for b2's copy: its share goes to B; for x, outside both: to neither
+    assert summarize.kept_copy_truth(groups, ["A", "B"], written, efflen, {"a2": "b2"}) == {
+        "A": 1.0, "B": 3.0 + 2.0 + 1.0}
+    assert summarize.kept_copy_truth(groups, ["A", "B"], written, efflen, {"a2": "x"}) == {
+        "A": 1.0, "B": 3.0 + 2.0}
+
+
+def test_a_detail_that_is_not_the_run_fails_the_summary(computed, monkeypatch, capsys):
+    """Rows recomputed from the per-transcript detail that are not the run's are named, and
+    ``main`` exits 1, as for a stored prediction that moved."""
+    original = summarize.H.tpm_truth
+
+    def shifted(groups, pc, seqs, written, efflen, kept=None):
+        truth, took = original(groups, pc, seqs, written, efflen, kept)
+        return dict(truth, **{pc[0]: truth[pc[0]] * 1.01}), took
+    monkeypatch.setattr(summarize.H, "tpm_truth", shifted)
+    g = summarize.gate_result(json.loads(GATE_RUN.read_text(encoding="utf-8")))
+    bad = {(m[0], m[1], m[2]) for m in g["detail_mismatches"]}
+    assert {("LDHA", "genes_tpm", "bias"), ("NDUFS1", "genes_tpm", "bias"),
+            ("SMN2", "genes_tpm", "bias")} <= bad
+    assert not any(m[1] == "genes" for m in g["detail_mismatches"])
+    monkeypatch.setattr(summarize, "summarize", lambda: dict(computed, gate_3_0=g))
+    assert summarize.main([]) == 1
+    assert "The 3.0 gate's run is not what its per-transcript detail gives" in \
+        capsys.readouterr().err
+    monkeypatch.setattr(summarize, "summarize", lambda: computed)
+    assert summarize.main([]) == 0
+    capsys.readouterr()
+
+
+def test_the_backgrounds_are_counted_from_the_whole_index_file(computed):
+    """The three backgrounds' counts follow the file: one contrast made not estimable there
+    is one fewer here, and a new one not estimable as abundance only."""
+    whole = json.loads((VALIDATION / "data" / "whole_index.json").read_text(encoding="utf-8"))
+    assert summarize.backgrounds(whole) == computed["gate_3_0"]["backgrounds"]
+    whole["genes"]["PTPRC"]["reference_chromosomes"]["abundance"]["estimable"] = False
+    b = summarize.backgrounds(whole)
+    assert b["abundance"]["n_estimable"]["reference_chromosomes"] == \
+        computed["gate_3_0"]["backgrounds"]["abundance"]["n_estimable"][
+            "reference_chromosomes"] - 1
+    assert b["abundance"]["not_estimable_against"]["reference_chromosomes"] == ["PTPRC", "SMN2"]
+
+
+def test_the_gate_block_says_what_the_brief_numbers_are(computed):
+    """Facts the block and the paragraphs around it rest on: SMN2 is the one gene of the
+    primary set the grade fails, the stop rule's; SMN1's transcripts are among its columns
+    against the reference chromosomes; none of the 49 becomes estimable against either
+    FASTA background, and no predicted SE becomes smaller."""
+    g = computed["gate_3_0"]
+    assert g["stopped"] == ["SMN2"]
+    assert [r["gene"] for r in g["primary"]["summed_tpm"]
+            if not (r["bias_below"] and r["sd_below"])] == ["SMN2"]
+    b = g["backgrounds"]
+    assert b["abundance"]["not_estimable_against"] == {
+        "reference_chromosomes": ["SMN2"], "whole_index": ["CANX", "PTPRC", "SMN2"]}
+    assert b["fragment"]["not_estimable_against"] == {
+        "reference_chromosomes": [], "whole_index": ["PTPRC"]}
+    for est in ("abundance", "fragment"):
+        assert all(v == [] for v in b[est]["estimable_against"].values())
+        assert all(v == [] for v in b[est]["se_smaller"].values())
+    top = b["competitors"]["SMN2"]["reference_chromosomes"]["groups"][0]
+    assert (top["gene_symbol"], top["location"], top["records"]) == (
+        "SMN1", "chromosome:GRCh38:5", 20)
+
+
+#: what was said of the abundance estimand's precision until the 3.0 gate graded it
+NOT_YET_CHECKED = re.compile(
+    r"not yet been checked|have not been checked|await a check|not yet validated", re.I)
+#: the files that must not say it any more; CHANGELOG.md and the gate's own section, records
+#: of before the grade, are not among them
+GUARDED = ("src/isoform_dominance/*.py", "README.md", "docs/*.md", "paper.md",
+           "validation/*.py", "validation/README.md")
+
+
+def not_yet_checked(root=ROOT):
+    hits = []
+    for pattern in GUARDED:
+        for path in sorted(root.glob(pattern)):
+            t = text_of(path)
+            if path.relative_to(root).as_posix() == "validation/README.md":
+                gate = " ".join(gate_section(path.read_text(encoding="utf-8")).split())
+                assert t.count(gate) == 1
+                t = t.replace(gate, "")
+            hits += ["%s: %s" % (path.relative_to(root).as_posix(), m.group(0))
+                     for m in NOT_YET_CHECKED.finditer(t)]
+    return hits
+
+
+def test_nothing_says_the_abundance_estimands_precision_is_not_yet_checked():
+    assert not_yet_checked() == []
+    # the gate's section still says it, as it did before its run
+    assert NOT_YET_CHECKED.search(gate_section(
+        (VALIDATION / "README.md").read_text(encoding="utf-8")))

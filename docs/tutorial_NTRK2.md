@@ -102,9 +102,10 @@ where the class fragment totals are not, and the first run says so on stderr:
 > total, by moving abundance between transcripts that differ in length. --estimand abundance
 > decides by the abundance estimand. Its estimability is decided exactly in this window system,
 > but where only it is estimable that answer rests on counting each transcript's length in
-> window positions (identifiability.ESTIMANDS); its precision figures have not yet been checked
-> against a quantifier's TPM in simulation, as the fragment estimand's were against NumReads
-> (validation/README.md).
+> window positions (identifiability.ESTIMANDS). Its precision figures were checked against a
+> quantifier's TPM in simulation, by the gate that would have made it the default, and did not
+> pass, so fragment stays the default: they held for 6 of the 7 contrasts graded and not for
+> SMN2's (validation/README.md, "The 3.0 gate's result").
 
 `--estimand abundance` makes it decide:
 
@@ -132,11 +133,10 @@ isoform-dominance identifiability --config example/saved/NTRK2.gencode50.config.
 `--min-informative-reads` default of 50 informative reads, a count that does not depend on the
 estimand. The effect of 0.5 is resolved, and the exit status is 0. On stderr the run adds:
 
-> the abundance estimand decides (--estimand abundance). Its estimability is decided exactly in
-> this window system, but where only it is estimable that answer rests on counting each
-> transcript's length in window positions (identifiability.ESTIMANDS); its precision figures
-> have not yet been checked against a quantifier's TPM in simulation, as the fragment
-> estimand's were against NumReads (validation/README.md).
+> the abundance estimand decides (--estimand abundance).
+
+followed by the two sentences the first run's NOTE ends with: what this estimand's
+estimability rests on, and the check its precision figures did not pass.
 
 ## 5. Unique k-mers between the two classes alone
 

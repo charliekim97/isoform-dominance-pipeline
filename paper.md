@@ -22,191 +22,136 @@ bibliography: paper.bib
 
 Many biological questions reduce to one focused comparison: *for a given gene, which
 functional isoform class predominates in a tissue or condition?* A common example is a
-receptor with a signalling-competent long isoform and a truncated short isoform that
-retains ligand binding but loses the intracellular effector domain. Answering it from
-bulk RNA-seq means assigning annotated transcripts to each class, quantifying each class
-per sample, and testing the contrast across donors — and, before any of that,
-establishing that short reads can resolve the comparison at all.
+receptor's signalling-competent long isoform against a truncated short one that keeps ligand
+binding but loses the intracellular effector domain. Answering it from bulk RNA-seq means
+assigning transcripts to each class, quantifying each per sample and testing the contrast
+across donors — and, first, establishing that short reads can resolve it.
 
-`isoform-dominance` packages these steps behind one Python command-line interface. Given
-a gene symbol it proposes isoform groups by clustering the annotation's protein-coding
-transcripts [@frankish2021] on their 3' terminal-exon splice acceptor. It then answers
-the measurability question in three layers, before a single read is quantified: how much
-sequence is unique to each class once the rest of the gene — or an arbitrary background
-FASTA, such as the one a Salmon index was built from — is accounted for; how many
-fragments would be sequenced across that unique sequence at a stated depth, read length
-and fragment-length distribution, and hence what unique-read counting SE (best transcript per class) the class ratio
-carries; and whether each class total, and the contrast between them, is an *estimable*
-function of the fragment-class system at all, with a class total taken as either of two
-estimands (below). Quantification is then read from `Salmon`
-`quant.sf` files [@patro2017] and summarised per donor; the contrast is tested with a
-donor-level Wilcoxon signed-rank test [@wilcoxon1945], reported per cohort with a
-bootstrap interval, the finest p-value the design could have resolved, and a stratified
-combination across cohorts. A bundled, download-free self-test reproduces the reference
-result on a clean machine in seconds.
+`isoform-dominance` packages these steps behind one command-line interface. Given a gene
+symbol it proposes isoform groups by clustering the annotation's protein-coding transcripts
+[@frankish2021] on their 3' terminal-exon splice acceptor. Before quantification it answers
+the measurability question in three layers: how much sequence is unique to each class
+against the rest of the gene or a background FASTA; how many fragments would cover it at a
+stated design, and hence the counting SE of the class ratio; and whether each class total,
+and their contrast, is an *estimable* function of the fragment-class system. Quantification
+is read from Salmon `quant.sf` files [@patro2017] per donor; the contrast is tested with a
+donor-level Wilcoxon signed-rank test [@wilcoxon1945], per cohort with a bootstrap interval
+and the finest p-value the design could resolve, and combined across cohorts. A bundled
+self-test reproduces the reference result offline in seconds.
 
 # Statement of need
 
-The audience is bench and computational biologists testing a hypothesis about one gene
-from bulk RNA-seq, who do not need a genome-wide screen but do need the focused
-comparison done correctly and reproducibly.
+The audience is biologists testing a hypothesis about one gene from bulk RNA-seq, who need
+the focused comparison done correctly and reproducibly rather than a genome-wide screen.
 
-Doing it by hand has a recurring, often-unstated pitfall. A short-read quantifier
-apportions fragments among transcripts by solving a linear inverse problem, and a
-transcript's abundance — or a group's — is recoverable only when it is an estimable
-function of that system. An EM quantifier returns abundances for a non-identifiable
-model as readily as for an identifiable one: the likelihood is flat along the
-unidentified directions and the optimiser stops somewhere on that ridge. So a
-fold-change reported between two classes the data cannot separate is not a weak result,
-it is an artefact of tie-breaking — and it is indistinguishable in the output from a
-real one. "The quantifier will work it out" is not an argument.
+Doing it by hand has an often-unstated pitfall. A short-read quantifier apportions fragments
+among transcripts by solving a linear inverse problem, and a transcript's abundance — or a
+group's — is recoverable only when it is an estimable function of that system. An EM
+quantifier returns abundances for a non-identifiable model as readily as for an identifiable
+one, stopping somewhere on the ridge where the likelihood is flat. A fold-change between two
+classes the data cannot separate is then an artefact of tie-breaking, indistinguishable in
+the output from a real one.
 
-The obvious proxy — "does each class own at least one unique k-mer?" — is wrong in both
-directions, and releases up to v2.1.1 used it. It is falsely reassuring: a class whose
-only unique sequence is the thirty k-mers spanning one splice junction passes, while
-yielding a handful of informative fragments at realistic depth. It is also falsely
-alarming: a class nested inside another owns no unique k-mer at all, yet its total is
-estimable, because the containing class is pinned by its own unique sequence and the
-nested class's indicator therefore lies in the row space. Both failure modes are
-reproduced as tests here.
+The obvious proxy — "does each class own a unique k-mer?", used up to v2.1.1 — is wrong in
+both directions. A class whose only unique sequence is the thirty k-mers spanning one splice
+junction passes while yielding a handful of informative fragments; a class nested inside
+another owns no unique k-mer, yet its total is estimable, because the containing class is
+pinned by its own unique sequence. Both failure modes are regression tests here.
 
-`isoform-dominance` replaces the proxy with the estimability condition itself, evaluated
-on the class-collapsed system and reported beside the two quantities that say whether an
-estimable comparison is also a usable one: the smallest log2 fold change the stated
-design resolves and the expected number of informative fragments. It withholds a pass
-when the contrast lies outside the row space, and says "weakly identifiable, and here is
-why" in the large middle ground where the honest answer is neither yes nor no.
+`isoform-dominance` replaces the proxy with the estimability condition itself, reported
+beside the smallest log2 fold change the stated design resolves and the expected number of
+informative fragments. It withholds a pass when the contrast lies outside the row space, and
+says "weakly identifiable, and here is why" where the honest answer is neither yes nor no.
 
 # State of the field
 
-**Differential transcript usage.** DTU is a mature area whose tools target a different
-task. `DEXSeq` [@anders2012] tests differential *exon* usage from exon-bin counts;
-`DRIMSeq` [@nowicka2016], `satuRn` [@gilis2022] and `IsoformSwitchAnalyzeR`
-[@vittingseerup2019] test transcript-level DTU genome wide; and `fishpond`/`swish`
-[@zhu2019] propagates Salmon's quantification uncertainty into that testing. All of
-them begin from a prepared count matrix, typically imported with `tximport`
-[@soneson2016], with the transcript groups already defined by the analyst.
+**Differential transcript usage.** DTU tools target a different task. `DEXSeq` [@anders2012]
+tests differential exon usage; `DRIMSeq` [@nowicka2016], `satuRn` [@gilis2022] and
+`IsoformSwitchAnalyzeR` [@vittingseerup2019] test transcript-level DTU genome wide;
+`fishpond`/`swish` [@zhu2019] propagates Salmon's quantification uncertainty into testing.
+All begin from a count matrix, typically imported with `tximport` [@soneson2016], with the
+groups already defined.
 
-**Identifiability.** @hiller2009 gave criteria under which isoform abundances are
-uniquely determined by junction-array and RNA-seq observations, and reported up to 97%
-of 2,256 alternatively spliced human RefSeq genes identifiable from RNA-seq;
-@ferrerbonsoms2022 extended these to a read- and fragment-length-aware criterion and
-applied it genome wide. @zheng2022 measured what happens where they fail: for 20-47% of
-Human Body Map transcripts the quantification error from nonidentifiability is large
-enough that "the ranking of expression between the transcript and other isoforms from
-the same gene cannot be determined" — precisely the comparison this package is asked to
-certify. `terminus` [@sarkar2020] approaches the difficulty from the other side,
-grouping transcripts *post hoc and from the data* by inferential uncertainty so that
-analysis proceeds at whatever resolution the data support.
+**Identifiability.** @hiller2009 gave criteria under which isoform abundances are uniquely
+determined by RNA-seq observations; @ferrerbonsoms2022 made them read- and
+fragment-length-aware and applied them genome wide. @zheng2022 found that for 20-47% of
+Human Body Map transcripts the error from nonidentifiability is large enough that "the
+ranking of expression between the transcript and other isoforms from the same gene cannot be
+determined" — the comparison this package is asked to certify. `terminus` [@sarkar2020]
+groups transcripts *post hoc, from the data*, so analysis proceeds at the resolution the
+data support.
 
-**The gap.** Those address *transcript-level* identifiability of the full
-deconvolution, or the resolution the data happen to permit. Here the classes are fixed
-*a priori and on biological grounds* — a signalling-competent receptor against a
-truncated one — and the estimand is a contrast of class totals. A class total is itself
-two estimands. Its expected fragment count, which a quantifier's `NumReads` sums, and
-its length-corrected abundance, whose class ratio is the ratio that summed TPM estimates
-and the downstream comparison uses, are different functionals of one system, and they
-can part. A direction the system cannot see can move abundance between transcripts of
-one class that differ in length, which leaves the class's abundance and can change its
-fragment count; then the fragment total is not estimable, while the abundance total is
-estimable when no invisible direction changes either compared class's abundance. This
-can happen where transcripts of one class that differ in length are crossed with another
-class's. Since version 2.9 both are reported. The fragment-total estimand decides by
-default, for continuity with earlier releases and with the simulation that checked its
-precision figures; the abundance-total estimand, the one that matches what `extract` and
-`stats` compare, decides when asked. Its estimability is decided exactly in the same
-window surrogate, but where only it is estimable that answer rests on counting a
-transcript's length in window positions, and its precision figures have not yet been
-checked against a quantifier's TPM. Two questions then hide
-under one word. A contrast is *estimable* when it lies in the row space of the
-compatibility system: exact arithmetic, yes or no. It is *measurable* when it is
-recoverable at finite sequencing depth. Transcript-level identifiability is not
-necessary for the first — two transcripts of identical sequence are individually
-unidentifiable while their sum is perfectly estimable, so a transcript-level verdict can
-reject a comparison that is sound. Nor does it discriminate when it holds: full column
-rank makes *every* contrast estimable, so the test stops separating cases exactly where
-separation is needed. And it is silent on the second. That is why this package reports
-an estimability verdict and a resolvable effect size together, on the user's own contrast,
-before quantification — and why neither is reported alone.
+**The gap.** Those address transcript-level identifiability, or the resolution the data
+permit. Here the classes are fixed *a priori, on biological grounds*, and the estimand is a
+contrast of class totals. Neither a tool that begins from a count matrix nor a
+transcript-level criterion has a place for that question, asked before quantification, so it
+is answered here rather than by contributing to one. A class total is itself two estimands,
+the expected fragment count `NumReads` sums and the length-corrected abundance whose class
+ratio summed TPM estimates; they part when an invisible direction moves abundance between
+transcripts of one class that differ in length. Since version 2.9 both are reported. The
+fragment-total estimand decides by default, for continuity with earlier releases; the
+abundance-total estimand, which matches what `extract` and `stats` compare, decides when
+asked. Its precision figures were checked against Salmon's summed TPM in a simulation of 49
+genes, by a gate fixed before its run, and did not pass, so the fragment-total estimand
+stays the default: of the 7 contrasts estimable as abundance only against each gene's own
+transcripts, they held for 6 and not for SMN2's. Found after the grade: against the
+reference-chromosome transcripts of the simulation's index, SMN2's contrast is not estimable
+as abundance, the transcripts of its paralogue SMN1 becoming columns.
+
+Two questions hide under one word. A contrast is *estimable* when it lies in the row space
+of the compatibility system, and *measurable* when it is recoverable at finite depth.
+Transcript-level identifiability is not necessary for the first — two identical transcripts
+are individually unidentifiable while their sum is estimable — nor does it discriminate when
+it holds: full column rank makes *every* contrast estimable. It is silent on the second.
+This package reports a verdict and a resolvable effect size together, on the user's own
+contrast.
 
 # Software design
 
-The package is small, independently testable modules behind one `argparse` CLI:
-`annotate` (Ensembl query and terminal-exon clustering), `identifiability` (the three
-layers above), `extract` (Salmon `quant.sf` to per-donor group TPM), `stats` (signed-rank
-test, cohort combination, plotting) and `contamination` (marker-correlation control).
-Configuration is one JSON file naming the groups, so the pipeline applies to any gene
-without code changes, and every subcommand accepts `--json`.
+Independently testable modules (`annotate`, `identifiability`, `extract`, `stats`,
+`contamination`) sit behind one CLI; one JSON file names the groups, so any gene needs no
+code changes, and every subcommand accepts `--json`.
 
 *Uniqueness is judged against a background, not against the configured groups.* A k-mer
-absent from the other class but present in an unlisted retained-intron transcript of the
-same gene, or in a paralogue, is unique to nothing as far as the quantifier is concerned.
-The gene's other transcripts are fetched as background whenever the tool retrieves
-sequence itself; supplied offline, background must be supplied with them. An arbitrary
-FASTA — ideally the one the index was built from — is streamed without materialising its
-own k-mer set. k-mers are folded to canonical form, because that is what the index
-stores and what an unstranded library requires.
+present in a retained-intron transcript of the same gene, or in a paralogue, is unique to
+nothing as far as the quantifier is concerned. The gene's other transcripts are the default
+background; an arbitrary FASTA — ideally the one the index was built from — can be streamed
+in addition. Computed after the gate was graded, 1 of the 48 contrasts of the simulation
+estimable as abundance against the gene's own transcripts was not estimable against the
+reference-chromosome transcripts of its index, and 3 were not once that index's records on
+scaffolds were added. The one against the reference chromosomes is SMN2's, whose summed TPM
+did not pass the gate.
 
 *The read model counts reads, not fragments.* A unique k-mer is informative only when it
-falls entirely inside a sequenced end, so a stretch straddling the gap between a pair's
-two reads, or lying beyond them in a longer fragment, contributes nothing. The expected
-count is evaluated exactly over all start positions, averaged over a truncated-normal
-fragment-length distribution, and converted to a unique-read counting SE (best transcript per class) of the log2 class
-ratio.
+falls inside a sequenced end; the expected count is evaluated exactly over start positions
+and a truncated-normal fragment-length distribution.
 
-*The compatibility system is a sequence-derived surrogate, not the observation model of
-a sequencing run.* It collapses windows carried by the same set of transcripts at a
-window length the user sets; what a paired-end run observes is decided by read length,
-the fragment-length distribution, and the fact that only the two ends of a fragment are
-sequenced. We make no claim relating the two — not that a verdict here transfers to
-reads, and not that it is conservative in either direction. Several attempts to state
-such a relation failed in development; the counterexample that ended the last is now a
-regression test, four short transcripts whose class contrast is estimable at window 3
-and 4, *not* at 5 and 6, and estimable again at 7 and 8. A longer `window` is a different
-system, not a sharper one. Whether the surrogate predicts what a quantifier recovers is
-an empirical question this paper does not answer. Of the three thresholds a verdict passes
-through, one has been withdrawn rather than calibrated: across a 49-gene survey the median
-gene sat at conditioning 65.0 against the default `--tau` of 10.0, which rejects 85% of what
-it is applied to, and any other fixed value mainly sorts genes by how many transcripts they
-have annotated. `--min-log2fc` replaces it as the recommended input, because an effect size
-is a question the experimenter can answer and a conditioning number is not. The other two
-are conventions, stated so they can be checked rather than tuned:
-`min_informative_reads` is the count below which a Poisson weight is not trusted, and
-`LINEARISATION_LIMIT` is the relative standard error past which the delta-method figure is
-flagged and counts as not resolved at any effect size.
-The figure reported with each verdict is the smallest |log2 fold change| a 95% interval excludes
-zero for, from the delta-method standard error of the log class ratio under the
-Poisson-weighted GLS covariance of the whole system; the user states the effect size they
-need, and that comparison, not the verdict, sets the exit status. A structural
-conditioning factor `sqrt(c' (A'A)^+ c)` is kept as a diagnostic only: a
-standard-deviation factor, not a variance, and the value it would take under
-`Var(y) = sigma^2 I`, which a short-read quantifier does not satisfy. What it captures is
-geometry — a contrast direction nearly degenerate in the observable classes is poorly
-determined however the noise is distributed.
+*The compatibility system is a sequence-derived surrogate, not the observation model of a
+sequencing run.* It collapses windows carried by the same set of transcripts at a window
+length the user sets. We make no claim relating the two — not that a verdict here transfers
+to reads, and not that it is conservative in either direction. The counterexample that ended
+the last attempt to state such a relation is a regression test: four short transcripts whose
+class contrast is estimable at window 3 and 4, *not* at 5 and 6, and again at 7 and 8. A
+longer `window` is a different system, not a sharper one. Beyond the one simulation reported
+here, whether the surrogate predicts what a quantifier recovers is an empirical question
+this paper does not answer. The reported figure is the smallest |log2 fold change| a 95%
+interval excludes zero for, from the delta-method SE of the log class ratio under the
+Poisson-weighted GLS covariance; the effect size the user states, not the verdict, sets the
+exit status. A conditioning threshold, `--tau`, was withdrawn rather than calibrated. Past
+`LINEARISATION_LIMIT`, a relative standard error, a figure is flagged and counts as not
+resolved at any effect size.
 
-Cohorts are combined two ways beside the donor-pooled test earlier releases reported
-alone: a weighted Stouffer combination [@stouffer1949; @liptak1958] of the per-cohort
-exact tests, and a weighted combination of within-stratum signed-rank statistics using
-van Elteren's `1/(n+1)` weights [@vanelteren1960] — the weighting only, since his test is
-a stratified *two-sample* procedure and these data are paired within donor. Stouffer is
-the default: at these sizes each stratum's exact p-value is trustworthy and the normal
-approximation behind a combined rank statistic is not. Pooling donors across independent
-studies ranks one cohort's differences against another's and lets depth or tissue
-handling drive the result. Every per-cohort and pooled test carries the finest p-value
-its design could resolve — under the exhaustive sign-permutation null one assignment puts
-every difference on the same side, so a two-sided test on n non-zero pairs cannot report
-below 2^(1-n), which at n = 5 is 0.0625 — and every effect size a donor bootstrap
-interval.
+Cohorts are combined by a weighted Stouffer combination [@stouffer1949; @liptak1958] of
+per-cohort exact tests, the default, and by stratified signed-rank statistics with van
+Elteren's weights [@vanelteren1960], beside the donor-pooled test, which lets depth or
+tissue handling drive the result. Every test carries the finest p-value its design could
+resolve, and every effect size a donor bootstrap interval.
 
-`identifiability` accepts transcript sequences and background offline, keeping the test
-suite deterministic and allowing use on compute nodes without internet access; `annotate`
-queries Ensembl and has no offline mode. The verdict is a function of the annotation
-release, so a run can be pinned to a named release and its sequence saved for replay
-without network access; Ensembl's archives of earlier releases are retired as they age.
-Dependencies are minimal: the Ensembl REST API [@yates2015], NumPy
-[@harris2020], SciPy [@virtanen2020] and Matplotlib [@hunter2007].
+A run can be pinned to an annotation release, its sequence saved and replayed offline.
+Dependencies are the Ensembl REST API [@yates2015], NumPy [@harris2020], SciPy
+[@virtanen2020] and Matplotlib [@hunter2007].
 
-# Research impact
+# Research impact statement
 
 `isoform-dominance` is the generalised, reusable implementation of an isoform-usage
 analysis developed for a study of leptin-receptor isoforms in the human choroid plexus.

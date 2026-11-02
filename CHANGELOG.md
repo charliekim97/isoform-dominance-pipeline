@@ -43,6 +43,68 @@ versioning.
   grade, the detail's rows to the run's and the whole-index file's gene-background half to the
   package.
 
+### Changed
+- **The abundance estimand's precision figures, as the 3.0 gate graded them.** In `--json`,
+  each estimand block's `precision_checked_in_simulation` is now `true` for the abundance
+  estimand too: 2.9.0's `false` meant "not yet checked", and `true` means "checked", not
+  "met". A new key, `precision_check`, follows it in each block (`definition`,
+  `precision_checked_in_simulation`, `precision_check`, `groups`, `contrast`,
+  `effect_resolvable`, `verdict`, `reasons`): `{"against": "NumReads", "coverage": "uniform",
+  "met": true, "where": "validation/README.md, S1"}` for the fragment estimand and
+  `{"against": "summed TPM", "coverage": "uniform", "met": false, "where": "validation/README.md,
+  The 3.0 gate's result"}` for the abundance one (`identifiability._PRECISION_CHECK`; each
+  report holds its own copy). A reader
+  of 2.9.0's JSON finds one value changed and one key added in each block, and nothing else.
+  Stdout is unchanged. On stderr, the NOTE on the abundance estimand -- when it decides, and
+  where only it is estimable while the fragment estimand decides -- says its precision figures
+  were checked against a quantifier's TPM in simulation, by the gate that would have made it
+  the default, and did not pass, with the gate's count, where it said they had not yet been
+  checked. When the abundance estimand decides and no `--background-fasta` is given, the
+  gene-background NOTE gives what was computed, after the grade, of the whole-index answer for
+  the 49 genes of `validation/`, in place of the 100-config figure, which is the fragment
+  estimand's and is still given when it decides. The `--estimand` help says the abundance
+  estimand's precision figures did not pass their check.
+
+### Documented
+- **The 3.0 gate's result** (`validation/README.md`, "The 3.0 gate's result", after the gate's
+  own section, which is unchanged). `validation/summarize.py` grades the stored run with
+  `validation/gate_3_0.py`'s own functions and writes the grade, and apart from it, deciding
+  nothing, what was computed afterwards: the control described; the run's `NumReads` rows
+  against the same predictions; LDHA's and NDUFS1's summed-TPM rows against a truth that
+  follows the fragments of their dropped class members to the copies the index kept, as the
+  correction below said the write-up would; the 49 contrasts against the index's
+  reference-chromosome records and against its whole FASTA (`whole_index.json`); and where the
+  reads that went outside the 49 genes went. `summary.json` holds it as `gate_3_0`, and a second
+  generated block of `validation/README.md`, between `<!-- gate-result:start -->` and
+  `<!-- gate-result:end -->`, shows it; `--write` writes both blocks. A run the gate does not
+  grade is recorded, with exit status 2, not raised. Rows recomputed from the per-transcript
+  detail that are not the run's make `summarize.py` exit 1, as a stored prediction that moved
+  does. `tests/test_validation.py` holds the summary's exit status to `gate_3_0.py`'s on the
+  stored run, and the gate's section, fixed before its run, to its SHA-256.
+- **The abundance estimand's precision figures: checked, and not passed** -- in the README
+  ("Two estimands"), `docs/api.md` (`precision_check`), `docs/tutorial_NTRK2.md` (its quotations
+  of the NOTE) and `identifiability.ESTIMANDS`, each with the gate's count, quoted from the
+  summary. `tests/test_validation.py` fails while the package, the README, `docs/` or
+  `validation/` outside the gate's own section says that precision has not yet been checked.
+- **Index scope, from the simulation's own index** (README, "Pass `--background-fasta`" and
+  "Two estimands"): computed after the 3.0 gate was graded, against the reference-chromosome
+  transcripts of the index the simulation was quantified with, SMN2's abundance contrast is not
+  estimable, SMN1's transcripts among its columns, and with that index's records on scaffolds
+  CANX's and PTPRC's are not either; SMN2's is the contrast whose summed TPM stopped the gate.
+  The panel's contrasts estimable as abundance only are counted against each background.
+- **`paper.md`** says the abundance estimand's precision figures were checked against Salmon's
+  summed TPM in simulation, by a gate fixed before its run, and did not pass, and why the
+  fragment estimand decides by default; and, as found after the grade, what the index's
+  reference-chromosome transcripts and its records on scaffolds do to the simulation's
+  contrasts ("State of the field", "Software design"). Its figures are quoted from the summary.
+- **`paper.md`, shortened** to 1,576 words from 2,410 (2,279 before the sentences above), by the
+  count `tests/test_paper.py` describes: under the 1,600 that leaves room for the AI usage
+  disclosure JOSS asks for, which is restored before submission, within its 750-1,750. Its
+  sentences are the earlier ones shortened, with one added in "State of the field" on why this
+  is a package of its own rather than a contribution to an existing one; it cites the same 23
+  references. "Research impact" is "Research impact statement", JOSS's name for the section.
+  `tests/test_paper.py` holds the length, the sections and their order, and the references.
+
 ### Corrections to earlier entries
 - **Recorded before the 3.0 gate is run.** Step 1 of the gate in `validation/README.md` names
   three transcripts of VEGFA's `iso_317aa` and three of TP53's `iso_354aa` as the members of
