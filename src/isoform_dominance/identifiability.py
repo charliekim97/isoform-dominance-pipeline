@@ -426,98 +426,149 @@ def _whole_index(path, column_windows, configured_windows, gene_ids, gene_sequen
     were left out) and ``stats`` (see :func:`_scan_records`).  Record names are as
     :func:`scan_fasta_competitors` gives them.
     """
-    stats = {}
-    exclude = list(exclude_ids)
-    _name = _Names()
-
-    gene_records, same_conf, same_bg = {}, {}, {}
-    gene_lengths = {len(x) for x in gene_sequences}
-    first_of = {}                       # digest of a sharing record's sequence -> its name
-    sharing = []                        # (name, place, hits, configured hits, sequence)
-    m = Counter()
-    settled = set()                     # places that are no outside record: columns, copies
+    job = _WholeIndexJob(column_windows, configured_windows, gene_ids, gene_sequences,
+                         configured, window, canonical, exclude_ids, keep_duplicates,
+                         max_window_records)
     for place, tid, seq, hits, same in _scan_records(
-            path, column_windows, window, canonical, exclude, None if keep_duplicates
-            else configured, None, seed, decoys, stats, every=True):
-        if tid in gene_ids and tid not in gene_records:
-            gene_records[tid] = seq
-            _name.claim(tid, seq)       # the column's name: a later record of it is <id>#2
-            settled.add(place)
-            continue
+            path, column_windows, window, canonical, job.exclude, job.identical, None, seed,
+            decoys, job.stats, every=True):
+        job.pass1(place, tid, seq, hits, same)
+    query = job.pass2_query()
+    if query:
+        for place, _, seq, hits, _ in _scan_records(
+                path, query, window, canonical, job.exclude, None, None, seed, decoys,
+                None, every=True):
+            job.pass2(place, seq, hits)
+    return job.result()
+
+
+class _WholeIndexJob:
+    """One call of :func:`_whole_index`, fed the records its two passes read.
+
+    :func:`_whole_index` reads the FASTA with :func:`_scan_records` and gives each record
+    of the first pass to :meth:`pass1`, as ``_scan_records(..., every=True)`` yields it;
+    :meth:`pass2_query` then gives the windows the second pass looks for, and each record
+    of the second pass goes to :meth:`pass2`; :meth:`result` is :func:`_whole_index`'s.
+    The arguments are :func:`_whole_index`'s; ``exclude`` and ``identical`` are what its
+    passes give :func:`_scan_records`, and ``stats`` the dict the first pass fills.
+    """
+
+    def __init__(self, column_windows, configured_windows, gene_ids, gene_sequences,
+                 configured, window, canonical=True, exclude_ids=(), keep_duplicates=False,
+                 max_window_records=DEFAULT_MAX_WINDOW_RECORDS):
+        self.column_windows = column_windows
+        self.configured_windows = configured_windows
+        self.gene_ids = gene_ids
+        self.gene_sequences = gene_sequences
+        self.window, self.canonical = window, canonical
+        self.exclude = list(exclude_ids)
+        self.identical = None if keep_duplicates else configured
+        self.keep_duplicates = keep_duplicates
+        self.max_window_records = max_window_records
+        self.stats = {}
+        self._name = _Names()
+        self.gene_records, self.same_conf, self.same_bg = {}, {}, {}
+        self.gene_lengths = {len(x) for x in gene_sequences}
+        self.first_of = {}              # digest of a sharing record's sequence -> its name
+        self.sharing = []               # (name, place, hits, configured hits, sequence)
+        self.m = Counter()
+        self.settled = set()            # places that are no outside record: columns, copies
+        self.added = self.dropped = self.left_places = self.left_seqs = None
+
+    def pass1(self, place, tid, seq, hits, same):
+        """One record of the first pass: ``_scan_records(..., every=True)``'s tuple."""
+        if tid in self.gene_ids and tid not in self.gene_records:
+            self.gene_records[tid] = seq
+            self._name.claim(tid, seq)  # the column's name: a later record of it is <id>#2
+            self.settled.add(place)
+            return
         if same is not None:
-            rid = _name(tid, place, seq)
+            rid = self._name(tid, place, seq)
             if rid is not None:
-                same_conf[rid] = same
-            settled.add(place)
-            continue
-        if not keep_duplicates and len(seq) in gene_lengths and seq in gene_sequences:
-            rid = _name(tid, place, seq)
+                self.same_conf[rid] = same
+            self.settled.add(place)
+            return
+        if (not self.keep_duplicates and len(seq) in self.gene_lengths
+                and seq in self.gene_sequences):
+            rid = self._name(tid, place, seq)
             if rid is not None:
-                same_bg[rid] = gene_sequences[seq]
-            settled.add(place)
-            continue
+                self.same_bg[rid] = self.gene_sequences[seq]
+            self.settled.add(place)
+            return
         if not hits:
-            continue                    # outside, and holds no column window
+            return                      # outside, and holds no column window
         digest = None
-        if not keep_duplicates:
+        if not self.keep_duplicates:
             digest = hashlib.blake2b(seq.encode(), digest_size=16).digest()
-            if digest in first_of:
-                rid = _name(tid, place, seq)
+            if digest in self.first_of:
+                rid = self._name(tid, place, seq)
                 if rid is not None:
-                    same_bg[rid] = first_of[digest]
-                settled.add(place)
-                continue
-        rid = _name(tid, place, seq)
+                    self.same_bg[rid] = self.first_of[digest]
+                self.settled.add(place)
+                return
+        rid = self._name(tid, place, seq)
         if rid is None:
-            settled.add(place)
-            continue
+            self.settled.add(place)
+            return
         if digest is not None:
-            first_of[digest] = rid
-        mine = hits & configured_windows
+            self.first_of[digest] = rid
+        mine = hits & self.configured_windows
+        m = self.m
         for w in hits:
             m[w] += 1
         # m only grows, so a record none of whose configured windows is within the limit
         # now never will be: its sequence need not be kept
-        hopeful = len(seq) <= LONG_RECORD and any(m[w] <= max_window_records for w in mine)
-        sharing.append((rid, place, hits, mine, seq if hopeful else None, digest))
+        hopeful = (len(seq) <= LONG_RECORD
+                   and any(m[w] <= self.max_window_records for w in mine))
+        self.sharing.append((rid, place, hits, mine, seq if hopeful else None, digest))
 
-    added = {}
-    within = Counter()                  # per window, the added records that hold it
-    left_places = set()
-    left_seqs = set()                   # digests of the left-out records, copies counted once
-    for rid, place, hits, mine, seq, digest in sharing:
-        if seq is not None and any(m[w] <= max_window_records for w in mine):
-            added[rid] = (seq, len(mine))
-            within.update(hits)
-            settled.add(place)
-        else:
-            left_places.add(place)
-            left_seqs.add(digest if digest is not None else place)
-    # a column window held by more outside records than were added is held by a left-out one
-    dropped = {w for w, n in m.items() if n > within[w]}
+    def pass2_query(self):
+        """After the first pass: the records added and left out, the windows dropped so far,
+        and the windows the second pass looks for (empty: no second pass)."""
+        m = self.m
+        added = {}
+        within = Counter()              # per window, the added records that hold it
+        left_places = set()
+        left_seqs = set()               # digests of the left-out records, copies counted once
+        for rid, place, hits, mine, seq, digest in self.sharing:
+            if seq is not None and any(m[w] <= self.max_window_records for w in mine):
+                added[rid] = (seq, len(mine))
+                within.update(hits)
+                self.settled.add(place)
+            else:
+                left_places.add(place)
+                left_seqs.add(digest if digest is not None else place)
+        # a column window held by more outside records than were added is held by a left-out
+        # one
+        self.dropped = {w for w, n in m.items() if n > within[w]}
+        self.added, self.left_places, self.left_seqs = added, left_places, left_seqs
 
-    # pass 2: the added records' own windows, in the records left out
-    query = set()
-    for seq, _ in added.values():
-        query.update(kmer_track(seq, window, canonical))
-    query -= column_windows             # those were settled in pass 1
-    if query:
-        for place, _, seq, hits, _ in _scan_records(
-                path, query, window, canonical, exclude, None, None, seed, decoys,
-                None, every=True):
-            if hits and place not in settled:
-                dropped |= hits         # a pass-1 left-out record's too
-                if place not in left_places:
-                    left_places.add(place)
-                    # a copy is no record: each sequence is one record left out
-                    left_seqs.add(place if keep_duplicates else
-                                  hashlib.blake2b(seq.encode(), digest_size=16).digest())
-    # a copy of a record left out is no column's copy: it is not reported as one
-    columns = set(gene_sequences.values()) | set(added)
-    same_bg = {rid: t for rid, t in same_bg.items() if t in columns}
-    return {"gene_records": gene_records, "identical_to_configured": same_conf,
-            "identical_to_background": same_bg, "added": added, "dropped": dropped,
-            "left_out": len(left_seqs), "stats": stats}
+        # pass 2: the added records' own windows, in the records left out
+        query = set()
+        for seq, _ in added.values():
+            query.update(kmer_track(seq, self.window, self.canonical))
+        query -= self.column_windows    # those were settled in pass 1
+        return query
+
+    def pass2(self, place, seq, hits):
+        """One record of the second pass."""
+        if hits and place not in self.settled:
+            self.dropped |= hits        # a pass-1 left-out record's too
+            if place not in self.left_places:
+                self.left_places.add(place)
+                # a copy is no record: each sequence is one record left out
+                self.left_seqs.add(place if self.keep_duplicates else
+                                   hashlib.blake2b(seq.encode(), digest_size=16).digest())
+
+    def result(self):
+        """:func:`_whole_index`'s dict."""
+        # a copy of a record left out is no column's copy: it is not reported as one
+        columns = set(self.gene_sequences.values()) | set(self.added)
+        same_bg = {rid: t for rid, t in self.same_bg.items() if t in columns}
+        return {"gene_records": self.gene_records, "identical_to_configured": self.same_conf,
+                "identical_to_background": same_bg, "added": self.added,
+                "dropped": self.dropped, "left_out": len(self.left_seqs),
+                "stats": self.stats}
 
 
 # --------------------------------------------------------------------------- #
@@ -1647,6 +1698,69 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         the fields that do not depend on it, so with the default they are what 2.8.0
         gave.
     """
+    return _complete(_analysis(
+        config, k, sequences, canonical=canonical, window=window,
+        background_sequences=background_sequences, background_fasta=background_fasta,
+        decoys=decoys, background_gene_transcripts=background_gene_transcripts,
+        species=species, read_length=read_length, frag_mean=frag_mean, frag_sd=frag_sd,
+        paired=paired, depth=depth, mean_efflen=mean_efflen, tpm=tpm, n_donors=n_donors,
+        conditioning_tau=conditioning_tau, min_informative_reads=min_informative_reads,
+        min_log2fc=min_log2fc, estimand=estimand, ensembl_release=ensembl_release,
+        inputs_out=inputs_out, keep_duplicates=keep_duplicates,
+        max_window_records=max_window_records, gtf=gtf, transcripts_fasta=transcripts_fasta,
+        retries=retries, retry_wait=retry_wait))
+
+
+def _complete(analysis):
+    """Run an :func:`_analysis` generator to its report, answering each of its requests
+    as :func:`analyze` always has: by calling the function, looked up when it is asked."""
+    try:
+        answer = None
+        while True:
+            try:
+                request = analysis.send(answer)
+            except StopIteration as done:
+                return done.value
+            answer = _answer(request)
+    finally:
+        analysis.close()
+
+
+def _answer(request):
+    """The answer to one request of :func:`_analysis`, by the function :func:`analyze`
+    called there through 2.10.0: the FASTA read for this config alone."""
+    kind, args, kwargs = request
+    if kind == "whole_index":
+        return _whole_index(*args, **kwargs)
+    if kind == "copies":
+        return index_scope.fasta_copies(*args, **kwargs)
+    return io.file_sha256(*args, **kwargs)
+
+
+def _analysis(config, k=DEFAULT_K, sequences=None, *,
+              canonical=True, window=None,
+              background_sequences=None, background_fasta=None, decoys=None,
+              background_gene_transcripts="auto", species=None,
+              read_length=DEFAULT_READ_LENGTH, frag_mean=DEFAULT_FRAG_MEAN,
+              frag_sd=DEFAULT_FRAG_SD, paired=True, depth=DEFAULT_DEPTH,
+              mean_efflen=DEFAULT_MEAN_EFFLEN, tpm=DEFAULT_TPM, n_donors=1,
+              conditioning_tau=DEFAULT_CONDITIONING_TAU,
+              min_informative_reads=DEFAULT_MIN_INFORMATIVE_READS,
+              min_log2fc=None, estimand="fragment", ensembl_release=None, inputs_out=None,
+              keep_duplicates=False, max_window_records=DEFAULT_MAX_WINDOW_RECORDS,
+              gtf=None, transcripts_fasta=None,
+              retries=DEFAULT_RETRIES, retry_wait=DEFAULT_RETRY_WAIT):
+    """:func:`analyze`, as a generator that asks for each read of ``background_fasta``.
+
+    Where :func:`analyze` reads the FASTA, this yields a request ``(kind, args, kwargs)``
+    and is sent the answer: ``"whole_index"``, :func:`_whole_index`'s, once per round of
+    the loop that takes a gene-background transcript's sequence from the FASTA;
+    ``"copies"``, :func:`isoform_dominance.index_scope.fasta_copies`' (which fills
+    ``kwargs["versions"]``); ``"sha256"``, :func:`isoform_dominance.io.file_sha256`'s, just
+    before the report is built.  ``args`` and ``kwargs`` are those functions' arguments.
+    It returns :func:`analyze`'s report.  :func:`analyze` answers each request with that
+    function (:func:`_complete`).
+    """
     pc = _check_classes(config)             # first: a config with no groups is a ValueError
     if estimand not in ESTIMANDS:
         raise ValueError("estimand must be one of %s, got %r"
@@ -1818,11 +1932,13 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             column_windows = set(configured_windows)
             for seq in cols.values():
                 column_windows.update(kmer_track(seq, window, canonical))
-            whole = _whole_index(
-                background_fasta, column_windows, configured_windows, set(bg_seqs), first,
-                configured, window, canonical=canonical, exclude_ids=needed,
-                keep_duplicates=keep_duplicates, max_window_records=max_window_records,
-                decoys=decoy_names or ())
+            whole = yield ("whole_index",
+                           (background_fasta, column_windows, configured_windows, set(bg_seqs),
+                            first, configured, window),
+                           {"canonical": canonical, "exclude_ids": needed,
+                            "keep_duplicates": keep_duplicates,
+                            "max_window_records": max_window_records,
+                            "decoys": decoy_names or ()})
             # one transcript in both is one column; when the FASTA holds other sequence for
             # it (another release), the column is the FASTA's, which the index has, and the
             # FASTA is read again with that column's windows
@@ -1835,9 +1951,10 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
                 sequence_from_fasta.append(t)
             cols, first, same_c, same_b, where = _gene_columns()
         in_fasta = {}
-        copies = index_scope.fasta_copies(background_fasta, needed,
-                                          [config.get("gene")] if config.get("gene") else (),
-                                          versions=in_fasta)
+        copies = yield ("copies",
+                        (background_fasta, needed,
+                         [config.get("gene")] if config.get("gene") else ()),
+                        {"versions": in_fasta})
         if files is not None and files["same_name"] is not None:
             # what a GENCODE header does not say, the GTF does: where a same-name gene lies
             copies = index_scope.placed_by_gtf(copies, files["same_name"])
@@ -2004,6 +2121,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
     overall = chosen["verdict"]
     all_reasons = chosen["reasons"]
 
+    # which files: a path names a place, and the file there can change
+    fasta_sha256 = (yield ("sha256", (background_fasta,), {})) if background_fasta else None
     return {
         "k": k,
         "window": window,
@@ -2016,8 +2135,7 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
             "gene_id": bg_gene_id,
             "gene_transcripts": gene_columns,
             "fasta": str(background_fasta) if background_fasta else None,
-            # which files: a path names a place, and the file there can change
-            "fasta_sha256": io.file_sha256(background_fasta) if background_fasta else None,
+            "fasta_sha256": fasta_sha256,
             "decoys": str(decoys) if decoys else None,
             "decoys_sha256": io.file_sha256(decoys) if decoys else None,
             "decoys_listed": len(decoy_names) if decoys else None,
