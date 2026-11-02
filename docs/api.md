@@ -394,6 +394,12 @@ mean it cannot be measured: a class with no k-mer of its own is still estimable 
 it is nested in has unique sequence, so read `verdict` and the estimability fields. Neither
 the flag nor `verdict` sets the CLI's exit status: see the exit codes in the README.
 
+**`identifiability.analyze_many(jobs, *, batch_size=16, errors='raise', **shared)`**
+`analyze` for many configs against one `background_fasta`: yields, in job order, the report
+`analyze(config, **shared, **own)` gives each job, a config or a pair `(config, own)`, and
+reads the FASTA once per pass for a batch of `batch_size` jobs (default
+`identifiability.DEFAULT_BATCH_SIZE = 16`).
+
 **`identifiability.run(config, k=31, sequences=None, **kw)`**
 A thin wrapper of `analyze`, kept for backward compatibility.
 

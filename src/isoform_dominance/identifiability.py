@@ -50,7 +50,7 @@ import hashlib
 import math
 import urllib.parse
 import warnings
-from collections import Counter
+from collections import Counter, defaultdict
 from urllib.error import HTTPError
 
 import numpy as np
@@ -183,6 +183,68 @@ FASTA_SEED = 16
 LONG_RECORD = 1_000_000
 
 
+def _findable(query, k, canonical=True):
+    """The windows of ``query`` a record's window can read as: those ``k`` long and, with
+    ``canonical``, in canonical form (:func:`canonical_kmer`) -- a folded window is
+    canonical, so never another.  :func:`_scan_records` finds no other."""
+    return {q for q in query
+            if len(q) == k and (not canonical or canonical_kmer(q) == q)}
+
+
+def _window_finder(windows, k, canonical=True, seed=FASTA_SEED, owners=None):
+    """The function ``sequence -> the set of windows it holds``, for ``windows`` that are
+    :func:`_findable`; the sequence upper-cased, the windows in the form given.  It is
+    :func:`_scan_records`' search, described at :func:`scan_background_fasta`.
+
+    With ``owners``, a dict of each window to the jobs whose window it is, the function
+    gives instead ``{job: the set of its windows the sequence holds}``: one search for the
+    queries of several jobs.  For windows as :func:`kmer_track` gives them, each job's set
+    is what the search for its own query finds.
+    """
+    # each way a record's window can read as a query window, to the query window it is
+    # (with owners, and to the jobs it is a window of)
+    look = {}
+    for q in windows:
+        v = q if owners is None else (q, tuple(owners[q]))
+        if canonical:
+            look[revcomp(q)] = v
+        look[q] = v
+    s = max(1, min(k, seed))
+    t = max(1, k - s + 1)
+    seeds = {w[j:j + s] for w in look for j in range(t)}
+
+    def _hits(seq):
+        hits = set()
+        n = len(seq)
+        if k <= 0 or n < k:
+            return hits
+        for p in range(0, n - s + 1, t):
+            if seq[p:p + s] in seeds:
+                # the windows whose seed position is p: they start at p - t + 1 .. p
+                for i in range(max(0, p - t + 1), min(p, n - k) + 1):
+                    hit = look.get(seq[i:i + k])
+                    if hit is not None:
+                        hits.add(hit)
+        return hits
+
+    def _hits_by_job(seq):
+        out = defaultdict(set)
+        n = len(seq)
+        if k <= 0 or n < k:
+            return out
+        for p in range(0, n - s + 1, t):
+            if seq[p:p + s] in seeds:
+                for i in range(max(0, p - t + 1), min(p, n - k) + 1):
+                    hit = look.get(seq[i:i + k])
+                    if hit is not None:
+                        q, jobs = hit
+                        for j in jobs:
+                            out[j].add(q)
+        return out
+
+    return _hits if owners is None else _hits_by_job
+
+
 def _scan_records(path, query_kmers, k, canonical=True, exclude_ids=(), identical=None,
                   identical_out=None, seed=FASTA_SEED, decoys=(), stats=None, every=False):
     """Yield ``(record id, sequence, windows)`` for each record of a background FASTA.
@@ -216,34 +278,7 @@ def _scan_records(path, query_kmers, k, canonical=True, exclude_ids=(), identica
     exclude = {str(i).split(".")[0] for i in exclude_ids}
     identical = identical or {}
     lengths = {len(s) for s in identical}
-
-    # each way a record's window can read as a query window, to the query window it is
-    look = {}
-    for q in query:
-        if len(q) != k:
-            continue                    # a window of the record is k long
-        if canonical:
-            if canonical_kmer(q) != q:
-                continue                # a folded window is canonical, so never this
-            look[revcomp(q)] = q
-        look[q] = q
-    s = max(1, min(k, seed))
-    t = max(1, k - s + 1)
-    seeds = {w[j:j + s] for w in look for j in range(t)}
-
-    def _hits(seq):
-        hits = set()
-        n = len(seq)
-        if k <= 0 or n < k:
-            return hits
-        for p in range(0, n - s + 1, t):
-            if seq[p:p + s] in seeds:
-                # the windows whose seed position is p: they start at p - t + 1 .. p
-                for i in range(max(0, p - t + 1), min(p, n - k) + 1):
-                    hit = look.get(seq[i:i + k])
-                    if hit is not None:
-                        hits.add(hit)
-        return hits
+    _hits = _window_finder(_findable(query, k, canonical), k, canonical, seed)
 
     def _consume(chunks, tid, place):
         if not chunks or tid in exclude:
@@ -285,6 +320,34 @@ def _scan_records(path, query_kmers, k, canonical=True, exclude_ids=(), identica
         rec = None if skip else _consume(chunks, tid, place)
         if rec is not None:
             yield rec
+
+
+def _fasta_records(path, decoys=()):
+    """Each record of a background FASTA, read as :func:`_scan_records` reads it.
+
+    Yields ``(place, id, lines, decoy)``: ``place`` counts the headers from 1, and the lines
+    before the first header are a record of place 0 and id None; ``id`` is the first word
+    of the header's first ``|``-field, without its version, or None; ``lines`` are the
+    record's lines, stripped; ``decoy`` is the name by which the record is one of
+    ``decoys`` (:func:`_scan_records`), its lines then unread (``[]``), or None.
+    """
+    decoys = frozenset(decoys)
+    lines, tid, place, decoy = [], None, 0, None
+    with io.open_text(path) as fh:
+        for line in fh:
+            if line.startswith(">"):
+                yield place, tid, lines, decoy
+                place += 1
+                head = line[1:].strip()
+                first = head.split("|")[0].split()
+                tid = first[0].split(".")[0] if first else None
+                lines, decoy = [], None
+                if decoys:
+                    word = head.split()[0] if head else ""
+                    decoy = next((x for x in (word, word.split("|")[0]) if x in decoys), None)
+            elif decoy is None:
+                lines.append(line.strip())
+        yield place, tid, lines, decoy
 
 
 def scan_background_fasta(path, query_kmers, k, canonical=True, exclude_ids=(),
@@ -569,6 +632,149 @@ class _WholeIndexJob:
                 "identical_to_background": same_bg, "added": self.added,
                 "dropped": self.dropped, "left_out": len(self.left_seqs),
                 "stats": self.stats}
+
+
+def _whole_index_many(path, jobs, window, canonical, decoys, seed=FASTA_SEED):
+    """:func:`_whole_index` for several calls on one FASTA: each pass read once for all.
+
+    ``jobs`` are the calls, each a dict of :func:`_whole_index`'s other arguments
+    (``column_windows`` ... ``max_window_records``), their windows as :func:`kmer_track`
+    gives them.  Returns a list, per job, of what :func:`_whole_index` returns for it, or
+    the exception (an ``Exception``) raised in handling it alone; an exception raised in
+    reading the file or searching it is raised.
+
+    The first pass is one read of the file, made when a job has a column window, and the
+    second one more, when a job has windows to look for in it.  Each record is read as
+    :func:`_scan_records` reads it (:func:`_fasta_records`) and searched once, for every
+    job's windows together; a job is given the windows of its own that the record holds.
+    In the first pass a job is given a record that :func:`_whole_index` would not pass by
+    unchanged: one with a gene-background id of the job's (a), one as long as a configured
+    or gene-column sequence of the job's that is not ``keep_duplicates`` (b; a record with
+    such a sequence holds no window when the sequence is shorter than ``window``), one that
+    holds a column window of the job's (c), or one longer than :data:`LONG_RECORD`, which
+    is recorded in ``stats`` (d).  Each other record reaches ``if not hits: continue`` in
+    :func:`_whole_index` and changes nothing.  A job is given its records in file order,
+    in the order :func:`_scan_records` takes each: excluded, identical to a configured
+    transcript, empty, long.  In the second pass a job is given each record it does not
+    exclude that holds a window it looks for.
+    """
+    out = [None] * len(jobs)
+    live = {}
+
+    def fail(j, e):
+        out[j] = e
+        live.pop(j, None)
+
+    for j, kw in enumerate(jobs):
+        try:
+            live[j] = _WholeIndexJob(window=window, canonical=canonical, **kw)
+        except Exception as e:
+            out[j] = e
+
+    # ---- pass 1: the columns' windows ------------------------------------ #
+    plan, by_tid, by_len, owner = {}, {}, {}, {}
+    for j, job in list(live.items()):
+        try:
+            job.stats.update(read=False, decoys_skipped=0, decoys_found=set(),
+                             long_records=[])
+            query = set(job.column_windows)
+            if not query:
+                continue                # _scan_records does not open the file for it
+            job.stats["read"] = True
+            identical = job.identical or {}
+            windows = _findable(query, window, canonical)
+            mine = ({str(i).split(".")[0] for i in job.exclude}, identical,
+                    {len(x) for x in identical})
+            ids = set(job.gene_ids)
+            lengths = (set() if job.keep_duplicates else
+                       {len(x) for x in identical} | job.gene_lengths)
+        except Exception as e:
+            fail(j, e)
+            continue
+        plan[j] = mine
+        for t in ids:
+            by_tid.setdefault(t, []).append(j)
+        for n in lengths:
+            by_len.setdefault(n, []).append(j)
+        for w in windows:
+            owner.setdefault(w, []).append(j)
+    if plan:
+        reading = sorted(plan)
+        find = _window_finder(owner, window, canonical, seed, owners=owner)
+        for place, tid, lines, decoy in _fasta_records(path, decoys):
+            if decoy is not None:
+                for j in reading:
+                    if j in live:
+                        live[j].stats["decoys_skipped"] += 1
+                        live[j].stats["decoys_found"].add(decoy)
+                continue
+            if not lines:
+                continue                # no line at all: _scan_records passes it by
+            seq = "".join(lines).upper()
+            mine = find(seq)                                    # (c)
+            rel = set(mine)
+            rel.update(by_tid.get(tid, ()))                     # (a)
+            rel.update(by_len.get(len(seq), ()))                # (b)
+            if len(seq) > LONG_RECORD:
+                rel.update(reading)                             # (d)
+            for j in sorted(rel):
+                job = live.get(j)
+                if job is None:
+                    continue
+                exclude, identical, lengths = plan[j]
+                try:
+                    if tid in exclude:
+                        continue
+                    if len(seq) in lengths and seq in identical:
+                        job.pass1(place, tid, seq, None, identical[seq])
+                        continue
+                    if not seq:
+                        continue        # blank lines only: no sequence, so no window
+                    if len(seq) > LONG_RECORD:
+                        job.stats["long_records"].append((tid, len(seq)))
+                    job.pass1(place, tid, seq, mine.get(j, set()), None)
+                except Exception as e:
+                    fail(j, e)
+
+    # ---- pass 2: the added records' own windows -------------------------- #
+    plan, owner = {}, {}
+    for j, job in list(live.items()):
+        try:
+            query = job.pass2_query()
+            if not query:
+                continue
+            windows = _findable(query, window, canonical)
+            exclude = {str(i).split(".")[0] for i in job.exclude}
+        except Exception as e:
+            fail(j, e)
+            continue
+        plan[j] = exclude
+        for w in windows:
+            owner.setdefault(w, []).append(j)
+    if plan:
+        find = _window_finder(owner, window, canonical, seed, owners=owner)
+        for place, tid, lines, decoy in _fasta_records(path, decoys):
+            if decoy is not None or not lines:
+                continue
+            seq = "".join(lines).upper()
+            mine = find(seq)
+            for j in sorted(mine):
+                job = live.get(j)
+                if job is None:
+                    continue
+                if tid in plan[j]:
+                    continue
+                try:
+                    job.pass2(place, seq, mine[j])
+                except Exception as e:
+                    fail(j, e)
+
+    for j, job in list(live.items()):
+        try:
+            out[j] = job.result()
+        except Exception as e:
+            fail(j, e)
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -1759,7 +1965,8 @@ def _analysis(config, k=DEFAULT_K, sequences=None, *,
     ``kwargs["versions"]``); ``"sha256"``, :func:`isoform_dominance.io.file_sha256`'s, just
     before the report is built.  ``args`` and ``kwargs`` are those functions' arguments.
     It returns :func:`analyze`'s report.  :func:`analyze` answers each request with that
-    function (:func:`_complete`).
+    function (:func:`_complete`); :func:`analyze_many` answers those of a batch of configs
+    with one read of the file for all of them.
     """
     pc = _check_classes(config)             # first: a config with no groups is a ValueError
     if estimand not in ESTIMANDS:
@@ -2184,6 +2391,252 @@ def _analysis(config, k=DEFAULT_K, sequences=None, *,
         "decision_estimand": estimand,
         "estimands": estimands,
     }
+
+
+#: Default of :func:`analyze_many`'s ``batch_size``: how many configs share each read of the
+#: background FASTA.
+DEFAULT_BATCH_SIZE = 16
+
+#: :func:`analyze`'s arguments that say how the background FASTA is read: a batch's, so
+#: :func:`analyze_many` takes them in ``shared`` only.
+_BATCH_ARGUMENTS = ("background_fasta", "decoys", "k", "window", "canonical")
+
+
+def analyze_many(jobs, *, batch_size=DEFAULT_BATCH_SIZE, errors="raise", **shared):
+    """:func:`analyze` for many configs against one ``background_fasta``, sharing its reads.
+
+    Yields, in job order, the report ``analyze(config, **shared, **own)`` returns for each
+    job.  A job is a config (a dict), or a pair ``(config, own)`` -- a tuple or a list of
+    two -- whose ``own`` is a dict of :func:`analyze`'s arguments for that config alone.
+    ``jobs`` is any iterable, a generator too; it is pulled ``batch_size`` jobs at a time
+    (default :data:`DEFAULT_BATCH_SIZE`), and a batch's jobs are computed together before
+    its reports are yielded.
+
+    Each report is the one :func:`analyze` returns: the same keys in the same order, the
+    same values, floats to the bit, so that ``json.dumps`` gives the same text.  Compare
+    two that way, not with ``==``: a class with no informative read puts NaN in
+    ``unique_read_counting_se`` and ``counting_noise``, and then a report is not ``==`` to
+    itself.  An ``inputs_out`` in ``own`` is filled as :func:`analyze` fills it.
+
+    The arguments that say how the FASTA is read -- ``background_fasta``, ``decoys``,
+    ``k``, ``window`` and ``canonical`` -- are the batch's and go in ``shared`` only: in a
+    job's ``own``, any of them is that job's ``ValueError``.  ``inputs_out`` goes in
+    ``own`` only: the jobs of a batch start together, before any report is yielded, so one
+    dict in ``shared`` would be left holding a later job's inputs.  In ``shared`` it is a
+    ``ValueError`` at the first ``next()``; so is a ``batch_size`` that is not an integer
+    of at least 1 (a bool is not), and an ``errors`` that is neither ``"raise"`` nor
+    ``"return"``.
+
+    A job's error is an ``Exception`` that is the job's alone: a ``TypeError`` for a job of
+    another shape; the ``ValueError`` of a reading argument in ``own``; and whatever
+    ``analyze(config, **shared, **own)`` would raise -- a ``TypeError`` for a name in both
+    ``shared`` and ``own`` or one :func:`analyze` does not take (its message names another
+    function than ``analyze``), and the ``ValueError``, ``InputError``,
+    ``AnnotationFileError``, ``HTTPError`` and the rest its body raises.  They are checked
+    in that order.  Where the batch reads the FASTA for its jobs together, only an
+    exception raised handling one job's request is that job's error: in the header pass, a
+    config whose ``gene`` is a list is the ``TypeError`` :func:`analyze` raises.  With
+    ``errors="raise"`` (the default) the first job's error is raised after the reports of
+    the jobs before it are yielded, as a loop of :func:`analyze` calls would raise it; the
+    jobs after it in its batch may have been computed, and their ``inputs_out`` filled.
+    With ``errors="return"`` the exception is yielded in the job's place, and the jobs go
+    on.  An exception that is no ``Exception`` (``KeyboardInterrupt``, ``SystemExit``) is
+    raised at once whatever ``errors`` says, and so is any exception raised opening or
+    reading the FASTA, searching it for the batch's windows together, parsing its headers
+    or taking its SHA-256: those are the batch's.  An exception raised pulling ``jobs`` is
+    raised after the reports of the jobs pulled before it.
+
+    Whatever the number of its jobs, a batch opens ``background_fasta`` once for the first
+    pass, unless no job has a window to look for; once for the second pass, when a job
+    needs one; for each further round of the loop that takes a gene-background
+    transcript's sequence from the FASTA, both again for the jobs that go round, the second
+    when one of them needs it; and once for its headers.  It takes the file's SHA-256 once.
+    Without ``background_fasta`` there is nothing to share: the jobs are :func:`analyze`
+    one by one.
+
+    Memory: each job of a batch holds its whole-index result, the FASTA records that hold
+    its windows, until the header pass answers it; what comes after, the compatibility
+    matrix and its decomposition, is computed one job at a time.  So memory grows with
+    ``batch_size``.  Besides, the header pass holds every header of the FASTA parsed, which
+    grows with the FASTA and not with ``batch_size``.
+
+    A job given its sequence by ``sequences`` and ``background_sequences`` reads no file but
+    ``background_fasta`` and ``decoys``; ``decoys`` is read, and its SHA-256 taken, per job,
+    as :func:`analyze` does.  A job with ``gtf`` and ``transcripts_fasta`` reads those files
+    per job, as :func:`analyze` does.
+    """
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
+        raise ValueError("batch_size must be an integer >= 1, got %r" % (batch_size,))
+    if errors not in ("raise", "return"):
+        raise ValueError('errors must be "raise" or "return", got %r' % (errors,))
+    if "inputs_out" in shared:
+        raise ValueError("inputs_out is a job's own argument, not a shared one: the jobs of a "
+                         "batch run together, and one dict would be left holding a later "
+                         "job's inputs")
+    pending = iter(jobs)
+    while True:
+        batch, stop = [], None
+        try:
+            while len(batch) < batch_size:
+                batch.append(next(pending))
+        except StopIteration:
+            stop = StopIteration
+        except Exception as e:
+            stop = e
+        for error, report in _analyze_batch(batch, shared):
+            if error is None:
+                yield report
+            elif errors == "raise":
+                raise error
+            else:
+                yield error
+        if stop is StopIteration:
+            return
+        if stop is not None:
+            raise stop
+
+
+def _job_parts(job):
+    """``(config, own)`` of a job of :func:`analyze_many`; ``TypeError`` for another shape."""
+    if isinstance(job, dict):
+        return job, {}
+    if isinstance(job, (tuple, list)) and len(job) == 2 and isinstance(job[1], dict):
+        return job[0], job[1]
+    shape = type(job).__name__
+    if isinstance(job, (tuple, list)):
+        shape = "%s of %d (%s)" % (shape, len(job), ", ".join(type(x).__name__ for x in job))
+    raise TypeError("a job of analyze_many is a config (a dict) or a pair (config, own) whose "
+                    "own is a dict of analyze's arguments; got a %s" % shape)
+
+
+class _BatchJob:
+    """One job of a batch of :func:`analyze_many`: its :func:`_analysis` generator, the
+    request it waits on, and its report or error."""
+
+    __slots__ = ("gen", "request", "report", "error")
+
+    def __init__(self):
+        self.gen = self.request = self.report = self.error = None
+
+    def resume(self, sha256, answer=None, error=None):
+        """Send the generator ``answer``, or throw ``error`` into it, and run it to its next
+        request; a SHA-256 request is answered on the spot (``sha256(request)``), so the
+        job runs on to its end rather than wait with its system held."""
+        while True:
+            try:
+                request = (self.gen.throw(error) if error is not None
+                           else self.gen.send(answer))
+            except StopIteration as done:
+                self.gen, self.request, self.report = None, None, done.value
+                return
+            except Exception as e:
+                self.gen, self.request, self.error = None, None, e
+                return
+            if request[0] != "sha256":
+                self.request = request
+                return
+            answer, error = sha256(request), None
+
+
+def _analyze_batch(items, shared):
+    """``[(error, report)]`` of one batch of :func:`analyze_many`, in job order."""
+    taken = {}
+
+    def sha256(request):
+        # once per batch: the SHA-256 of the batch's FASTA
+        _, args, kwargs = request
+        key = (args, tuple(sorted(kwargs.items())))
+        if key not in taken:
+            taken[key] = io.file_sha256(*args, **kwargs)
+        return taken[key]
+
+    jobs = []
+    try:
+        for item in items:
+            job = _BatchJob()
+            jobs.append(job)
+            try:
+                config, own = _job_parts(item)
+                fixed = [n for n in _BATCH_ARGUMENTS if n in own]
+                if fixed:
+                    raise ValueError(
+                        "%s is analyze_many's shared argument, not a job's own: the jobs of a "
+                        "batch read one background FASTA one way" % ", ".join(fixed))
+                job.gen = _analysis(config, **shared, **own)
+            except Exception as e:
+                job.error = e
+                continue
+            job.resume(sha256)
+        while True:
+            asked = [j for j in jobs if j.request is not None]
+            if not asked:
+                break
+            # every whole-index request first: the header pass waits, needing none of them
+            whole = [j for j in asked if j.request[0] == "whole_index"]
+            if whole:
+                answers = _whole_index_answers([j.request for j in whole])
+            else:
+                whole = asked
+                answers = _copies_answers([j.request for j in asked])
+            # in job order, one job at a time: after its header pass a job runs to its end
+            for job, answer in zip(whole, answers, strict=True):
+                if isinstance(answer, Exception):
+                    job.resume(sha256, error=answer)
+                else:
+                    job.resume(sha256, answer)
+        return [(j.error, j.report) for j in jobs]
+    finally:
+        for j in jobs:
+            if j.gen is not None:
+                j.gen.close()
+
+
+def _groups(requests, key):
+    """``[(key, [index])]`` of ``requests``, grouped by equal ``key(request)``, in order."""
+    out = []
+    for i, request in enumerate(requests):
+        k = key(request)
+        for have, members in out:
+            if have == k:
+                members.append(i)
+                break
+        else:
+            out.append((k, [i]))
+    return out
+
+
+def _whole_index_answers(requests):
+    """The answers to :func:`_analysis`' whole-index requests, by :func:`_whole_index_many`:
+    one call for the requests that read one FASTA one way (in a batch, all of them)."""
+    answers = [None] * len(requests)
+    for (path, window, canonical, decoys), members in _groups(
+            requests, lambda r: (r[1][0], r[1][6], r[2]["canonical"], frozenset(r[2]["decoys"]))):
+        calls = []
+        for i in members:
+            _, args, kwargs = requests[i]
+            calls.append({"column_windows": args[1], "configured_windows": args[2],
+                          "gene_ids": args[3], "gene_sequences": args[4],
+                          "configured": args[5], "exclude_ids": kwargs["exclude_ids"],
+                          "keep_duplicates": kwargs["keep_duplicates"],
+                          "max_window_records": kwargs["max_window_records"]})
+        got = _whole_index_many(path, calls, window, canonical, decoys)
+        for i, answer in zip(members, got, strict=True):
+            answers[i] = answer
+    return answers
+
+
+def _copies_answers(requests):
+    """The answers to :func:`_analysis`' requests for same-name copies, by
+    :func:`isoform_dominance.index_scope._fasta_copies_many`: one read of each FASTA's
+    headers (in a batch, one)."""
+    answers = [None] * len(requests)
+    for path, members in _groups(requests, lambda r: r[1][0]):
+        got = index_scope._fasta_copies_many(
+            path, [(requests[i][1][1], requests[i][1][2], requests[i][2].get("versions"))
+                   for i in members])
+        for i, answer in zip(members, got, strict=True):
+            answers[i] = answer
+    return answers
 
 
 def run(config, k=DEFAULT_K, sequences=None, **kw):

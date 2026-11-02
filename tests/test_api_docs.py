@@ -69,9 +69,10 @@ NAMES = [(mod, name) for mod in MODULES for name in sorted(public(mod))]
 
 
 def test_the_count_is_the_reviewers_plus_this_round():
-    # 98 functions and 11 classes, and io.groups_shape_error, which 2.9.0 adds
+    # 98 functions and 11 classes, and io.groups_shape_error, which 2.9.0 adds, and
+    # identifiability.analyze_many, which 2.11.0 adds
     kinds = [inspect.isclass(public(m)[n]) for m, n in NAMES]
-    assert (kinds.count(False), kinds.count(True)) == (99, 11)
+    assert (kinds.count(False), kinds.count(True)) == (100, 11)
 
 
 @pytest.mark.parametrize("mod,name", NAMES, ids=["%s.%s" % x for x in NAMES])
