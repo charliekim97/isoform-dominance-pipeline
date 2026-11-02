@@ -36,6 +36,8 @@ ORACLE_SHA256 = {
 
 N_WHOLE_CASES = 320
 N_COPIES_CASES = 320
+#: the package's LONG_RECORD, before a test lowers it: a case's own does not hang on the last
+LONG_RECORD = I.LONG_RECORD
 
 
 def test_the_oracle_is_2_10_0s_text():
@@ -249,7 +251,7 @@ def _whole_case(seed, tmp_path):
             add(tid, transcript(), "random")
     if decoys and r.random() < 0.3:
         decoys.append("chrAbsent")
-    long_record = I.LONG_RECORD
+    long_record = LONG_RECORD
     lengths = sorted(len("".join(x.strip() for x in lines)) for _, lines in records)
     if r.random() < 0.3 and lengths[-1] > 1:
         long_record = lengths[-1] - 1 if r.random() < 0.5 else lengths[len(lengths) // 2]
