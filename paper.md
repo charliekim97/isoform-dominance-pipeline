@@ -56,7 +56,7 @@ The obvious proxy — "does each class own a unique k-mer?", used up to v2.1.1 �
 both directions. A class whose only unique sequence is the thirty k-mers spanning one splice
 junction passes while yielding a handful of informative fragments; a class nested inside
 another owns no unique k-mer, yet its total is estimable, because the containing class is
-pinned by its own unique sequence. Both failure modes are tests here.
+pinned by its own unique sequence. Both failure modes are regression tests here.
 
 `isoform-dominance` replaces the proxy with the estimability condition itself, reported
 beside the smallest log2 fold change the stated design resolves and the expected number of
@@ -132,13 +132,14 @@ length the user sets. We make no claim relating the two — not that a verdict h
 to reads, and not that it is conservative in either direction. The counterexample that ended
 the last attempt to state such a relation is a regression test: four short transcripts whose
 class contrast is estimable at window 3 and 4, *not* at 5 and 6, and again at 7 and 8. A
-longer `window` is a different system, not a sharper one. Whether the surrogate predicts
-what a quantifier recovers is an empirical question this paper does not answer. The reported
-figure is the smallest |log2 fold change| a 95% interval excludes zero for, from the
-delta-method SE of the log class ratio under the Poisson-weighted GLS covariance; the effect
-size the user states, not the verdict, sets the exit status. A conditioning threshold,
-`--tau`, was withdrawn rather than calibrated. Past `LINEARISATION_LIMIT`, a relative
-standard error, a figure is flagged and counts as not resolved at any effect size.
+longer `window` is a different system, not a sharper one. Beyond the one simulation reported
+here, whether the surrogate predicts what a quantifier recovers is an empirical question
+this paper does not answer. The reported figure is the smallest |log2 fold change| a 95%
+interval excludes zero for, from the delta-method SE of the log class ratio under the
+Poisson-weighted GLS covariance; the effect size the user states, not the verdict, sets the
+exit status. A conditioning threshold, `--tau`, was withdrawn rather than calibrated. Past
+`LINEARISATION_LIMIT`, a relative standard error, a figure is flagged and counts as not
+resolved at any effect size.
 
 Cohorts are combined by a weighted Stouffer combination [@stouffer1949; @liptak1958] of
 per-cohort exact tests, the default, and by stratified signed-rank statistics with van
