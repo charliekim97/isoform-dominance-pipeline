@@ -283,7 +283,10 @@ them on depth and TPM, the `min |log2FC|` figures also on the number of donors, 
 > while judged against the genome every window inside an exon would lose its uniqueness. A
 > record longer than 1 Mb read without `--decoys` is named in a NOTE and left out, so every
 > exon window it holds is dropped: a gentrome without `--decoys` gives the most
-> conservative answer, not a wrong one.
+> conservative answer, not a wrong one. To compute many configs against one FASTA,
+> `identifiability.analyze_many` gives each config the report `identifiability.analyze` gives
+> it; how often it reads the FASTA follows the number of batches of configs, not the number of
+> configs, and its memory grows with the batch size.
 
 > **Pin the release.** The verdict is a function of the annotation release. Rebuilt with
 > `--ensembl-release` against six Ensembl releases from 110 (GENCODE 44, July 2023) to 116,

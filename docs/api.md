@@ -400,6 +400,24 @@ the flag nor `verdict` sets the CLI's exit status: see the exit codes in the REA
 reads the FASTA once per pass for a batch of `batch_size` jobs (default
 `identifiability.DEFAULT_BATCH_SIZE = 16`).
 
+Each report is the one `analyze` returns, key for key and float for float: compare two as
+`json.dumps`, not with `==`, which NaN -- a class with no informative read -- makes false. `jobs`
+is any iterable, a generator too, and is pulled `batch_size` jobs at a time; `own` is a dict of
+`analyze`'s arguments for that config, and an `inputs_out` there is filled as `analyze` fills
+it. `background_fasta`, `decoys`, `k`, `window` and `canonical` are the batch's and go in
+`shared` only; `inputs_out` goes in `own` only. Whatever the number of its jobs, a batch opens
+the FASTA once for the first pass (not at all when no job has a window to look for), once for
+the second when a job needs it, both again for each further round of the loop that takes a
+gene-background transcript's sequence from the FASTA, and once for its headers, and takes the
+file's SHA-256 once. A job's error -- a job of another shape (`TypeError`), a reading argument
+in `own` (`ValueError`), or what `analyze` would raise for it -- is raised after the reports of
+the jobs before it with `errors="raise"`, the default, and yielded in its place with
+`errors="return"`; an exception in reading the FASTA, and one that is no `Exception`, is
+raised at once. A batch's memory grows with `batch_size`: each job holds the records that hold
+its windows until the header pass answers it, and the compatibility systems are built one job
+at a time; the header pass holds every header of the FASTA parsed. Without `background_fasta`
+the jobs are `analyze` one by one.
+
 **`identifiability.run(config, k=31, sequences=None, **kw)`**
 A thin wrapper of `analyze`, kept for backward compatibility.
 

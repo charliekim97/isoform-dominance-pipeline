@@ -23,6 +23,26 @@ versioning.
 
 ## [Unreleased]
 
+### Added
+- **`identifiability.analyze_many`: many configs against one background FASTA, its reads
+  shared.** `analyze_many(jobs, batch_size=16, errors="raise", **shared)` yields, in job order,
+  for each job -- a config, or a pair `(config, own)` -- the report `analyze(config, **shared,
+  **own)` gives it, to the same `json.dumps` text; an `inputs_out` in `own` is filled per job,
+  as `analyze` fills it. A batch of `batch_size` jobs (`identifiability.DEFAULT_BATCH_SIZE`,
+  16) opens the FASTA, whatever its number of jobs, once for the first pass, once for the
+  second when a job needs one, both again for each further round of the loop that takes a
+  gene-background transcript's sequence from the FASTA, and once for its headers, and takes the
+  file's SHA-256 once; `analyze` reads the FASTA for one config as it did. `background_fasta`,
+  `decoys`, `k`, `window` and `canonical` are the batch's arguments, and `inputs_out` a job's.
+  With `errors="raise"` a job's error is raised after the reports of the jobs before it, as a
+  loop of `analyze` calls raises it; with `errors="return"` it is yielded in the job's place. A
+  batch's memory grows with its size. `tests/oracle_2_10.py` holds 2.10.0's whole-index and
+  same-name-copy functions verbatim (commit 4e082e1), each held to its text's SHA-256; 320
+  random cases compare the batch's shared passes, per config, with them, and 320 its shared
+  header pass. `tests/test_analyze_many.py` compares each report and `inputs_out` with
+  `analyze`'s, counts the batch's reads of the FASTA -- a batch of two configs reads it as
+  often as one of twelve -- and holds the rest of the contract. `docs/api.md` describes it.
+
 ## [2.10.0] - 2026-11-01
 
 ### Added
