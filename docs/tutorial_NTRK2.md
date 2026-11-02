@@ -133,10 +133,10 @@ isoform-dominance identifiability --config example/saved/NTRK2.gencode50.config.
 `--min-informative-reads` default of 50 informative reads, a count that does not depend on the
 estimand. The effect of 0.5 is resolved, and the exit status is 0. On stderr the run adds:
 
-> the abundance estimand decides (--estimand abundance). Its estimability is decided exactly in
-> this window system,
+> the abundance estimand decides (--estimand abundance).
 
-and goes on as the first run's NOTE does, to the check its precision figures did not pass.
+followed by the two sentences the first run's NOTE ends with: what this estimand's
+estimability rests on, and the check its precision figures did not pass.
 
 ## 5. Unique k-mers between the two classes alone
 
