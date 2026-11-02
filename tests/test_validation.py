@@ -762,7 +762,7 @@ def test_a_changed_figure_is_a_missing_quote(computed):
 # (5) the 3.0 gate's result
 # --------------------------------------------------------------------------- #
 #: the gate's section of validation/README.md, from its title line to the blank line before
-#: the next title, as fixed before its run (CLAUDE.md: the gate's text is not edited)
+#: the next title, as fixed before its run: the gate's text is not edited after it
 GATE_TITLE = "## The abundance estimand, and what decides whether it becomes the default"
 GATE_TEXT_LENGTH = 7441
 GATE_TEXT_SHA256 = "5cfba30e5b485c250958c50b50a560e2173a80fd628f7e76e01042b64333d149"
