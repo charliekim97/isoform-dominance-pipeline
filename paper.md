@@ -94,9 +94,9 @@ abundance-total estimand, which matches what `extract` and `stats` compare, deci
 asked. Its precision figures were checked against Salmon's summed TPM in a simulation of 49
 genes, by a gate fixed before its run, and did not pass, so the fragment-total estimand
 stays the default: of the 7 contrasts estimable as abundance only against each gene's own
-transcripts, they held for 6 and not for SMN2's. Found after the grade: against the
-reference-chromosome transcripts of the simulation's index, SMN2's contrast is not estimable
-as abundance, the transcripts of its paralogue SMN1 becoming columns.
+transcripts, they held for 6 and not for SMN2's. A check fixed before its run saw SMN2's
+figures hold without the index's copies of SMN1 and SMN2 on scaffolds, which the package's
+documentation excludes; the paralogue SMN1 had no simulated reads.
 
 Two questions hide under one word. A contrast is *estimable* when it lies in the row space
 of the compatibility system, and *measurable* when it is recoverable at finite depth.
@@ -119,8 +119,8 @@ background; an arbitrary FASTA — ideally the one the index was built from — 
 in addition. Computed after the gate was graded, 1 of the 48 contrasts of the simulation
 estimable as abundance against the gene's own transcripts was not estimable against the
 reference-chromosome transcripts of its index, and 3 were not once that index's records on
-scaffolds were added. The one against the reference chromosomes is SMN2's, whose summed TPM
-did not pass the gate.
+scaffolds were added. The one against the reference chromosomes is SMN2's, SMN1's
+transcripts among its columns.
 
 *The read model counts reads, not fragments.* A unique k-mer is informative only when it
 falls inside a sequenced end; the expected count is evaluated exactly over start positions

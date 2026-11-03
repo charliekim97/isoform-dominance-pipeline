@@ -197,7 +197,7 @@ conditioned (1) or badly conditioned (2), and genes the gate fails that the stru
 | the table | README, "It bounds spread, not accuracy"; here |
 | the survey | the docstrings of `gls_covariance`, `class_coherence`, `min_resolvable_log2fc` and `analyze`; the comment in `_verdict`; the help of `--min-log2fc`; `simulate_reads.py`'s docstring; the README, "Two estimands", and the gate below (the abundance estimand) |
 | the 3.0 gate's result | here, the two paragraphs around its block; README, "Two estimands" and "Pass `--background-fasta`"; the NOTE `identifiability` prints on the abundance estimand, its gene-background NOTE when that estimand decides, and the help of `--estimand` (`cli.py`); `identifiability.ESTIMANDS`'s docstring and the comment on `_PRECISION_CHECK`; `docs/api.md`; `docs/tutorial_NTRK2.md`; `paper.md`, "State of the field" and "Software design" |
-| D1's result | here, its section; README, "Two estimands", "Pass `--background-fasta`" and "Index scope" |
+| D1's result | here, its section; README, "Two estimands", "Pass `--background-fasta`" and "Index scope"; `paper.md`, "State of the field" |
 
 ## Read S8 before any comparison of the not-estimable genes with the others
 

@@ -502,23 +502,20 @@ def gate_quotes(s):
         ("README.md", "%s is the contrast whose summed TPM stopped the 3.0 gate "
                       "(`validation/README.md`, \"The 3.0 gate's result\")" % _owned(g["stopped"])),
         # paper.md: the check of the abundance estimand's precision, and what was found after it
+        # (D1's result, which the paper also gives, is held by tests/test_d1_smn2.py)
         ("paper.md", "against Salmon's summed TPM in a simulation of %d genes, by a gate fixed "
                      "before its run, and did not pass" % len(s["genes"])),
         ("paper.md", "of the %d contrasts estimable as abundance only against each gene's own "
                      "transcripts, they held for %d and not for %s"
          % (len(tpm), held, _owned(failed))),
-        ("paper.md", "Found after the grade: against the reference-chromosome transcripts of the "
-                     "simulation's index, %s contrast is not estimable as abundance, the "
-                     "transcripts of its paralogue %s becoming columns"
-         % (_owned(ref_lost), summarize._and(added))),
         ("paper.md", "Computed after the gate was graded, %d of the %d contrasts of the "
                      "simulation estimable as abundance against the gene's own transcripts was "
                      "not estimable against the reference-chromosome transcripts of its index, "
                      "and %d were not once that index's records on scaffolds were added. The "
-                     "one against the reference chromosomes is %s, whose summed TPM did not "
-                     "pass the gate"
+                     "one against the reference chromosomes is %s, %s transcripts among its "
+                     "columns"
          % (len(ref_lost), b["abundance"]["n_estimable"]["gene_background"],
-            len(ref_lost) + len(whole_lost), _owned(ref_lost))),
+            len(ref_lost) + len(whole_lost), _owned(ref_lost), _owned(added))),
         # what this shows, and what it does not
         (vreadme, "with the gene's other transcripts as the background, which leaves %s out"
                   % summarize._and(added)),

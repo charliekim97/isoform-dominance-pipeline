@@ -440,3 +440,20 @@ def test_the_top_level_readme_quotes_the_grade():
     assert ("in that simulation, which draws no fragment from SMN1, leaving out the index's "
             "copies of SMN1 and SMN2 on alternate loci was enough for that row to meet its "
             "predicted SE, SMN1's transcripts on chromosome 5 still in the index") in text
+
+
+def test_the_paper_gives_d1s_result():
+    """paper.md: SMN2's figures held without the index's copies of SMN1 and SMN2 on scaffolds,
+    the records `ref` leaves out; SMN1 had no simulated reads."""
+    paper = _flat((ROOT / "paper.md").read_text(encoding="utf-8"))
+    assert ("A check fixed before its run saw SMN2's figures hold without the index's copies of "
+            "SMN1 and SMN2 on scaffolds, which the package's documentation excludes; the "
+            "paralogue SMN1 had no simulated reads.") in paper
+    assert RESULT["exit"] == 0 and RESULT["arms"]["ref"]["meets"]
+    assert not RESULT["stored"]["meets"]
+    assert "SMN1" not in STORED["design"]["genes_simulated"]
+    whole = json.loads((VALIDATION / "data" / "whole_index.json").read_text(encoding="utf-8"))
+    cols = whole["genes"]["SMN2"]["whole_index"]["fasta_competitors"]
+    copies = {x for x, c in cols.items() if c["gene_symbol"] in ("SMN1", "SMN2")
+              and c["location"].startswith("scaffold:")}
+    assert copies and copies <= set(d1.LEFT_OUT["ref"])

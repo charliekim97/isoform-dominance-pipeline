@@ -43,6 +43,14 @@ versioning.
   as fixed before the run. The 3.0 gate is not graded again and the default does not change.
   Nothing in `src/` changes.
 
+### Changed
+- **`paper.md` on SMN2's failure.** It set SMN2's contrast, not estimable as abundance against
+  the reference-chromosome transcripts with SMN1's among its columns, beside the failure, as if
+  one explained the other. It now gives D1's result in the state of the field (SMN2's figures
+  held without the index's copies of SMN1 and SMN2 on scaffolds; SMN1 had no simulated reads),
+  and in the software design the whole-index count names SMN1's transcripts among SMN2's columns
+  without the failure. 1,583 words to 1,585.
+
 ### Corrections to earlier entries
 - **Where the 3.0 gate's run put SMN2's reads** (`validation/README.md`, "The 3.0 gate's
   result"). The README said SMN1's transcripts, from which no fragment was drawn, were given
