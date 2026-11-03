@@ -162,8 +162,8 @@ The evidence offered here is concrete rather than aspirational.
 archived at a version DOI so the cited state stays reachable independently of this
 package's later development. The author is a co-author of that study; the package is
 otherwise distributed through PyPI.
-<!-- If @yang2026 has not been accepted by submission, delete this paragraph and the
-     bib entry: the section must stand on the evidence below without it. -->
+<!-- @yang2026 is accepted at Nature Communications and not yet published: give its
+     volume, article number and DOI in paper.bib when it is. -->
 
 *Reproducibility.* The bundled, download-free self-test regenerates the per-cohort
 result that study reports — short-isoform predominance in control human choroid plexus

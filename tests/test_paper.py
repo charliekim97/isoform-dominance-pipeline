@@ -33,9 +33,6 @@ KEYS = {"anders2012", "ferrerbonsoms2022", "frankish2021", "gilis2022", "gse1376
         "patro2017", "sarkar2020", "soneson2016", "stouffer1949", "vanelteren1960",
         "virtanen2020", "vittingseerup2019", "wilcoxon1945", "yang2026", "yates2015",
         "zheng2022", "zhu2019"}
-#: the reference the HTML comment in "Research impact statement" says may go, with the
-#: paragraph that cites it, if that study has not been accepted by submission
-REMOVABLE = ("yang2026", "*Use in research.*")
 
 
 def text_of(path=PAPER):
@@ -101,13 +98,21 @@ def test_the_sections_are_joss_sections_in_its_order():
 def test_the_paper_cites_its_references():
     text = text_of()
     keys = cited(text)
-    key, paragraph = REMOVABLE
-    if keys == KEYS - {key}:
-        assert paragraph not in text
-    else:
-        assert keys == KEYS
+    assert keys == KEYS
     bib = set(re.findall(r"^@\w+\{([^,\s]+),", text_of(BIB), re.M))
     assert keys <= bib
+
+
+def test_the_bibliography_holds_no_note_meant_for_the_author():
+    """yang2026, the study that uses the package (the research impact statement), is accepted:
+    its entry names the journal, and no reminder to the author is left to print in the
+    reference list."""
+    bib = text_of(BIB)
+    entry = bib[bib.index("@article{yang2026,"):]
+    entry = entry[:entry.index("\n}") + 2]
+    assert "journal = {Nature Communications}" in entry
+    for word in ("NOT YET", "BEFORE JOSS", "under revision"):
+        assert word.lower() not in bib.lower(), word
 
 
 @pytest.mark.parametrize("change", ["a word too many", "a key gone", "a heading renamed",
@@ -122,7 +127,7 @@ def test_each_check_can_fail(change):
         assert word_count(text) == limit + 1
     elif change == "a key gone":
         text = text.replace("[@hunter2007]", "")
-        assert cited(text) not in (KEYS, KEYS - {REMOVABLE[0]})
+        assert cited(text) != KEYS
     elif change == "a heading renamed":
         text = text.replace("\n# Research impact statement\n", "\n# Research impact\n")
         assert headings(text) != HEADINGS
