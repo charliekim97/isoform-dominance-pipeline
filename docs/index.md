@@ -201,7 +201,11 @@ length in window positions, and its figures weight a short transcript less than 
 simulation of `validation/` against Salmon's summed TPM, by a gate fixed before its run, and
 did not pass it, so `fragment` stays the default: they held for 6 of the 7 contrasts graded and
 not for SMN2's (`validation/README.md`, "The 3.0 gate's result", which also gives what was
-found after the grade).
+found after the grade). A check fixed before its run, D1, then put the failure on the
+simulation's index: with only SMN1's and SMN2's copies on alternate loci left out, records
+"Index scope" below also leaves out, SMN2's summed TPM met its predicted SE, in a simulation
+that draws no fragment from SMN1. The default does not change on that; a change needs a gate of
+its own.
 
 Exit codes: **0** no `--min-log2fc` given, or it is resolved · **3** `--min-log2fc` given and
 not resolved at the stated design · **2** precondition failure: a transcript shorter than
@@ -247,7 +251,11 @@ them on depth and TPM, the `min |log2FC|` figures also on the number of donors, 
 > totals; with that index's records on scaffolds (alternate loci, patches) added, where CANX's
 > and PTPRC's own copies are, CANX's and PTPRC's abundance contrasts and PTPRC's fragment
 > contrast were not estimable either. SMN2's is the contrast whose summed TPM stopped the 3.0
-> gate (`validation/README.md`, "The 3.0 gate's result"). A record that holds a configured transcript's window found
+> gate (`validation/README.md`, "The 3.0 gate's result"); in that simulation, which draws no
+> fragment from SMN1, leaving out the index's copies of SMN1 and SMN2 on alternate loci was
+> enough for that row to meet its predicted SE, SMN1's transcripts on chromosome 5 still in the
+> index (`validation/README.md`, "D1's result").
+> A record that holds a configured transcript's window found
 > in at most M records of the FASTA (`--max-window-records M`, default 20) becomes a column
 > of the compatibility system, as a transcript of the gene background is, so a competitor
 > found once gives one answer whether it comes from the FASTA or from
@@ -463,7 +471,10 @@ FASTA twice, under its own name and another gene id. An index built from it lets
 quantifier split the gene's reads with the copy — Salmon folds an identical copy into the
 reference transcript, but splits reads with a copy that differs, and kallisto splits them
 either way — and `extract` counts only the configured transcript ids, so the class totals
-are biased. Build the index from reference-chromosome transcripts only. For GENCODE, keep
+are biased. In the simulation of `validation/`, which draws no fragment from SMN1, SMN2's class
+ratio of summed TPM missed its predicted SE with SMN1's and SMN2's copies on alternate loci in
+the index (|bias| 0.474 log2, SD 0.751, against 0.442) and met it with them left out (0.110 and
+0.352; D1). Build the index from reference-chromosome transcripts only. For GENCODE, keep
 the transcripts of the reference-chromosome GTF (`gencode.vX.annotation.gtf.gz`):
 
 ```bash

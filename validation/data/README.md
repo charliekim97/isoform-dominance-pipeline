@@ -68,12 +68,24 @@ with v2.9.0, and two files computed to describe it:
 | `sim/c1_d1_tpm_detail.json` | for LDHA, NDUFS1 and SMN2 and each replicate of that run: the fragments written for each transcript of the two compared classes, and `quant.sf`'s `EffectiveLength`, `TPM` and `NumReads` of each and of each copy the index kept in place of a dropped one, with the fragments written for the whole gene; and per replicate, the fragments written for the library and the `NumReads` of the records outside the 49 genes, summed by the gene symbol of their FASTA header; and, as `outside_stand_ins`, each record outside the 49 genes that the index kept in place of their transcripts of the same sequence, with its `NumReads`, its symbol, and the transcripts it stands for, each with its gene and the fragments written for it. Made on 2026-10-31 with `../tpm_run_detail.py` from the run's truths and the `quant.sf` files kept beside it (the harness deletes them); remade on 2026-11-02 from the same files to add `outside_stand_ins`, every other field unchanged | `00b202a30aab5376dabe1c3c91ae8e431d335af8a5c843cb96085e448e5944c9` |
 | `whole_index.json` | per gene, both estimands' contrast at the simulated design against three backgrounds: the gene's other transcripts (the call `../run_simulation.py` made before any read existed); the FASTA above, its records on scaffolds included (15,034 on alternate loci, 4,574 on patches, 62 others) (`identifiability.analyze`'s `background_fasta`: the package's whole-index answer for the index the simulation was quantified with); and that FASTA's records on chromosomes 1-22, X, Y and MT, the ones `../../README.md`'s "Index scope" keeps to build an index (its command writes them as `Homo_sapiens.GRCh38.cdna.primary.fa`, whose SHA-256 the file gives as `reference_chromosomes`). For the two FASTA backgrounds, the records that became columns, each with its gene symbol and location. Made on 2026-10-31 with `../whole_index.py`, with the package at v2.9.0 | `08a5ce0bcd35a9a46bd4a2ee61e47ed33f5f0660f213273240ee0c6ff49a4eb9` |
 
-`../summarize.py` reads the simulation outputs and recomputes every figure the documentation quotes from them, and
-`tests/test_validation.py` holds the files to the SHA-256 above, the package's predictions to the ones the rows recorded,
-and the summary to them. `../gate_3_0.py` grades `sim/c1_d1_tpm.json`, and `tests/test_gate_run.py` recomputes
-LDHA's, NDUFS1's and SMN2's rows of it from `sim/c1_d1_tpm_detail.json` and holds `whole_index.json`'s gene-background
-half to what the package gives now. Salmon is not run in CI, nor `../whole_index.py` on the index's FASTA, which CI does
-not have.
+D1's two runs (`../README.md`, "What produced SMN2's failure (D1), fixed before its run"), made on 2026-11-02 with
+v2.9.0's harness, the gate run's design and seeds, and Salmon 2.7.0, each against an index built from `cdna.all` less
+the records its arm leaves out (`../d1_smn2.py`). Every replicate's fragments are those of the gate's run, and every
+`quant.sf` lists its arm's index's records and none it leaves out (checked before the grade):
+
+| file | holds | SHA-256 |
+|---|---|---|
+| `sim/d1_ref_tpm.json` | the `ref` arm, its index without the 33 SMN1 and SMN2 records off chromosome 5 (453,527 records): the run's `design`, `salmon`, `genes`, `genes_tpm` and `effective_length_taken_from`, as `sim/c1_d1_tpm.json` holds them | `232c4634e330003b0c38bcd0eb888a5c64e69ca0fe27bbc803db8097dcd1447f` |
+| `sim/d1_gene_tpm.json` | the `gene` arm, its index without every SMN1 record and SMN2's records off chromosome 5, 56 (453,507 records), the same fields | `63dd15c13cc0c3d2a4394bb0ea8195aee68487eff141f8b78f5d59284c7fa1d4` |
+
+`../summarize.py` reads the simulation outputs other than D1's and recomputes every figure the documentation quotes from
+them, and `tests/test_validation.py` holds the files to the SHA-256 above, the package's predictions to the ones the
+rows recorded, and the summary to them. `../gate_3_0.py` grades `sim/c1_d1_tpm.json`, and `tests/test_gate_run.py`
+recomputes LDHA's, NDUFS1's and SMN2's rows of it from `sim/c1_d1_tpm_detail.json` and holds `whole_index.json`'s
+gene-background half to what the package gives now. `../d1_smn2.py grade` grades `sim/d1_ref_tpm.json` and
+`sim/d1_gene_tpm.json`, and `tests/test_d1_smn2.py` holds the figures `../README.md` and `../../README.md` quote from
+them to what it gives. Salmon is not run in CI, nor `../whole_index.py` and `../d1_smn2.py fasta` on the index's FASTA,
+which CI does not have.
 
 <details><summary>SHA-256 of the 98 per-gene files bundled in <code>sweep116.json.gz</code></summary>
 

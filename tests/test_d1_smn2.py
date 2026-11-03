@@ -269,3 +269,174 @@ def test_a_refused_check_says_so_on_stderr_and_exits_2(tmp_path, capsys):
     (tmp_path / "info.json").write_text(json.dumps(info), encoding="utf-8")
     assert d1.main(["index", "ref", str(tmp_path)]) == 0
     assert capsys.readouterr().out.startswith("ref: index ")
+
+
+# --------------------------------------------------------------------------- #
+# D1's result
+# --------------------------------------------------------------------------- #
+#: D1's section of validation/README.md, from its title to its result, as fixed before its
+#: run (ef2c4fe): the protocol is not edited after it
+D1_TEXT_SHA256 = "25bdc9c56d057584611a3319880ce31b4447b3a2166dda0955c79f7d9f13f932"
+SIM = VALIDATION / "data" / "sim"
+RUN_PATHS = {arm: SIM / ("d1_%s_tpm.json" % arm) for arm in d1.ARMS}
+RUNS = {arm: json.loads(path.read_text(encoding="utf-8")) for arm, path in RUN_PATHS.items()}
+RESULT = d1.grade(RUNS, PREDICTIONS, STORED)
+
+
+def _flat(text):
+    return " ".join(text.split())
+
+
+def _result():
+    sec = README[README.index("### D1's result"):]
+    return sec[:sec.index("\n## ")]
+
+
+def test_the_protocol_is_the_text_fixed_before_its_run():
+    t = README[README.index("## What produced SMN2's failure (D1)"):
+               README.index("\n### D1's result")]
+    assert t.isascii() and hashlib.sha256(t.encode("ascii")).hexdigest() == D1_TEXT_SHA256
+
+
+def test_the_stored_runs_grade_as_the_readme_says(capsys):
+    assert RESULT["exit"] == 0
+    assert RESULT["arms"]["ref"]["meets"] and not RESULT["stored"]["meets"]
+    assert d1.main(["grade", str(RUN_PATHS["ref"]), str(RUN_PATHS["gene"])]) == 0
+    last = capsys.readouterr().out.rstrip().splitlines()[-1]
+    assert last.startswith("D1 exit 0: THE INDEX.") and last.endswith("(ref) it met it.")
+    assert "graded `data/sim/d1_ref_tpm.json` and `data/sim/d1_gene_tpm.json` with exit status 0" \
+        in _flat(_result())
+
+
+def _cells(entry):
+    tpm, num = entry["tpm"], entry["num_reads"]
+    return " | ".join(["%.3f" % abs(tpm["bias"]), "%.3f" % tpm["realised_sd"], "%d" % tpm["n"],
+                       "yes" if entry["meets"] else "no",
+                       "%.3f" % abs(num["bias"]), "%.3f" % num["realised_sd"]])
+
+
+def test_the_readmes_table_is_the_grade():
+    sec = _result()
+    assert "| below %.3f |" % SE in sec
+    assert "| the gate's run | none | %s |" % _cells(RESULT["stored"]) in sec
+    for arm in d1.ARMS:
+        line = "| `%s` | %d | %s |" % (arm, len(d1.LEFT_OUT[arm]), _cells(RESULT["arms"][arm]))
+        assert line in sec, line
+
+
+def test_the_readme_says_what_ref_kept_of_smn1():
+    """The records `gene` leaves out and `ref` keeps are SMN1's on chromosome 5: the columns
+    that make SMN2's contrast not estimable against the reference chromosomes are among them,
+    and the others stand, under SMN1's names, for SMN2's transcripts of the same sequence."""
+    kept = set(d1.LEFT_OUT["gene"]) - set(d1.LEFT_OUT["ref"])
+    whole = json.loads((VALIDATION / "data" / "whole_index.json").read_text(encoding="utf-8"))
+    cols = whole["genes"]["SMN2"]["reference_chromosomes"]["fasta_competitors"]
+    smn1 = {x for x, c in cols.items() if c["gene_symbol"] == "SMN1"}
+    assert smn1 <= kept
+    assert all(cols[x]["location"] == "chromosome:GRCh38:5" for x in smn1)
+    detail = json.loads((SIM / "c1_d1_tpm_detail.json").read_text(encoding="utf-8"))
+    stand_ins = {x: s for entry in detail["outside_stand_ins"] for x, s in entry.items()}
+    rest = kept - smn1
+    assert rest and all(stand_ins[x]["symbol"] == "SMN1" for x in rest)
+    assert all(v["gene"] == d1.GENE for x in rest for v in stand_ins[x]["stands_for"].values())
+    sec = _flat(_result())
+    assert ("SMN1's %d transcripts on chromosome 5 stayed in that index, %d of them among the "
+            "columns that make SMN2's contrast not estimable" % (len(kept), len(smn1))) in sec
+    assert ("so those %d were columns the quantifier could leave empty; the other %d stand, "
+            "under SMN1's names, for %d of SMN2's transcripts of the same sequence"
+            % (len(smn1), len(rest), len(rest))) in sec
+    assert "SMN1" not in STORED["design"]["genes_simulated"]
+
+
+def test_the_readme_draws_what_the_grade_says():
+    """Exit status 0 is "the failure was the index's" (the protocol's words), and `ref`
+    meeting the figure is what the README's sentences on it say."""
+    assert RESULT["exit"] == 0 and RESULT["arms"]["ref"]["meets"]
+    sec = _flat(_result())
+    assert sec.count("**The failure was the index's.**") == 1
+    assert ("With only the two genes' copies on alternate loci left out, records the README's "
+            "\"Index scope\" also leaves out, it met it too") in sec
+    shows = _flat(README[README.index("**What this shows, and what it does not.**"):
+                         README.index("## What produced SMN2's failure (D1)")])
+    assert ("D1, below, measured it: with only the index's copies of SMN1 and SMN2 on alternate "
+            "loci left out, SMN1's transcripts on chromosome 5 still in it and no fragment drawn "
+            "from SMN1, SMN2's summed TPM met its predicted SE.") in shows
+
+
+def test_the_data_readme_names_each_arms_index():
+    text = _flat((VALIDATION / "data" / "README.md").read_text(encoding="utf-8"))
+    assert ("its index without the %d SMN1 and SMN2 records off chromosome 5 (%s records)"
+            % (len(d1.LEFT_OUT["ref"]), "{:,}".format(d1.NUM_REFS["ref"]))) in text
+    assert ("its index without every SMN1 record and SMN2's records off chromosome 5, %d (%s "
+            "records)" % (len(d1.LEFT_OUT["gene"]), "{:,}".format(d1.NUM_REFS["gene"]))) in text
+    for arm in d1.ARMS:
+        row = [line for line in text.split("| `sim/") if line.startswith("d1_%s_tpm.json" % arm)]
+        assert len(row) == 1, arm
+
+
+def test_the_other_genes_figures_are_the_grades():
+    sec = _flat(_result())
+    o = RESULT["others"]
+    assert ("in `ref` the largest bias change is %.4f (%s) and the largest SD change %.4f (%s); "
+            "in `gene`, %.4f (%s) and %.4f (%s)"
+            % (o["ref"]["bias"] + o["ref"]["realised_sd"]
+               + o["gene"]["bias"] + o["gene"]["realised_sd"])) in sec
+    n = {name: {r["gene"]: r["n"] for r in run["genes_tpm"]}
+         for name, run in [("stored", STORED)] + sorted(RUNS.items())}
+    moved = [g for g in n["stored"] if g != d1.GENE
+             and not n["stored"][g] == n["ref"][g] == n["gene"][g]]
+    assert moved == [o["gene"]["realised_sd"][1]]
+    g = moved[0]
+    assert n["stored"][g] == n["ref"][g]
+    assert ("%s's row counts %d replicates in `gene` against %d in the gate's run and in `ref`"
+            % (g, n["gene"][g], n["stored"][g])) in sec
+    # every other row moved; the NumReads rows' largest bias change is the same in either arm
+    worst = set()
+    for arm in d1.ARMS:
+        for key in ("genes", "genes_tpm"):
+            want = {r["gene"]: r for r in STORED[key] if r["gene"] != d1.GENE}
+            got = {r["gene"]: r for r in RUNS[arm][key] if r["gene"] != d1.GENE}
+            assert all(got[x]["bias"] != want[x]["bias"] for x in want), (arm, key)
+        want = {r["gene"]: r for r in STORED["genes"] if r["gene"] != d1.GENE}
+        got = {r["gene"]: r for r in RUNS[arm]["genes"] if r["gene"] != d1.GENE}
+        d, x = max((abs(got[x]["bias"] - want[x]["bias"]), x) for x in want)
+        worst.add(("%.3f" % d, x))
+    assert len(worst) == 1
+    ((d, x),) = worst
+    assert "The other 48 genes' rows, against the gate's run, all moved, by little." in sec
+    assert "`NumReads`: the largest bias change is %s (%s) in either arm." % (d, x) in sec
+
+
+def test_the_gates_numbers_in_either_arm_are_the_readmes():
+    seen = set()
+    for arm in d1.ARMS:
+        g = gate.grade(RUNS[arm], PREDICTIONS)
+        bias_ok = sum(1 for _, b, _ in g["primary"].values() if b)
+        seen.add((bias_ok, len(g["primary"]), g["primary_sd_ok"], tuple(g["stopped"]),
+                  g["control"]["bias_ok"], g["control"]["sd_ok"]))
+    assert len(seen) == 1
+    ((bias_ok, n_primary, sd_ok, stopped, c_bias, c_sd),) = seen
+    assert stopped == ()
+    assert ("the primary set's |bias| below its predicted SE for %d of %d and its SD for %d, and "
+            "the control's for %d and %d, where the gate asks for all %d, %d, %d and %d"
+            % (bias_ok, n_primary, sd_ok, c_bias, c_sd, n_primary, gate.PRIMARY_SD_AT_LEAST,
+               gate.CONTROL_BIAS_AT_LEAST, gate.CONTROL_SD_AT_LEAST)) in _flat(_result())
+
+
+def test_the_top_level_readme_quotes_the_grade():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    text = _flat(text.replace("\n> ", "\n"))
+    s, r = RESULT["stored"]["tpm"], RESULT["arms"]["ref"]["tpm"]
+    assert RESULT["arms"]["ref"]["meets"] and not RESULT["stored"]["meets"]
+    assert "SMN1" not in STORED["design"]["genes_simulated"]
+    assert ("In the simulation of `validation/`, which draws no fragment from SMN1, SMN2's class "
+            "ratio of summed TPM missed its predicted SE with SMN1's and SMN2's copies on "
+            "alternate loci in the index (|bias| %.3f log2, SD %.3f, against %.3f) and met it "
+            "with them left out (%.3f and %.3f; D1)"
+            % (abs(s["bias"]), s["realised_sd"], SE, abs(r["bias"]), r["realised_sd"])) in text
+    assert ("with only SMN1's and SMN2's copies on alternate loci left out, records \"Index "
+            "scope\" below also leaves out, SMN2's summed TPM met its predicted SE, in a "
+            "simulation that draws no fragment from SMN1") in text
+    assert ("in that simulation, which draws no fragment from SMN1, leaving out the index's "
+            "copies of SMN1 and SMN2 on alternate loci was enough for that row to meet its "
+            "predicted SE, SMN1's transcripts on chromosome 5 still in the index") in text

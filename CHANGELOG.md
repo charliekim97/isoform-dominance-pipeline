@@ -30,6 +30,18 @@ versioning.
   gate's run's libraries again against two indexes built from `cdna.all` less SMN1's and SMN2's
   records beyond SMN2's own transcripts (33 and 56 records), and grades SMN2's row in each
   against the SE the gate fixed. Nothing in `src/` changes.
+- **D1's result** (`validation/README.md`, "D1's result"; `validation/data/sim/d1_ref_tpm.json`
+  and `d1_gene_tpm.json`). Each arm was run once, on 2026-11-02, and graded with exit status 0:
+  SMN2's summed-TPM row met its predicted SE, 0.442, in both (|bias| 0.110 and 0.112, SD 0.352
+  and 0.353), where the gate's run gave 0.474 and 0.751. The failure was the index's: with only
+  SMN1's and SMN2's copies on alternate loci left out, records the README's "Index scope" also
+  leaves out, the row met it too, SMN1's 23 transcripts on chromosome 5 still in the index (20 of
+  them among the columns that make SMN2's contrast not estimable as abundance against the
+  reference chromosomes), in a simulation that draws no fragment from SMN1. The README's "Two
+  estimands", its whole-index paragraph and its "Index scope" quote the result;
+  `tests/test_d1_smn2.py` holds the READMEs' figures to the grade, and D1's protocol to its text
+  as fixed before the run. The 3.0 gate is not graded again and the default does not change.
+  Nothing in `src/` changes.
 
 ### Corrections to earlier entries
 - **Where the 3.0 gate's run put SMN2's reads** (`validation/README.md`, "The 3.0 gate's

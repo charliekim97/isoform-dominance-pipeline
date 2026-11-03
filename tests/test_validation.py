@@ -64,9 +64,9 @@ def stored_files(base):
             and not any(part.startswith(".") for part in p.relative_to(base).parts)}
 
 
-#: the files each README's table names: in validation/data, the 17 of the simulation and the
-#: 3.0 gate's run with the two files computed to describe it
-STORED = {"example/saved": 17, "validation/data": 20}
+#: the files each README's table names: in validation/data, the 17 of the simulation, the
+#: 3.0 gate's run with the two files computed to describe it, and D1's two runs
+STORED = {"example/saved": 17, "validation/data": 22}
 
 
 @pytest.mark.parametrize("folder", ["example/saved", "validation/data"])

@@ -197,6 +197,7 @@ conditioned (1) or badly conditioned (2), and genes the gate fails that the stru
 | the table | README, "It bounds spread, not accuracy"; here |
 | the survey | the docstrings of `gls_covariance`, `class_coherence`, `min_resolvable_log2fc` and `analyze`; the comment in `_verdict`; the help of `--min-log2fc`; `simulate_reads.py`'s docstring; the README, "Two estimands", and the gate below (the abundance estimand) |
 | the 3.0 gate's result | here, the two paragraphs around its block; README, "Two estimands" and "Pass `--background-fasta`"; the NOTE `identifiability` prints on the abundance estimand, its gene-background NOTE when that estimand decides, and the help of `--estimand` (`cli.py`); `identifiability.ESTIMANDS`'s docstring and the comment on `_PRECISION_CHECK`; `docs/api.md`; `docs/tutorial_NTRK2.md`; `paper.md`, "State of the field" and "Software design" |
+| D1's result | here, its section; README, "Two estimands", "Pass `--background-fasta`" and "Index scope" |
 
 ## Read S8 before any comparison of the not-estimable genes with the others
 
@@ -319,16 +320,17 @@ The |bias| is below the predicted SE for 6 of the 7 and the SD for 6. SMN2's |bi
 **What this shows, and what it does not.** These are findings made after the grade. The predictions the gate fixed
 were made, as every prediction of this simulation was, with the gene's other transcripts as the background, which
 leaves SMN1 out. The one contrast that failed, SMN2's, is one the package does not call estimable as abundance once
-the background is the index's reference-chromosome transcripts. What produced that failure was not measured: SMN2's
-`NumReads` row had already failed before the TPM run (step 4 of the gate). The finding is therefore also one of
-scope: a prediction made from the gene alone can promise what the index cannot give, and the answer to set beside a
-quantifier's is the one `--background-fasta` gives with the index's transcript FASTA. Nor does it make the grade a
-pass: CANX's contrast is not estimable against the whole index, yet its summed-TPM row was accurate; not estimable
-means that the contrast is not determined in general, not that every truth is missed. The simulation's index holds
-records on scaffolds (alternate loci, patches), which the README's "Index scope" says to leave out: the copies the
-index kept in place of LDHA's and NDUFS1's dropped members are there (`CHANGELOG.md`, the correction recorded before
-the run), as are CANX's and PTPRC's copies. The run of step 7, the six skewed designs and kallisto, decides nothing
-and was not made with this run.
+the background is the index's reference-chromosome transcripts. What produced that failure was not measured then: SMN2's
+`NumReads` row had already failed before the TPM run (step 4 of the gate). D1, below, measured it: with only the index's
+copies of SMN1 and SMN2 on alternate loci left out, SMN1's transcripts on chromosome 5 still in it and no fragment drawn
+from SMN1, SMN2's summed TPM met its predicted SE. The finding is also one of scope: a prediction made from the gene
+alone can promise what the index cannot give, and the answer to set beside a quantifier's is the one
+`--background-fasta` gives with the index's transcript FASTA. Nor does it make the grade a pass: CANX's contrast is not
+estimable against the whole index, yet its summed-TPM row was accurate; not estimable means that the contrast is not
+determined in general, not that every truth is missed. The simulation's index holds records on scaffolds (alternate
+loci, patches), which the README's "Index scope" says to leave out: the copies the index kept in place of LDHA's and
+NDUFS1's dropped members are there (`CHANGELOG.md`, the correction recorded before the run), as are CANX's and PTPRC's
+copies. The run of step 7, the six skewed designs and kallisto, decides nothing and was not made with this run.
 
 ## What produced SMN2's failure (D1), fixed before its run
 
@@ -367,6 +369,40 @@ produced the failure. It is fixed here, and in `d1_smn2.py`, before any of its l
 
 `d1_smn2.py grade` applies this, with exit status 0 when `gene` meets the figure, 1 when it does not, and 2 when the
 runs are not the ones named here.
+
+### D1's result
+
+Each arm was run once, on 2026-11-02, and `d1_smn2.py grade` graded `data/sim/d1_ref_tpm.json` and
+`data/sim/d1_gene_tpm.json` with exit status 0.
+
+| run | records left out | summed TPM \|bias\| | SD | n | below 0.442 | `NumReads` \|bias\| | SD |
+|---|---|---|---|---|---|---|---|
+| the gate's run | none | 0.474 | 0.751 | 29 | no | 0.544 | 0.796 |
+| `ref` | 33 | 0.110 | 0.352 | 30 | yes | 0.179 | 0.349 |
+| `gene` | 56 | 0.112 | 0.353 | 30 | yes | 0.181 | 0.350 |
+
+**The failure was the index's.** With SMN1 and SMN2 held to SMN2's own transcripts, SMN2's summed TPM met its predicted
+SE. With only the two genes' copies on alternate loci left out, records the README's "Index scope" also leaves out, it
+met it too, although SMN1's 23 transcripts on chromosome 5 stayed in that index, 20 of them among the columns that make
+SMN2's contrast not estimable as abundance against the reference chromosomes (above). No fragment is drawn from SMN1 in
+this simulation, so those 20 were columns the quantifier could leave empty; the other 3 stand, under SMN1's names, for 3
+of SMN2's transcripts of the same sequence, none in a compared class ("Where the reads went", above). D1 does not say
+whether the copies would have stopped the gate without SMN1's transcripts on chromosome 5 (no arm leaves out those and
+keeps the copies), nor whether SMN2's figure holds when SMN1 is expressed.
+
+**Beside the result, deciding nothing.**
+
+- The other 48 genes' rows, against the gate's run, all moved, by little. Summed TPM: in `ref` the largest bias change
+  is 0.0161 (TSC1) and the largest SD change 0.0136 (TNFRSF1B); in `gene`, 0.0161 (TSC1) and 0.1609 (EPOR). `NumReads`:
+  the largest bias change is 0.023 (VEGFA) in either arm. EPOR's row counts 24 replicates in `gene` against 25 in the
+  gate's run and in `ref`: in one more replicate a class estimate was not positive, so that replicate does not count.
+  With the stored index, the gate's run had given the stored uniform run's `NumReads` rows to the last digit; D1 made no
+  run with the stored index, so whether these moves come with the indexes or with something else that changed between
+  2026-10-23 and 2026-11-02 (macOS 27.0.1 to 27.2; Python, numpy and Salmon the same), it does not say.
+- The 3.0 gate's numbers, in either arm: the primary set's |bias| below its predicted SE for 7 of 7 and its SD for 7,
+  and the control's for 39 and 35, where the gate asks for all 7, 6, 38 and 31. The gate is not graded again on that:
+  it names its run, whose index is the stored one, and a later change of the default needs a gate of its own, fixed
+  before its run.
 
 ## What these outputs do not cover
 
