@@ -333,8 +333,10 @@ BACKGROUND_NOTE = {
                  "reference-chromosome transcripts of their index made 1 of the 48 contrasts "
                  "estimable as abundance not estimable, SMN2's, with SMN1's transcripts among "
                  "its columns, and the index's records on scaffolds made CANX's and PTPRC's not "
-                 "estimable too. SMN2's is the contrast whose summed TPM failed that gate "
-                 "(README, \"Pass --background-fasta\").",
+                 "estimable too. SMN2's is the contrast whose summed TPM failed that gate; "
+                 "with SMN1's and SMN2's copies on alternate loci left out of the index, its "
+                 "summed TPM met its predicted SE, in a simulation that draws no fragment "
+                 "from SMN1 (README, \"Pass --background-fasta\").",
 }
 
 

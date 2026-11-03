@@ -44,6 +44,11 @@ versioning.
   Nothing in `src/` changes.
 
 ### Changed
+- **The gene-background NOTE when the abundance estimand decides** (`cli.py`). After SMN2's
+  failure it now gives D1's result: with SMN1's and SMN2's copies on alternate loci left out of
+  the index, SMN2's summed TPM met its predicted SE, in a simulation that draws no fragment from
+  SMN1. Through 2.11.0 it set the failure beside SMN2's contrast not being estimable as abundance
+  against the reference chromosomes, as `paper.md` did.
 - **`paper.md` on SMN2's failure.** It set SMN2's contrast, not estimable as abundance against
   the reference-chromosome transcripts with SMN1's among its columns, beside the failure, as if
   one explained the other. It now gives D1's result in the state of the field (SMN2's figures
