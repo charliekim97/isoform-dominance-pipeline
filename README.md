@@ -217,13 +217,18 @@ reported in the output and in the `--json` report (`verdict`, with `gene_total` 
 `null`, never `NaN` or `Infinity`, and `estimable` or `finite_se` beside it says why.
 
 > **Why not just count unique k-mers?** Because that proxy — used by this package up to
-> v2.1.1 — is wrong in both directions. A class whose only unique sequence is the ~30 k-mers
-> spanning one splice junction *passes* while yielding a handful of usable fragments. A class nested inside another owns no unique k-mer at all and *fails*, yet its
+> v2.1.1 — is wrong in both directions. Two classes that share all but a 50-base last exon
+> both *pass*, yet at the default design (30M fragments, TPM 10) each draws about ten informative
+> fragments and their contrast is not resolvable at any effect size; at TPM 200 it resolves 0.5.
+> Owning a unique k-mer says nothing about precision either way: a class whose only unique
+> sequence is the ~30 k-mers spanning one splice junction draws about 35 informative fragments,
+> and the whole system, through what it shares, still resolves 0.5 at the default design. A
+> class nested inside another owns no unique k-mer at all and *fails*, yet its
 > total is still an estimable function of the system: the containing class is pinned by its own
 > unique sequence, so the nested class's indicator lies in the row space. That is an algebraic
 > fact about the design matrix — **not** a claim that "the EM will work it out", since an EM
-> returns numbers for a non-identifiable model just as readily. Both cases are regression-tested
-> in `tests/test_identifiability_model.py`.
+> returns numbers for a non-identifiable model just as readily. All three cases are
+> regression-tested in `tests/test_identifiability_model.py`.
 
 **What it checks, in three layers** — all from sequence and the stated design, before any read is
 quantified (the read model depends on the read length, paired or single ends and the

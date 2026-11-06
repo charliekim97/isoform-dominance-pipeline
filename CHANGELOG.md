@@ -44,6 +44,16 @@ versioning.
   Nothing in `src/` changes.
 
 ### Changed
+- **What a unique k-mer is said to show** (README, "Why not just count unique k-mers?";
+  `paper.md`, "Statement of need"; the docstrings of `identifiability._verdict` and of
+  `analyze`'s `primary_distinguishable`). They said that a class whose only unique sequence is
+  the ~30 k-mers spanning one splice junction passes while yielding a handful of usable
+  fragments, practically hopeless. In the regression test's case the class draws about 35 such
+  fragments, and the whole system resolves an effect of 0.5 at the default design; only the
+  verdict's read-count rule flags it. They now give the case the proxy passes and the design
+  cannot resolve: two classes that share all but a fifty-base last exon, whose contrast at the
+  default design is past the linearisation limit. `tests/test_identifiability_model.py` holds
+  both. The paper's count stays at 1,585 words.
 - **The README on the study that cites 2.1.1** (its "Citation" section, and `docs/index.md`,
   which is written from it). It called the study a manuscript under revision; the study is
   accepted at Nature Communications, as `paper.md` and `paper.bib` say. `tests/test_paper.py`
@@ -61,6 +71,10 @@ versioning.
   without the failure. 1,583 words to 1,585.
 
 ### Corrections to earlier entries
+- **2.2.0, the unique-k-mer proxy:** "a class whose only unique sequence is a splice junction
+  passed while being practically unmeasurable". In the case its regression test builds, the
+  whole system resolves the class's contrast at |log2FC| 0.5 at the default design (above,
+  "What a unique k-mer is said to show").
 - **Where the 3.0 gate's run put SMN2's reads** (`validation/README.md`, "The 3.0 gate's
   result"). The README said SMN1's transcripts, from which no fragment was drawn, were given
   5.7% as many reads as the 121,779 fragments drawn from SMN2. Of those 6,967 `NumReads`, 6,829

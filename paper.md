@@ -53,8 +53,8 @@ classes the data cannot separate is then an artefact of tie-breaking, indistingu
 the output from a real one.
 
 The obvious proxy — "does each class own a unique k-mer?", used up to v2.1.1 — is wrong in
-both directions. A class whose only unique sequence is the thirty k-mers spanning one splice
-junction passes while yielding a handful of informative fragments; a class nested inside
+both directions. Two classes that share all but a fifty-base last exon both pass, yet at
+the default design their contrast is not resolvable; a class nested inside
 another owns no unique k-mer, yet its total is estimable, because the containing class is
 pinned by its own unique sequence. Both failure modes are regression tests here.
 
