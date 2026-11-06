@@ -11,6 +11,10 @@ dispatch at its edges and to the self-test, and keep the old one out.
 given, and never sets the exit status.  ``paper.md`` said it "was withdrawn rather than
 calibrated", and ``validation/README.md`` called 10 "the default `--tau` withdrawn in
 2.3.0".  The README's example, run without its effect size, shows what it does.
+
+The description on the 2.1.1 Zenodo record, which is left as it is, lists splice-junction
+usage counting among the package's QC modules.  No version counts junctions; the README's
+"Citation" section says so, and where the study's counts come from.
 """
 import json
 import pathlib
@@ -118,3 +122,22 @@ def test_tau_moves_the_verdict_only_without_an_effect_size(monkeypatch, capsys):
 def test_tau_is_not_said_to_be_withdrawn(path):
     text = flat((ROOT / path).read_text(encoding="utf-8"))
     assert not re.search(r"tau[^.]{0,60}withdrawn|withdrawn[^.]{0,60}tau", text, re.I)
+
+
+#: the study's own repository, which counted its splice junctions
+STUDY_REPO = ("https://github.com/charliekim97/"
+              "Human-choroid-plexus-LEPR-isoform-analysis-reproducible-code")
+
+
+def test_the_readme_says_where_the_studys_junction_counts_come_from(capsys):
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    section = flat(readme[readme.index("\n## Citation\n"):readme.index("\n## License\n")])
+    assert "No version of the package counts junctions" in section
+    assert "`qc` command is the marker-based contamination control" in section
+    assert STUDY_REPO in section and "`scripts/count_junctions.py`" in section
+    # what the CLI offers: qc is contamination control, and nothing counts junctions
+    with pytest.raises(SystemExit):
+        cli.main(["--help"])
+    usage = flat(capsys.readouterr().out)
+    assert re.search(r"\bqc contamination control\b", usage)
+    assert "junction" not in usage.lower()

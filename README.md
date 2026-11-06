@@ -669,6 +669,13 @@ group the config lacks; 2.9.0 refuses a config whose groups have the wrong shape
 empty one, one given as a string or an object, an id that is not a non-empty string without
 white space).
 
+**Splice-junction counts.** The description on the 2.1.1 Zenodo record lists splice-junction
+usage counting among the package's optional QC modules. No version of the package counts
+junctions: its `qc` command is the marker-based contamination control on TPM tables. The
+study's junction counts come from its own reproducibility repository,
+[Human-choroid-plexus-LEPR-isoform-analysis-reproducible-code](https://github.com/charliekim97/Human-choroid-plexus-LEPR-isoform-analysis-reproducible-code)
+(`scripts/count_junctions.py`). The record's description is left as it is, with the record.
+
 Cite this repository (see `CITATION.cff`, DOI 10.5281/zenodo.20672051) and Salmon:
 Patro, R. et al. *Nat. Methods* **14**, 417–419 (2017). https://doi.org/10.1038/nmeth.4197
 

@@ -106,6 +106,13 @@ which that entry calls **Breaking**).
   the exit status. The paper now says it "affects only the verdict", in as many words, and the
   caption says when it grades it. `tests/test_stated_methods.py` runs the README's example
   without its effect size at two values of `--tau`: the verdict moves, the exit status does not.
+- **Where the study's splice-junction counts come from** (README, "Citation", and
+  `docs/index.md`). The description on the 2.1.1 Zenodo record lists splice-junction usage
+  counting among the package's optional QC modules. No version of the package counts
+  junctions: `qc` is the marker-based contamination control on TPM tables, and the study's
+  counts come from its own reproducibility repository (`scripts/count_junctions.py`). The
+  README now says so; the record is left as it is. `tests/test_stated_methods.py` holds the
+  paragraph and the CLI's list of subcommands.
 
 ### Corrections to earlier entries
 - **2.2.0, statistics:** "weighted Stouffer over the per-cohort exact tests". A per-cohort p
