@@ -619,12 +619,15 @@ and an
   that lies below its floor is marked `approximation below the attainable exact minimum`. In
   the self-test both cohorts sit at their floors, so the Stouffer P of 0.0044 is its floor.
 - **Cohorts are combined three ways**, all reported: donor-**pooled** (what v2.1 reported alone),
-  a weighted **Stouffer** combination of the per-cohort *exact* tests, and a weighted
+  a weighted **Stouffer** combination of the per-cohort signed-rank p-values, and a weighted
   **stratified signed-rank** combination. The latter borrows van Elteren's design-free
   `1/(n+1)` stratum weights but is *not* van Elteren's test, which is a stratified
   **two-sample** rank-sum procedure; these data are paired within donor. Stouffer is the
-  default, because at these sample sizes each stratum's exact p-value is trustworthy and the
-  normal approximation behind a combined rank statistic is not. Pooling donors from independent studies ranks one cohort's differences
+  default: a cohort's p-value is exact at n ≤ 13, and up to n = 50 with neither a zero
+  difference nor a tie (SciPy's exact null, or the exhaustive permutation test), while the
+  stratified statistic always rests on a normal approximation. Otherwise a cohort's p is
+  SciPy's normal approximation, and Stouffer takes it as it is; `wilcoxon_method` says which
+  each cohort had. Both cohorts of the self-test are exact. Pooling donors from independent studies ranks one cohort's differences
   against another's and lets depth or tissue handling drive the result — quote the stratified
   figures when the cohorts are genuinely independent. A cohort enters Stouffer signed by the
   direction of the signed-rank statistic that produced its p (`W+ − W−`), not by its count
@@ -665,6 +668,13 @@ fraction column for a group compared with itself, and 2.9.0 none for a compariso
 group the config lacks; 2.9.0 refuses a config whose groups have the wrong shape (none, an
 empty one, one given as a string or an object, an id that is not a non-empty string without
 white space).
+
+**Splice-junction counts.** The description on the 2.1.1 Zenodo record lists splice-junction
+usage counting among the package's optional QC modules. No version of the package counts
+junctions: its `qc` command is the marker-based contamination control on TPM tables. The
+study's junction counts come from its own reproducibility repository,
+[Human-choroid-plexus-LEPR-isoform-analysis-reproducible-code](https://github.com/charliekim97/Human-choroid-plexus-LEPR-isoform-analysis-reproducible-code)
+(`scripts/count_junctions.py`). The record's description is left as it is, with the record.
 
 Cite this repository (see `CITATION.cff`, DOI 10.5281/zenodo.20672051) and Salmon:
 Patro, R. et al. *Nat. Methods* **14**, 417–419 (2017). https://doi.org/10.1038/nmeth.4197

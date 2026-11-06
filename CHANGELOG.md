@@ -88,8 +88,36 @@ which that entry calls **Breaking**).
   held without the index's copies of SMN1 and SMN2 on scaffolds; SMN1 had no simulated reads),
   and in the software design the whole-index count names SMN1's transcripts among SMN2's columns
   without the failure. 1,583 words to 1,585.
+- **What Stouffer combines** (README, "Statistical notes", and `docs/index.md`, written from
+  it; `paper.md`, "Software design"; the docstrings of `stats`, `stats.stouffer` and
+  `stats.stratified_signed_rank`, and the comment on `DEFAULT_COMBINATION`). They called
+  Stouffer's inputs the per-cohort *exact* tests. Each cohort's p is SciPy's `method="auto"`
+  one, as the README's first statistical note says: exact at n ≤ 13 and, with neither a zero
+  difference nor a tie, up to n = 50, and the normal approximation otherwise, which Stouffer
+  takes as it is; `wilcoxon_method` names which. They now say so, and that both cohorts of
+  the self-test are exact; the paper calls them per-cohort Wilcoxon tests. No figure changes,
+  and the paper stays at 1,585 words. `tests/test_stated_methods.py` holds the README's
+  sentence to the dispatch at n = 13, 14, 50 and 51 and to the self-test.
+- **What `paper.md` says of `--tau`** ("Software design"; and the caption of
+  `validation/README.md`'s four rows of issue #2, which `validation/summarize.py` writes). The
+  paper said the conditioning threshold "was withdrawn rather than calibrated", and the caption
+  called 10 "the default `--tau` withdrawn in 2.3.0". It was not withdrawn: from 2.3.0 it grades
+  the verdict when no `--min-log2fc` is given, as that release's entry says, and it never sets
+  the exit status. The paper now says it "affects only the verdict", in as many words, and the
+  caption says when it grades it. `tests/test_stated_methods.py` runs the README's example
+  without its effect size at two values of `--tau`: the verdict moves, the exit status does not.
+- **Where the study's splice-junction counts come from** (README, "Citation", and
+  `docs/index.md`). The description on the 2.1.1 Zenodo record lists splice-junction usage
+  counting among the package's optional QC modules. No version of the package counts
+  junctions: `qc` is the marker-based contamination control on TPM tables, and the study's
+  counts come from its own reproducibility repository (`scripts/count_junctions.py`). The
+  README now says so; the record is left as it is. `tests/test_stated_methods.py` holds the
+  paragraph and the CLI's list of subcommands.
 
 ### Corrections to earlier entries
+- **2.2.0, statistics:** "weighted Stouffer over the per-cohort exact tests". A per-cohort p
+  is exact only at n ≤ 13 or, with neither a zero difference nor a tie, up to n = 50 (above,
+  "What Stouffer combines"); 2.4.1's corrections said the same of 2.3.0's entry.
 - **2.2.0 and 2.3.0 under semantic versioning.** Each changed what the exit status of
   `identifiability` means, and each was a minor version, where semantic versioning asks for a
   major one; 2.3.0's entry calls itself "A minor version, not a patch". The header said only

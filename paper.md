@@ -137,12 +137,12 @@ here, whether the surrogate predicts what a quantifier recovers is an empirical 
 this paper does not answer. The reported figure is the smallest |log2 fold change| a 95%
 interval excludes zero for, from the delta-method SE of the log class ratio under the
 Poisson-weighted GLS covariance; the effect size the user states, not the verdict, sets the
-exit status. A conditioning threshold, `--tau`, was withdrawn rather than calibrated. Past
+exit status. An uncalibrated conditioning threshold, `--tau`, affects only the verdict. Past
 `LINEARISATION_LIMIT`, a relative standard error, a figure is flagged and counts as not
 resolved at any effect size.
 
 Cohorts are combined by a weighted Stouffer combination [@stouffer1949; @liptak1958] of
-per-cohort exact tests, the default, and by stratified signed-rank statistics with van
+per-cohort Wilcoxon tests, the default, and by stratified signed-rank statistics with van
 Elteren's weights [@vanelteren1960], beside the donor-pooled test, which lets depth or
 tissue handling drive the result. Every test carries the finest p-value its design could
 resolve, and every effect size a donor-level interval, bootstrapped above five donors.
