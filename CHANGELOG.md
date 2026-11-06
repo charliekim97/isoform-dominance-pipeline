@@ -58,6 +58,13 @@ versioning.
   bootstrap interval. From five donors or fewer the interval is the donors' range, as the
   README and `stats` say (`fold_CI_method`); the self-test's GSE228458 has five. 1,585 words to
   1,588.
+- **Related work** (`paper.md`, "State of the field" and "Statement of need"; README, "How
+  this relates to existing tools"). Both now cite TreeTerminus (Singh, Love and Patro 2023) and
+  mmcollapse (Turro, Astle and Tavaré 2014), which, like terminus, group transcripts after
+  quantification, from the data; and a text on the estimable functions of a linear model
+  (Searle 1971) for the condition `identifiability` checks. The research impact statement drops
+  its second sentence, which said only that its evidence is concrete, to stay within the words
+  JOSS allows once the AI usage disclosure is restored. 1,588 words to 1,585.
 - **The README on the study that cites 2.1.1** (its "Citation" section, and `docs/index.md`,
   which is written from it). It called the study a manuscript under revision; the study is
   accepted at Nature Communications, as `paper.md` and `paper.bib` say. `tests/test_paper.py`

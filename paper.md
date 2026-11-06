@@ -46,7 +46,7 @@ the focused comparison done correctly and reproducibly rather than a genome-wide
 
 Doing it by hand has an often-unstated pitfall. A short-read quantifier apportions fragments
 among transcripts by solving a linear inverse problem, and a transcript's abundance — or a
-group's — is recoverable only when it is an estimable function of that system. An EM
+group's — is recoverable only when it is an estimable function of that system [@searle1971]. An EM
 quantifier returns abundances for a non-identifiable model as readily as for an identifiable
 one, stopping somewhere on the ridge where the likelihood is flat. A fold-change between two
 classes the data cannot separate is then an artefact of tie-breaking, indistinguishable in
@@ -77,8 +77,8 @@ determined by RNA-seq observations; @ferrerbonsoms2022 made them read- and
 fragment-length-aware and applied them genome wide. @zheng2022 found that for 20-47% of
 Human Body Map transcripts the error from nonidentifiability is large enough that "the
 ranking of expression between the transcript and other isoforms from the same gene cannot be
-determined" — the comparison this package is asked to certify. `terminus` [@sarkar2020]
-groups transcripts *post hoc, from the data*, so analysis proceeds at the resolution the
+determined" — the comparison this package is asked to certify. `terminus` [@sarkar2020],
+`TreeTerminus` [@singh2023] and `mmcollapse` [@turro2014] group transcripts *post hoc, from the data*, so analysis proceeds at the resolution the
 data support.
 
 **The gap.** Those address transcript-level identifiability, or the resolution the data
@@ -155,7 +155,6 @@ Dependencies are the Ensembl REST API [@yates2015], NumPy [@harris2020], SciPy
 
 `isoform-dominance` is the generalised, reusable implementation of an isoform-usage
 analysis developed for a study of leptin-receptor isoforms in the human choroid plexus.
-The evidence offered here is concrete rather than aspirational.
 
 *Use in research.* Version 2.1.1 performs the LEPR quantification and aggregation in
 @yang2026, cited there in the Code Availability statement and the reference list, and

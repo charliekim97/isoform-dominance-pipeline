@@ -548,15 +548,22 @@ discovery you should use the established tools — this one does **not** replace
 **On identifiability specifically**, this package builds on existing work rather than
 claiming the idea:
 
+- **Estimable functions** of a linear model (Searle 1971, *Linear Models*) — the row-space
+  condition `identifiability` checks is the textbook one, and is not claimed here.
 - **Hiller et al. 2009** ([doi:10.1093/bioinformatics/btp544](https://doi.org/10.1093/bioinformatics/btp544))
   — criteria under which isoform abundances are uniquely determined by RNA-seq observations.
 - **Ferrer-Bonsoms et al. 2022** ([doi:10.1093/bioinformatics/btab873](https://doi.org/10.1093/bioinformatics/btab873))
   — a read- and fragment-length-aware identifiability criterion, applied genome wide.
 - **terminus** ([doi:10.1093/bioinformatics/btaa448](https://doi.org/10.1093/bioinformatics/btaa448))
   — groups transcripts *post hoc, from the data*, by inferential uncertainty.
+- **TreeTerminus** ([doi:10.1016/j.isci.2023.106961](https://doi.org/10.1016/j.isci.2023.106961))
+  and **mmcollapse** ([doi:10.1093/bioinformatics/btt624](https://doi.org/10.1093/bioinformatics/btt624))
+  — group transcripts after quantification too: into a tree by inferential uncertainty, and by
+  the posterior correlation of their expression.
 
-The first two address **transcript-level** identifiability of the full deconvolution;
-`terminus` chooses its groups after seeing the data. Neither answers the question a biologist
+Hiller et al. and Ferrer-Bonsoms et al. address **transcript-level** identifiability of the full
+deconvolution; terminus, TreeTerminus and mmcollapse choose their groups after seeing the data.
+None answers the question a biologist
 arrives with: *is the contrast between two classes I defined on biological grounds estimable?*
 
 Two different questions hide under the same word, and keeping them apart is the whole reason
