@@ -10,11 +10,13 @@ test treats cohort as if it did not exist, when in practice cohorts differ in ti
 handling, library preparation and depth.  The pooled test is still reported, because
 it is what earlier releases reported and what the bundled reference result is stated
 in, but two stratified combinations are reported beside it -- a weighted Stouffer
-combination of the per-cohort *exact* tests, and a weighted combination of the
+combination of the per-cohort signed-rank p-values, and a weighted combination of the
 within-stratum signed-rank statistics -- and those are the numbers to quote when the
-cohorts are genuinely independent studies.  Stouffer is the default of the two because
-at these sample sizes the per-stratum exact p-value is trustworthy and the normal
-approximation behind a combined rank statistic is not.
+cohorts are genuinely independent studies.  Stouffer is the default of the two because a
+cohort's p-value is exact at n <= 13, and up to n = 50 with neither a zero difference nor
+a tie, while the combined rank statistic always rests on a normal approximation.  Outside
+those cases the cohort's p is SciPy's normal approximation, and Stouffer takes it as it is
+(``wilcoxon_method`` in :func:`paired_stat_detail` says which).
 
 *The exact-test floor.*  A two-sided exact signed-rank test on ``n`` pairs with a
 non-zero difference cannot return a p-value below ``2^(1-n)``: at n = 5 the floor is
@@ -65,9 +67,11 @@ DEFAULT_N_BOOT = 10_000
 DEFAULT_SEED = 0
 
 #: How cohorts are combined by default in the reported summary.  Stouffer's inputs are
-#: the per-cohort exact tests, where the stratified signed-rank alternative reaches its P
-#: through a normal approximation that is not validated at the stratum sizes this package
-#: is built for; the alternative is reported alongside, never in place of, the default.
+#: the per-cohort signed-rank p-values: exact at n <= 13 and, with neither a zero nor a tie,
+#: up to n = 50, and SciPy's normal approximation otherwise (``wilcoxon_method``).  The
+#: stratified signed-rank alternative always reaches its P through a normal approximation,
+#: which is not validated at the stratum sizes this package is built for, and is reported
+#: alongside, never in place of, the default.
 #: Neither is claimed to hold its level at every alpha: the inverse-normal transform of a
 #: discrete exact p-value is not a normal variate.  Each reports its floor, the smallest P
 #: it can return given the cohorts' sizes, so a combination that sits at its floor shows it.
@@ -375,17 +379,19 @@ _TINY = float(np.finfo(float).tiny)
 
 
 def stouffer(per_cohort):
-    """Weighted Stouffer combination of independent per-cohort exact tests.
+    """Weighted Stouffer combination of independent per-cohort signed-rank tests.
 
     Each cohort contributes its own two-sided p-value as a z-score, signed by the
     direction of the signed-rank statistic that produced it
     (:func:`signed_rank_direction`, ``direction`` in :func:`paired_stat_detail`) and
     weighted by ``sqrt(n)``, ``n`` being the number of pairs that test ranked
     (``n_effective``: a pair with no difference carries no weight under ``wilcox``).
-    Combining p-values rather than pooling donors keeps each cohort's test exact --
-    which matters at these sample sizes, where the normal approximation used by a
-    stratified rank statistic is poor -- while still refusing to treat donors from
-    different studies as exchangeable.
+    Combining p-values rather than pooling donors keeps each cohort's own test -- exact at
+    n <= 13, and up to n = 50 with neither a zero nor a tie, which matters at these sample
+    sizes, where the normal approximation used by a stratified rank statistic is poor --
+    while still refusing to treat donors from different studies as exchangeable.  A cohort
+    whose p is SciPy's normal approximation (``wilcoxon_method`` ``"asymptotic"``) enters
+    as it is.
 
     Through 2.6.0 the sign was that of the count of positive pairs, ties going to +, and
     the weight ``sqrt`` of every donor: with one cohort of three pairs up by 1 and three
@@ -436,7 +442,8 @@ def stratified_signed_rank(strata):
 
     A normal approximation is used for the combined statistic, so with very few donors
     per stratum this should be read alongside, not instead of, :func:`stouffer`, which
-    keeps each stratum's test exact.  ``p_floor`` is what the exact stratified sign-flip
+    combines each stratum's own test: exact at n <= 13, and up to n = 50 with neither a
+    zero nor a tie.  ``p_floor`` is what the exact stratified sign-flip
     null could return at its extreme -- every pair of every stratum on one side, one
     pattern in ``2^N`` -- so ``2^(1 - N)`` with ``N`` the untied pairs of all strata;
     ``underpowered`` when it exceeds 0.05.  The approximation can fall below it: one

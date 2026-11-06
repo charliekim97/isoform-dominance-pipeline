@@ -88,8 +88,21 @@ which that entry calls **Breaking**).
   held without the index's copies of SMN1 and SMN2 on scaffolds; SMN1 had no simulated reads),
   and in the software design the whole-index count names SMN1's transcripts among SMN2's columns
   without the failure. 1,583 words to 1,585.
+- **What Stouffer combines** (README, "Statistical notes", and `docs/index.md`, written from
+  it; `paper.md`, "Software design"; the docstrings of `stats`, `stats.stouffer` and
+  `stats.stratified_signed_rank`, and the comment on `DEFAULT_COMBINATION`). They called
+  Stouffer's inputs the per-cohort *exact* tests. Each cohort's p is SciPy's `method="auto"`
+  one, as the README's first statistical note says: exact at n ≤ 13 and, with neither a zero
+  difference nor a tie, up to n = 50, and the normal approximation otherwise, which Stouffer
+  takes as it is; `wilcoxon_method` names which. They now say so, and that both cohorts of
+  the self-test are exact; the paper calls them per-cohort Wilcoxon tests. No figure changes,
+  and the paper stays at 1,585 words. `tests/test_stated_methods.py` holds the README's
+  sentence to the dispatch at n = 13, 14, 50 and 51 and to the self-test.
 
 ### Corrections to earlier entries
+- **2.2.0, statistics:** "weighted Stouffer over the per-cohort exact tests". A per-cohort p
+  is exact only at n ≤ 13 or, with neither a zero difference nor a tie, up to n = 50 (above,
+  "What Stouffer combines"); 2.4.1's corrections said the same of 2.3.0's entry.
 - **2.2.0 and 2.3.0 under semantic versioning.** Each changed what the exit status of
   `identifiability` means, and each was a minor version, where semantic versioning asks for a
   major one; 2.3.0's entry calls itself "A minor version, not a patch". The header said only

@@ -142,7 +142,7 @@ exit status. A conditioning threshold, `--tau`, was withdrawn rather than calibr
 resolved at any effect size.
 
 Cohorts are combined by a weighted Stouffer combination [@stouffer1949; @liptak1958] of
-per-cohort exact tests, the default, and by stratified signed-rank statistics with van
+per-cohort Wilcoxon tests, the default, and by stratified signed-rank statistics with van
 Elteren's weights [@vanelteren1960], beside the donor-pooled test, which lets depth or
 tissue handling drive the result. Every test carries the finest p-value its design could
 resolve, and every effect size a donor-level interval, bootstrapped above five donors.
