@@ -411,5 +411,6 @@ keeps the copies), nor whether SMN2's figure holds when SMN1 is expressed.
 - **Index**: no decoys, Ensembl 116's whole cDNA FASTA, its records on scaffolds (alternate loci, patches) included,
   which the README's "Index scope" leaves out of an index.
 - **Genes**: one panel of 49.
-- **Quantifiers**: Salmon 2.7.0 and kallisto 0.52.0 only.
+- **Quantifiers**: Salmon 2.7.0 and kallisto 0.52.0 only, Salmon with `-l A` and none of its bias corrections
+  (`--seqBias`, `--gcBias`, `--posBias`); kallisto has none.
 - **Coverage**: monotone positional skew only (`bias_5p`); no GC or fragment-sequence bias, and no other shape.

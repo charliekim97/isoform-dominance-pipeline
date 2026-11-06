@@ -68,6 +68,11 @@ which that entry calls **Breaking**).
   (Searle 1971) for the condition `identifiability` checks. The research impact statement drops
   its second sentence, which said only that its evidence is concrete, to stay within the words
   JOSS allows once the AI usage disclosure is restored. 1,588 words to 1,585.
+- **What the simulation's Salmon ran with** (README, the paragraph on `effective length`;
+  `validation/README.md`, "What these outputs do not cover"). Salmon ran with `-l A` and none of
+  its bias corrections (`--seqBias`, `--gcBias`, `--posBias`), as `validation/data/README.md`
+  gives its command. The two now say so beside the skew-direction figures and the outputs'
+  limits, where the README set kallisto's lack of a bias model beside Salmon's figures.
 - **The README on the study that cites 2.1.1** (its "Citation" section, and `docs/index.md`,
   which is written from it). It called the study a manuscript under revision; the study is
   accepted at Nature Communications, as `paper.md` and `paper.bib` say. `tests/test_paper.py`

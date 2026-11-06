@@ -164,7 +164,8 @@ Salmon's error took the 5' direction for 35–36 of the 39 genes above that rati
 direction for 30–32, where at uniform coverage the 5' direction held for 19 of 39 and the 3' for
 20. kallisto, on the same reads, took the 5' direction for 34–36 and the 3' for 29–33, but it has
 no bias model and leaned to the longer class at uniform coverage too, 32 of 39 (the 5' direction
-7): its 3' figures are no evidence of the skew, and only the 5' ones turn toward it. No other
+7): its 3' figures are no evidence of the skew, and only the 5' ones turn toward it. Salmon ran
+with `-l A` and none of its bias corrections (`--seqBias`, `--gcBias`, `--posBias`). No other
 quantifier, gene panel or form of skew was tested, and below that ratio nothing was measured, so
 nothing is said.
 
