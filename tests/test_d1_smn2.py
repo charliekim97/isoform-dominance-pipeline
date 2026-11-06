@@ -457,3 +457,15 @@ def test_the_paper_gives_d1s_result():
     copies = {x for x, c in cols.items() if c["gene_symbol"] in ("SMN1", "SMN2")
               and c["location"].startswith("scaffold:")}
     assert copies and copies <= set(d1.LEFT_OUT["ref"])
+
+
+def test_the_cli_note_gives_d1s_result():
+    """The gene-background NOTE when the abundance estimand decides: after SMN2's failure,
+    what `ref` gave, and that no fragment was drawn from SMN1."""
+    from isoform_dominance import cli
+    note = cli._WHOLE_INDEX_MEASURED["abundance"]
+    assert RESULT["arms"]["ref"]["meets"] and not RESULT["stored"]["meets"]
+    assert "SMN1" not in STORED["design"]["genes_simulated"]
+    assert ("SMN2's is the contrast whose summed TPM failed that gate; with SMN1's and SMN2's "
+            "copies on alternate loci left out of the index, its summed TPM met its predicted "
+            "SE, in a simulation that draws no fragment from SMN1 (README, ") in note

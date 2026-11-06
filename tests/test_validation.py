@@ -475,7 +475,7 @@ def gate_quotes(s):
          "reference-chromosome transcripts of their index made %d of the %d contrasts "
          "estimable as abundance not estimable, %s, with %s transcripts among its columns, and "
          "the index's records on scaffolds made %s not estimable too. %s is the contrast whose "
-         "summed TPM failed that gate (README, "
+         "summed TPM failed that gate; "
          % (b["n_contrasts"], len(ref_lost), b["abundance"]["n_estimable"]["gene_background"],
             _owned(ref_lost), _owned(added), _owned(whole_lost), _owned(failed))),
         # the README: the panel's abundance-only contrasts, and the whole-index answer, against
