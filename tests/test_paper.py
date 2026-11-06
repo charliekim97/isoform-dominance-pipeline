@@ -115,6 +115,17 @@ def test_the_bibliography_holds_no_note_meant_for_the_author():
         assert word.lower() not in bib.lower(), word
 
 
+
+def test_the_readme_gives_the_studys_status_as_the_bibliography_does():
+    """The README's "Citation" section names the study that uses 2.1.1 as paper.bib does:
+    accepted at Nature Communications, not a manuscript under revision."""
+    readme = text_of(ROOT / "README.md")
+    section = readme[readme.index("\n## Citation\n"):readme.index("\n## License\n")]
+    assert "accepted at Nature Communications" in section
+    assert "journal = {Nature Communications}" in text_of(BIB)
+    for word in ("under revision", "manuscript"):
+        assert word not in section.lower(), word
+
 @pytest.mark.parametrize("change", ["a word too many", "a key gone", "a heading renamed",
                                     "a section moved"])
 def test_each_check_can_fail(change):

@@ -637,11 +637,11 @@ example/                 config + sample maps
 ## Citation
 
 **Version provenance.** Version **2.1.1** was used for the LEPR isoform quantification and
-aggregation in a leptin-receptor/LRP1 choroid-plexus manuscript (under revision), and is
+aggregation in a leptin-receptor/LRP1 choroid-plexus study, accepted at Nature Communications, and is
 archived at [10.5281/zenodo.20738150](https://doi.org/10.5281/zenodo.20738150). Releasing a new
 version does **not** alter that record: Zenodo mints a separate version DOI and leaves the old
 one in place, and the `v2.1.1` tag and release are left untouched by policy — not because they
-are technically immutable, but because the manuscript under revision cites them. The `extract`
+are technically immutable, but because that study cites them. The `extract`
 aggregation behaviour those results rest on — transcript-to-group mapping and per-donor TPM
 summation — is unchanged through 2.11.0, and the bundled self-test still reproduces the same
 reference numbers. 2.4.0 adds two refusals to `extract` where 2.3.0 wrote a table: a cohort
