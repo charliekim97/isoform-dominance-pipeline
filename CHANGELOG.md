@@ -2,7 +2,10 @@
 
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses semantic
-versioning.
+versioning, but for two minor versions that changed what the exit status of `identifiability`
+means: 2.2.0 (exit 2 for `not_identifiable` and 3 for `weakly_identifiable`, where 2.1.1 exited
+2 when a compared class had no unique k-mer) and 2.3.0 (the exit status answers `--min-log2fc`,
+which that entry calls **Breaking**).
 
 > **Provenance note.** Version 2.1.1 is the version cited for LEPR isoform
 > quantification and aggregation in the leptin-receptor/LRP1 choroid-plexus study, and
@@ -82,6 +85,10 @@ versioning.
   without the failure. 1,583 words to 1,585.
 
 ### Corrections to earlier entries
+- **2.2.0 and 2.3.0 under semantic versioning.** Each changed what the exit status of
+  `identifiability` means, and each was a minor version, where semantic versioning asks for a
+  major one; 2.3.0's entry calls itself "A minor version, not a patch". The header said only
+  that the project uses semantic versioning, and now names the two.
 - **2.2.0, the unique-k-mer proxy:** "a class whose only unique sequence is a splice junction
   passed while being practically unmeasurable". In the case its regression test builds, the
   whole system resolves the class's contrast at |log2FC| 0.5 at the default design (above,
