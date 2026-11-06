@@ -44,6 +44,10 @@ versioning.
   Nothing in `src/` changes.
 
 ### Changed
+- **The README on the study that cites 2.1.1** (its "Citation" section, and `docs/index.md`,
+  which is written from it). It called the study a manuscript under revision; the study is
+  accepted at Nature Communications, as `paper.md` and `paper.bib` say. `tests/test_paper.py`
+  holds the README to the bibliography's word for it.
 - **The gene-background NOTE when the abundance estimand decides** (`cli.py`). After SMN2's
   failure it now gives D1's result: with SMN1's and SMN2's copies on alternate loci left out of
   the index, SMN2's summed TPM met its predicted SE, in a simulation that draws no fragment from
