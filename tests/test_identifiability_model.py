@@ -4,7 +4,9 @@ Every test is offline and deterministic: sequences are supplied explicitly and
 ``background_gene_transcripts`` therefore never reaches for the network.
 """
 import gzip
+import pathlib
 import random
+import re
 
 import numpy as np
 import pytest
@@ -20,6 +22,15 @@ def _seq(n, seed):
 SHARED = _seq(1200, 1)
 EXON_A = _seq(700, 2)
 EXON_B = _seq(900, 3)
+
+
+README = pathlib.Path(__file__).resolve().parents[1] / "README.md"
+
+
+def _readme():
+    """The README's text with its block-quote marks taken out and its white space collapsed."""
+    text = re.sub(r"^> ?", "", README.read_text(encoding="utf-8"), flags=re.M)
+    return " ".join(text.split())
 
 
 def _cfg():
@@ -83,11 +94,65 @@ def test_background_sequences_remove_false_uniqueness():
     # only the k-mers spanning the shared/exon junction remain unique
     assert withbg["groups"]["short"]["n_unique_kmers"] < 31
     assert withbg["background"]["n_background_transcripts"] == 1
-    # structurally still estimable, but now starved of informative fragments --
-    # which is exactly the case a bare "has a unique k-mer" gate waves through
+    # structurally still estimable, and the read model says how few fragments its unique
+    # sequence draws; whether the class is resolved is the whole system's call (next test)
     assert withbg["groups"]["short"]["estimable"] is True
     assert withbg["verdict"] == "weakly_identifiable"
     assert any("informative reads" in r for r in withbg["reasons"])
+
+
+def test_the_whole_system_resolves_what_the_unique_reads_alone_cannot():
+    """The class of the test above draws about 35 informative fragments, and the verdict says
+    so; through the shared exon and body the whole system still resolves |log2FC| 0.5 at the
+    default design, where an estimator that counts only the unique reads would need more.
+    Owning unique k-mers is no measure of precision in this direction either (README, "Why
+    not just count unique k-mers?")."""
+    res = I.analyze(_cfg(), k=31, sequences=_seqs(),
+                    background_sequences={"RI1": _seq(300, 9) + EXON_A},
+                    background_gene_transcripts=False, min_log2fc=0.5)
+    assert res["groups"]["short"]["n_unique_kmers"] < 31
+    assert round(res["groups"]["short"]["expected_informative_reads"]) == 35
+    assert res["verdict"] == "weakly_identifiable"
+    assert res["reasons"] == ["expected informative reads 35 below 50"]
+    assert res["effect_resolvable"] is True
+    assert res["unique_read_counting_se"]["min_resolvable_log2fc"] > 0.5
+    assert ("a class whose only unique sequence is the ~30 k-mers spanning one splice junction "
+            "draws about 35 informative fragments, and the whole system, through what it "
+            "shares, still resolves 0.5 at the default design") in _readme()
+
+
+def test_unique_kmers_on_both_classes_do_not_make_their_contrast_resolvable():
+    """Two classes that share all but a fifty-base last exon both own unique k-mers, so the
+    v2.1 gate passes them, and at the default design their contrast is not resolvable at any
+    effect size: each class draws about ten informative fragments and the figure is past the
+    linearisation limit.  At TPM 200 the same contrast resolves 0.5.  This is the case
+    README.md and paper.md give of the proxy passing what the design cannot resolve."""
+    body = _seq(5000, 1)
+    seqs = {"A1": body + _seq(50, 2), "B1": body + _seq(50, 3)}
+    cfg = {"gene": "TEST", "groups": {"a": ["A1"], "b": ["B1"]},
+           "primary_comparison": ["a", "b"]}
+    low = I.analyze(cfg, k=31, sequences=seqs, background_gene_transcripts=False,
+                    min_log2fc=0.5)
+    assert all(low["groups"][g]["n_unique_kmers"] > 0 for g in ("a", "b"))
+    assert all(round(low["groups"][g]["expected_informative_reads"]) == 10 for g in ("a", "b"))
+    assert low["contrast"]["estimable"] is True
+    assert low["contrast"]["beyond_linear"] is True
+    assert low["effect_resolvable"] is False
+    # past the limit the figure resolves no effect size, however large
+    assert I.analyze(cfg, k=31, sequences=seqs, background_gene_transcripts=False,
+                     min_log2fc=5.0)["effect_resolvable"] is False
+    # inside the linearisation limit and still short of 0.5: the threshold decides alone
+    mid = I.analyze(cfg, k=31, sequences=seqs, background_gene_transcripts=False, tpm=30,
+                    min_log2fc=0.5)
+    assert mid["contrast"]["beyond_linear"] is False
+    assert mid["effect_resolvable"] is False
+    high = I.analyze(cfg, k=31, sequences=seqs, background_gene_transcripts=False, tpm=200,
+                     min_log2fc=0.5)
+    assert high["effect_resolvable"] is True
+    assert (I.DEFAULT_DEPTH, I.DEFAULT_TPM) == (30_000_000, 10.0)
+    assert ("Two classes that share all but a 50-base last exon both *pass*, yet at the default "
+            "design (30M fragments, TPM 10) each draws about ten informative fragments and their "
+            "contrast is not resolvable at any effect size; at TPM 200 it resolves 0.5") in _readme()
 
 
 @pytest.mark.parametrize("gz", [False, True])

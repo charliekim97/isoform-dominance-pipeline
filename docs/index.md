@@ -164,7 +164,8 @@ Salmon's error took the 5' direction for 35–36 of the 39 genes above that rati
 direction for 30–32, where at uniform coverage the 5' direction held for 19 of 39 and the 3' for
 20. kallisto, on the same reads, took the 5' direction for 34–36 and the 3' for 29–33, but it has
 no bias model and leaned to the longer class at uniform coverage too, 32 of 39 (the 5' direction
-7): its 3' figures are no evidence of the skew, and only the 5' ones turn toward it. No other
+7): its 3' figures are no evidence of the skew, and only the 5' ones turn toward it. Salmon ran
+with `-l A` and none of its bias corrections (`--seqBias`, `--gcBias`, `--posBias`). No other
 quantifier, gene panel or form of skew was tested, and below that ratio nothing was measured, so
 nothing is said.
 
@@ -217,13 +218,18 @@ reported in the output and in the `--json` report (`verdict`, with `gene_total` 
 `null`, never `NaN` or `Infinity`, and `estimable` or `finite_se` beside it says why.
 
 > **Why not just count unique k-mers?** Because that proxy — used by this package up to
-> v2.1.1 — is wrong in both directions. A class whose only unique sequence is the ~30 k-mers
-> spanning one splice junction *passes* while yielding a handful of usable fragments. A class nested inside another owns no unique k-mer at all and *fails*, yet its
+> v2.1.1 — is wrong in both directions. Two classes that share all but a 50-base last exon
+> both *pass*, yet at the default design (30M fragments, TPM 10) each draws about ten informative
+> fragments and their contrast is not resolvable at any effect size; at TPM 200 it resolves 0.5.
+> Owning a unique k-mer says nothing about precision either way: a class whose only unique
+> sequence is the ~30 k-mers spanning one splice junction draws about 35 informative fragments,
+> and the whole system, through what it shares, still resolves 0.5 at the default design. A
+> class nested inside another owns no unique k-mer at all and *fails*, yet its
 > total is still an estimable function of the system: the containing class is pinned by its own
 > unique sequence, so the nested class's indicator lies in the row space. That is an algebraic
 > fact about the design matrix — **not** a claim that "the EM will work it out", since an EM
-> returns numbers for a non-identifiable model just as readily. Both cases are regression-tested
-> in `tests/test_identifiability_model.py`.
+> returns numbers for a non-identifiable model just as readily. All three cases are
+> regression-tested in `tests/test_identifiability_model.py`.
 
 **What it checks, in three layers** — all from sequence and the stated design, before any read is
 quantified (the read model depends on the read length, paired or single ends and the
@@ -543,15 +549,22 @@ discovery you should use the established tools — this one does **not** replace
 **On identifiability specifically**, this package builds on existing work rather than
 claiming the idea:
 
+- **Estimable functions** of a linear model (Searle 1971, *Linear Models*) — the row-space
+  condition `identifiability` checks is the textbook one, and is not claimed here.
 - **Hiller et al. 2009** ([doi:10.1093/bioinformatics/btp544](https://doi.org/10.1093/bioinformatics/btp544))
   — criteria under which isoform abundances are uniquely determined by RNA-seq observations.
 - **Ferrer-Bonsoms et al. 2022** ([doi:10.1093/bioinformatics/btab873](https://doi.org/10.1093/bioinformatics/btab873))
   — a read- and fragment-length-aware identifiability criterion, applied genome wide.
 - **terminus** ([doi:10.1093/bioinformatics/btaa448](https://doi.org/10.1093/bioinformatics/btaa448))
   — groups transcripts *post hoc, from the data*, by inferential uncertainty.
+- **TreeTerminus** ([doi:10.1016/j.isci.2023.106961](https://doi.org/10.1016/j.isci.2023.106961))
+  and **mmcollapse** ([doi:10.1093/bioinformatics/btt624](https://doi.org/10.1093/bioinformatics/btt624))
+  — group transcripts after quantification too: into a tree by inferential uncertainty, and by
+  the posterior correlation of their expression.
 
-The first two address **transcript-level** identifiability of the full deconvolution;
-`terminus` chooses its groups after seeing the data. Neither answers the question a biologist
+Hiller et al. and Ferrer-Bonsoms et al. address **transcript-level** identifiability of the full
+deconvolution; terminus, TreeTerminus and mmcollapse choose their groups after seeing the data.
+None answers the question a biologist
 arrives with: *is the contrast between two classes I defined on biological grounds estimable?*
 
 Two different questions hide under the same word, and keeping them apart is the whole reason

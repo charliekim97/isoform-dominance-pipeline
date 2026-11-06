@@ -2,7 +2,10 @@
 
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses semantic
-versioning.
+versioning, but for two minor versions that changed what the exit status of `identifiability`
+means: 2.2.0 (exit 2 for `not_identifiable` and 3 for `weakly_identifiable`, where 2.1.1 exited
+2 when a compared class had no unique k-mer) and 2.3.0 (the exit status answers `--min-log2fc`,
+which that entry calls **Breaking**).
 
 > **Provenance note.** Version 2.1.1 is the version cited for LEPR isoform
 > quantification and aggregation in the leptin-receptor/LRP1 choroid-plexus study, and
@@ -44,6 +47,32 @@ versioning.
   Nothing in `src/` changes.
 
 ### Changed
+- **What a unique k-mer is said to show** (README, "Why not just count unique k-mers?";
+  `paper.md`, "Statement of need"; the docstrings of `identifiability._verdict` and of
+  `analyze`'s `primary_distinguishable`). They said that a class whose only unique sequence is
+  the ~30 k-mers spanning one splice junction passes while yielding a handful of usable
+  fragments, practically hopeless. In the regression test's case the class draws about 35 such
+  fragments, and the whole system resolves an effect of 0.5 at the default design; only the
+  verdict's read-count rule flags it. They now give the case the proxy passes and the design
+  cannot resolve: two classes that share all but a fifty-base last exon, whose contrast at the
+  default design is past the linearisation limit. `tests/test_identifiability_model.py` holds
+  both. The paper's count stays at 1,585 words.
+- **`paper.md` on the effect size's interval.** It said every effect size carries a donor
+  bootstrap interval. From five donors or fewer the interval is the donors' range, as the
+  README and `stats` say (`fold_CI_method`); the self-test's GSE228458 has five. 1,585 words to
+  1,588.
+- **Related work** (`paper.md`, "State of the field" and "Statement of need"; README, "How
+  this relates to existing tools"). Both now cite TreeTerminus (Singh, Love and Patro 2023) and
+  mmcollapse (Turro, Astle and Tavaré 2014), which, like terminus, group transcripts after
+  quantification, from the data; and a text on the estimable functions of a linear model
+  (Searle 1971) for the condition `identifiability` checks. The research impact statement drops
+  its second sentence, which said only that its evidence is concrete, to stay within the words
+  JOSS allows once the AI usage disclosure is restored. 1,588 words to 1,585.
+- **What the simulation's Salmon ran with** (README, the paragraph on `effective length`;
+  `validation/README.md`, "What these outputs do not cover"). Salmon ran with `-l A` and none of
+  its bias corrections (`--seqBias`, `--gcBias`, `--posBias`), as `validation/data/README.md`
+  gives its command. The two now say so beside the skew-direction figures and the outputs'
+  limits, where the README set kallisto's lack of a bias model beside Salmon's figures.
 - **The README on the study that cites 2.1.1** (its "Citation" section, and `docs/index.md`,
   which is written from it). It called the study a manuscript under revision; the study is
   accepted at Nature Communications, as `paper.md` and `paper.bib` say. `tests/test_paper.py`
@@ -61,6 +90,14 @@ versioning.
   without the failure. 1,583 words to 1,585.
 
 ### Corrections to earlier entries
+- **2.2.0 and 2.3.0 under semantic versioning.** Each changed what the exit status of
+  `identifiability` means, and each was a minor version, where semantic versioning asks for a
+  major one; 2.3.0's entry calls itself "A minor version, not a patch". The header said only
+  that the project uses semantic versioning, and now names the two.
+- **2.2.0, the unique-k-mer proxy:** "a class whose only unique sequence is a splice junction
+  passed while being practically unmeasurable". In the case its regression test builds, the
+  whole system resolves the class's contrast at |log2FC| 0.5 at the default design (above,
+  "What a unique k-mer is said to show").
 - **Where the 3.0 gate's run put SMN2's reads** (`validation/README.md`, "The 3.0 gate's
   result"). The README said SMN1's transcripts, from which no fragment was drawn, were given
   5.7% as many reads as the 121,779 fragments drawn from SMN2. Of those 6,967 `NumReads`, 6,829

@@ -1548,9 +1548,10 @@ def _verdict(entry, tau, min_reads=None, min_log2fc=None):
     from two independent directions -- an ill-conditioned contrast (a large conditioning
     factor, which is a standard-deviation factor and not a variance) and simple lack of
     informative fragments.  The
-    second is why "has at least one unique k-mer" is not a usable gate: a class whose
-    uniqueness is thirty junction k-mers is structurally estimable and practically
-    hopeless.
+    second is why "has at least one unique k-mer" is not a usable gate: owning unique
+    k-mers says nothing about how many fragments they draw.  Two classes that share all but
+    a fifty-base last exon both own some, and at the default design their contrast is not
+    resolvable; ``tests/test_identifiability_model.py`` holds that case.
     """
     reasons = []
     if not entry.get("estimable"):
@@ -1905,9 +1906,8 @@ def analyze(config, k=DEFAULT_K, sequences=None, *,
         key removed in 3.0), and -- for callers written against v2.1 --
         ``primary_distinguishable``.  Note that ``verdict`` supersedes
         ``primary_distinguishable``: a class with no unique k-mer of its own is still
-        estimable when a class it is nested inside has unique sequence, and a class
-        whose only unique sequence is a handful of junction k-mers is structurally
-        estimable but practically not.
+        estimable when a class it is nested inside has unique sequence, and classes that
+        own unique k-mers can still have a contrast the design does not resolve.
 
         ``estimands`` holds both estimands of :data:`ESTIMANDS`, each as ``{definition,
         precision_checked_in_simulation, precision_check, groups, contrast,

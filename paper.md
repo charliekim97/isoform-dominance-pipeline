@@ -35,7 +35,7 @@ against the rest of the gene or a background FASTA; how many fragments would cov
 stated design, and hence the counting SE of the class ratio; and whether each class total,
 and their contrast, is an *estimable* function of the fragment-class system. Quantification
 is read from Salmon `quant.sf` files [@patro2017] per donor; the contrast is tested with a
-donor-level Wilcoxon signed-rank test [@wilcoxon1945], per cohort with a bootstrap interval
+donor-level Wilcoxon signed-rank test [@wilcoxon1945], per cohort with a fold-change interval
 and the finest p-value the design could resolve, and combined across cohorts. A bundled
 self-test reproduces the reference result offline in seconds.
 
@@ -46,15 +46,15 @@ the focused comparison done correctly and reproducibly rather than a genome-wide
 
 Doing it by hand has an often-unstated pitfall. A short-read quantifier apportions fragments
 among transcripts by solving a linear inverse problem, and a transcript's abundance — or a
-group's — is recoverable only when it is an estimable function of that system. An EM
+group's — is recoverable only when it is an estimable function of that system [@searle1971]. An EM
 quantifier returns abundances for a non-identifiable model as readily as for an identifiable
 one, stopping somewhere on the ridge where the likelihood is flat. A fold-change between two
 classes the data cannot separate is then an artefact of tie-breaking, indistinguishable in
 the output from a real one.
 
 The obvious proxy — "does each class own a unique k-mer?", used up to v2.1.1 — is wrong in
-both directions. A class whose only unique sequence is the thirty k-mers spanning one splice
-junction passes while yielding a handful of informative fragments; a class nested inside
+both directions. Two classes that share all but a fifty-base last exon both pass, yet at
+the default design their contrast is not resolvable; a class nested inside
 another owns no unique k-mer, yet its total is estimable, because the containing class is
 pinned by its own unique sequence. Both failure modes are regression tests here.
 
@@ -77,8 +77,8 @@ determined by RNA-seq observations; @ferrerbonsoms2022 made them read- and
 fragment-length-aware and applied them genome wide. @zheng2022 found that for 20-47% of
 Human Body Map transcripts the error from nonidentifiability is large enough that "the
 ranking of expression between the transcript and other isoforms from the same gene cannot be
-determined" — the comparison this package is asked to certify. `terminus` [@sarkar2020]
-groups transcripts *post hoc, from the data*, so analysis proceeds at the resolution the
+determined" — the comparison this package is asked to certify. `terminus` [@sarkar2020],
+`TreeTerminus` [@singh2023] and `mmcollapse` [@turro2014] group transcripts *post hoc, from the data*, so analysis proceeds at the resolution the
 data support.
 
 **The gap.** Those address transcript-level identifiability, or the resolution the data
@@ -145,7 +145,7 @@ Cohorts are combined by a weighted Stouffer combination [@stouffer1949; @liptak1
 per-cohort exact tests, the default, and by stratified signed-rank statistics with van
 Elteren's weights [@vanelteren1960], beside the donor-pooled test, which lets depth or
 tissue handling drive the result. Every test carries the finest p-value its design could
-resolve, and every effect size a donor bootstrap interval.
+resolve, and every effect size a donor-level interval, bootstrapped above five donors.
 
 A run can be pinned to an annotation release, its sequence saved and replayed offline.
 Dependencies are the Ensembl REST API [@yates2015], NumPy [@harris2020], SciPy
@@ -155,7 +155,6 @@ Dependencies are the Ensembl REST API [@yates2015], NumPy [@harris2020], SciPy
 
 `isoform-dominance` is the generalised, reusable implementation of an isoform-usage
 analysis developed for a study of leptin-receptor isoforms in the human choroid plexus.
-The evidence offered here is concrete rather than aspirational.
 
 *Use in research.* Version 2.1.1 performs the LEPR quantification and aggregation in
 @yang2026, cited there in the Code Availability statement and the reference list, and

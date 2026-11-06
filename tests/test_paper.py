@@ -27,12 +27,12 @@ AI_USAGE = "AI usage disclosure"
 LIMIT_WITHOUT_AI_USAGE, LIMIT = 1600, 1750
 #: the fewest words JOSS asks for
 FLOOR = 750
-#: the 23 references the paper cites
+#: the 26 references the paper cites
 KEYS = {"anders2012", "ferrerbonsoms2022", "frankish2021", "gilis2022", "gse137619",
         "gse228458", "harris2020", "hiller2009", "hunter2007", "liptak1958", "nowicka2016",
-        "patro2017", "sarkar2020", "soneson2016", "stouffer1949", "vanelteren1960",
-        "virtanen2020", "vittingseerup2019", "wilcoxon1945", "yang2026", "yates2015",
-        "zheng2022", "zhu2019"}
+        "patro2017", "sarkar2020", "searle1971", "singh2023", "soneson2016",
+        "stouffer1949", "turro2014", "vanelteren1960", "virtanen2020", "vittingseerup2019",
+        "wilcoxon1945", "yang2026", "yates2015", "zheng2022", "zhu2019"}
 
 
 def text_of(path=PAPER):
