@@ -54,6 +54,10 @@ versioning.
   cannot resolve: two classes that share all but a fifty-base last exon, whose contrast at the
   default design is past the linearisation limit. `tests/test_identifiability_model.py` holds
   both. The paper's count stays at 1,585 words.
+- **`paper.md` on the effect size's interval.** It said every effect size carries a donor
+  bootstrap interval. From five donors or fewer the interval is the donors' range, as the
+  README and `stats` say (`fold_CI_method`); the self-test's GSE228458 has five. 1,585 words to
+  1,588.
 - **The README on the study that cites 2.1.1** (its "Citation" section, and `docs/index.md`,
   which is written from it). It called the study a manuscript under revision; the study is
   accepted at Nature Communications, as `paper.md` and `paper.bib` say. `tests/test_paper.py`

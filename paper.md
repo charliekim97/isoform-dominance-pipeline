@@ -35,7 +35,7 @@ against the rest of the gene or a background FASTA; how many fragments would cov
 stated design, and hence the counting SE of the class ratio; and whether each class total,
 and their contrast, is an *estimable* function of the fragment-class system. Quantification
 is read from Salmon `quant.sf` files [@patro2017] per donor; the contrast is tested with a
-donor-level Wilcoxon signed-rank test [@wilcoxon1945], per cohort with a bootstrap interval
+donor-level Wilcoxon signed-rank test [@wilcoxon1945], per cohort with a fold-change interval
 and the finest p-value the design could resolve, and combined across cohorts. A bundled
 self-test reproduces the reference result offline in seconds.
 
@@ -145,7 +145,7 @@ Cohorts are combined by a weighted Stouffer combination [@stouffer1949; @liptak1
 per-cohort exact tests, the default, and by stratified signed-rank statistics with van
 Elteren's weights [@vanelteren1960], beside the donor-pooled test, which lets depth or
 tissue handling drive the result. Every test carries the finest p-value its design could
-resolve, and every effect size a donor bootstrap interval.
+resolve, and every effect size a donor-level interval, bootstrapped above five donors.
 
 A run can be pinned to an annotation release, its sequence saved and replayed offline.
 Dependencies are the Ensembl REST API [@yates2015], NumPy [@harris2020], SciPy
