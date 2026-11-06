@@ -81,7 +81,8 @@ SKEWED = THREE + FIVE
 #: the design the simulation predicted at: run_simulation's defaults
 DESIGN = {"tpm": 10.0, "depth": 30e6, "mean_efflen": 1500.0}
 
-#: the default --tau of 2.3.0, withdrawn: the conditioning bin edge of the table
+#: the default --tau, which from 2.3.0 grades the verdict only without --min-log2fc: the
+#: conditioning bin edge of the table
 TAU = 10.0
 
 #: the 1.23-fold ratio the direction was scored at, and the band the CLI states it in
@@ -845,8 +846,9 @@ def render(s):
     w("")
     w("Old gate: the v2.1.1 rule, a strand-aware 31-mer of each class that no other "
       "configured class has. Structure: the class contrast estimable at the simulated design. "
-      "Conditioning: the contrast's conditioning factor against %g, the default `--tau` "
-      "withdrawn in 2.3.0. RMSE and excess at uniform coverage (excess = RMSE over the "
+      "Conditioning: the contrast's conditioning factor against %g, the default `--tau`, "
+      "which from 2.3.0 grades the verdict only without `--min-log2fc`, and never the exit "
+      "status. RMSE and excess at uniform coverage (excess = RMSE over the "
       "Poisson counting floor of the drawn class sizes); worst |bias|: per gene, the largest "
       "of the seven Salmon designs. Medians over the genes of a row." % TAU)
     w("")

@@ -137,7 +137,7 @@ here, whether the surrogate predicts what a quantifier recovers is an empirical 
 this paper does not answer. The reported figure is the smallest |log2 fold change| a 95%
 interval excludes zero for, from the delta-method SE of the log class ratio under the
 Poisson-weighted GLS covariance; the effect size the user states, not the verdict, sets the
-exit status. A conditioning threshold, `--tau`, was withdrawn rather than calibrated. Past
+exit status. An uncalibrated conditioning threshold, `--tau`, affects only the verdict. Past
 `LINEARISATION_LIMIT`, a relative standard error, a figure is flagged and counts as not
 resolved at any effect size.
 

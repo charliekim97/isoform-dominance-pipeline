@@ -98,6 +98,14 @@ which that entry calls **Breaking**).
   the self-test are exact; the paper calls them per-cohort Wilcoxon tests. No figure changes,
   and the paper stays at 1,585 words. `tests/test_stated_methods.py` holds the README's
   sentence to the dispatch at n = 13, 14, 50 and 51 and to the self-test.
+- **What `paper.md` says of `--tau`** ("Software design"; and the caption of
+  `validation/README.md`'s four rows of issue #2, which `validation/summarize.py` writes). The
+  paper said the conditioning threshold "was withdrawn rather than calibrated", and the caption
+  called 10 "the default `--tau` withdrawn in 2.3.0". It was not withdrawn: from 2.3.0 it grades
+  the verdict when no `--min-log2fc` is given, as that release's entry says, and it never sets
+  the exit status. The paper now says it "affects only the verdict", in as many words, and the
+  caption says when it grades it. `tests/test_stated_methods.py` runs the README's example
+  without its effect size at two values of `--tau`: the verdict moves, the exit status does not.
 
 ### Corrections to earlier entries
 - **2.2.0, statistics:** "weighted Stouffer over the per-cohort exact tests". A per-cohort p

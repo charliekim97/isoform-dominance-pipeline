@@ -6,14 +6,21 @@ approximation otherwise.  Through 2.11.0 the README, the paper and the docstring
 ``stats`` called its inputs the per-cohort *exact* tests (2.4.1's changelog corrected the
 same sentence in 2.3.0's entry).  These tests hold the sentence that replaced it to the
 dispatch at its edges and to the self-test, and keep the old one out.
+
+``--tau`` was never withdrawn: from 2.3.0 it grades the verdict when no ``--min-log2fc`` is
+given, and never sets the exit status.  ``paper.md`` said it "was withdrawn rather than
+calibrated", and ``validation/README.md`` called 10 "the default `--tau` withdrawn in
+2.3.0".  The README's example, run without its effect size, shows what it does.
 """
+import json
 import pathlib
 import re
 
 import numpy as np
 import pytest
 
-from isoform_dominance import _selftest, stats
+from isoform_dominance import _selftest, cli, stats
+from test_readme_example import _identifiability_block, offline  # noqa: F401
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -83,3 +90,31 @@ def test_no_text_calls_stouffers_inputs_exact(path):
     text = flat((ROOT / path).read_text(encoding="utf-8"))
     for old in OLD:
         assert old not in text, old
+
+
+#: the paper's sentence on --tau
+TAU_SENTENCE = "An uncalibrated conditioning threshold, `--tau`, affects only the verdict."
+
+
+def _report(argv, capsys):
+    code = cli.main(argv + ["--json"])
+    return code, json.loads(capsys.readouterr().out)["verdict"]
+
+
+@pytest.mark.usefixtures("offline")
+def test_tau_moves_the_verdict_only_without_an_effect_size(monkeypatch, capsys):
+    assert TAU_SENTENCE in flat((ROOT / "paper.md").read_text(encoding="utf-8"))
+    argv, _, _ = _identifiability_block()
+    monkeypatch.chdir(ROOT)
+    i = argv.index("--min-log2fc")
+    bare = argv[:i] + argv[i + 2:]
+    assert _report(bare + ["--tau", "1e-12"], capsys) == (0, "weakly_identifiable")
+    assert _report(bare + ["--tau", "1e12"], capsys) == (0, "identifiable")
+    assert _report(argv + ["--tau", "1e-12"], capsys) == _report(argv + ["--tau", "1e12"], capsys)
+
+
+@pytest.mark.parametrize("path", ["paper.md", "validation/README.md", "validation/summarize.py",
+                                  "README.md"])
+def test_tau_is_not_said_to_be_withdrawn(path):
+    text = flat((ROOT / path).read_text(encoding="utf-8"))
+    assert not re.search(r"tau[^.]{0,60}withdrawn|withdrawn[^.]{0,60}tau", text, re.I)
