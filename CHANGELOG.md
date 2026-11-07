@@ -114,6 +114,22 @@ which that entry calls **Breaking**).
   README now says so; the record is left as it is. `tests/test_stated_methods.py` holds the
   paragraph and the CLI's list of subcommands.
 
+### Fixed
+- **A contrast estimable in a poorly determined direction got none of its variance**
+  (`identifiability.gls_covariance`). The GLS covariance was `pinv(A'WA, rcond=1e-10)`, which
+  cuts at 1e-10 of the largest eigenvalue, so it dropped every direction whose singular value
+  in the weighted system is below 1e-5 of the largest; `estimability`, which decides whether
+  a figure exists, keeps directions down to about 1e-10. A contrast in that band was
+  estimable and its relative SE read near zero, so `--min-log2fc` called it resolved: with
+  `A = [[1, 1], [1, 1 + 1e-7]]` and `theta = [1, 2]`, 3e-8 where the GLS gives 5e7. The
+  covariance now keeps every direction `estimability` keeps, from the SVD of the weighted
+  system when `pinv` would drop one. No system of `validation/` is in that band, against the
+  gene's own transcripts or against Ensembl 116's whole `cdna.all`, and none of the saved
+  examples is, so every figure, stored row and pinned report is unchanged, bit for bit. The
+  margin is thin: the smallest kept direction is at 3.3e-5 of the largest for DMD, 4.9e-5 for
+  NDUFS1 against the whole FASTA, so a larger system could have crossed.
+  `tests/test_gls_precision.py` holds both the band and the unchanged case.
+
 ### Corrections to earlier entries
 - **2.2.0, statistics:** "weighted Stouffer over the per-cohort exact tests". A per-cohort p
   is exact only at n ≤ 13 or, with neither a zero difference nor a tie, up to n = 50 (above,
