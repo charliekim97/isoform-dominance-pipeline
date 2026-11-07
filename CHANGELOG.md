@@ -129,6 +129,16 @@ which that entry calls **Breaking**).
   margin is thin: the smallest kept direction is at 3.3e-5 of the largest for DMD, 4.9e-5 for
   NDUFS1 against the whole FASTA, so a larger system could have crossed.
   `tests/test_gls_precision.py` holds both the band and the unchanged case.
+- **A contrast whose class totals are not estimable could still get a figure**
+  (`identifiability.analyze`, the contrast's `gls_relative_se`). The log ratio's delta-method
+  SE was computed when its gradient `c_a/a - c_b/b` was estimable at the plug-in. When the two
+  plug-in totals are equal -- two classes of one length at the flat plug-in -- the gradient is
+  a multiple of the difference, which can be estimable while neither total is, so the
+  contrast read a finite figure (1.29 in the test's case) for a ratio the system does not
+  determine. A figure now needs both class totals estimable, which is what identifies the
+  ratio whatever the true totals. The verdict and the exit status were right already (the
+  class figures are infinite), and no gene of `validation/`, saved example or stored row is
+  in that state. `tests/test_whole_index_rule.py` holds it.
 
 ### Corrections to earlier entries
 - **2.2.0, statistics:** "weighted Stouffer over the per-cohort exact tests". A per-cohort p

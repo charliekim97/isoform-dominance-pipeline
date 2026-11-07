@@ -1522,14 +1522,17 @@ def _estimand_report(name, A, svd, cov, theta, indicator, n_positions, pc, repor
         A, _coefficients(name, indicator[pc[0]] - indicator[pc[1]], n_positions), svd=svd)
     contrast["label"] = contrast_label
     # The figure is the delta-method SE of log(A/B), a quadratic form in its gradient
-    # c_a/a - c_b/b.  That is a standard error only when the gradient is estimable, which
-    # the difference c_a - c_b being estimable does not ensure: with class totals that are
-    # not, it read 0.87 where the system with more rows gave 3.06.
+    # c_a/a - c_b/b.  It is a standard error only when log(A/B) is identified whatever the
+    # true totals, which needs both class totals estimable.  The difference c_a - c_b being
+    # estimable does not ensure it (with class totals that are not, it read 0.87 where the
+    # system with more rows gave 3.06), and neither does the gradient being estimable at the
+    # plug-in, which it is whenever a == b -- two classes of one length at a flat plug-in:
+    # through 2.11.0 that case read 1.29 with neither total estimable.
     a_tot = float(ca @ theta)
     b_tot = float(cb @ theta)
     raw = float("inf")
-    if contrast["estimable"] and a_tot and b_tot and estimability(
-            A, ca / a_tot - cb / b_tot, svd=svd)["estimable"]:
+    if (contrast["estimable"] and groups[pc[0]]["estimable"] and groups[pc[1]]["estimable"]
+            and a_tot and b_tot):
         raw = log_ratio_se(cov, ca, cb, theta)
     contrast["gls_relative_se"] = raw
     # estimable and still no finite figure: the class totals are not, or are zero.  With
