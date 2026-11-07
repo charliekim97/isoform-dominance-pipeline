@@ -474,10 +474,11 @@ of the changelog in GENCODE's FTP `_README.TXT`; the file description in the sam
 still calls the file reference-chromosome only. Ensembl's `cdna.all.fa.gz` holds both too
 (checked for release 116). A gene with a copy on such a region (SMN1, HLA-A) is in that
 FASTA twice, under its own name and another gene id. An index built from it lets the
-quantifier split the gene's reads with the copy — Salmon folds an identical copy into the
-reference transcript, but splits reads with a copy that differs, and kallisto splits them
-either way — and `extract` counts only the configured transcript ids, so the class totals
-are biased. In the simulation of `validation/`, which draws no fragment from SMN1, SMN2's class
+quantifier split the gene's reads with the copy — of identical sequences Salmon keeps only
+the first in the FASTA, which need not be the reference transcript (when it keeps the copy,
+the reads go under the copy's name and the configured transcript is not in `quant.sf`), and
+it splits reads with a copy that differs; kallisto splits them either way — and `extract`
+counts only the configured transcript ids, so the class totals are biased. In the simulation of `validation/`, which draws no fragment from SMN1, SMN2's class
 ratio of summed TPM missed its predicted SE with SMN1's and SMN2's copies on alternate loci in
 the index (|bias| 0.474 log2, SD 0.751, against 0.442) and met it with them left out (0.110 and
 0.352; D1). Build the index from reference-chromosome transcripts only. For GENCODE, keep

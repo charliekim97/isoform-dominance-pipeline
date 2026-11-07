@@ -114,6 +114,14 @@ which that entry calls **Breaking**).
   README now says so; the record is left as it is. `tests/test_stated_methods.py` holds the
   paragraph and the CLI's list of subcommands.
 
+- **What Salmon does with an identical copy** (README, "Index scope", and `docs/index.md`;
+  the `index_scope` module docstring). They said Salmon folds an identical copy into the
+  reference transcript. Of identical sequences Salmon keeps only the first in the FASTA, which
+  need not be the reference transcript, as the same README says of `duplicate_clusters.tsv`
+  further down: the simulation's index kept 36 such copies in place of transcripts of the 49
+  genes (`validation/README.md`, "The 3.0 gate's result"). When it keeps the copy, the reads go
+  under the copy's name and the configured transcript is not in `quant.sf`.
+
 ### Fixed
 - **A contrast estimable in a poorly determined direction got none of its variance**
   (`identifiability.gls_covariance`). The GLS covariance was `pinv(A'WA, rcond=1e-10)`, which
