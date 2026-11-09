@@ -8,9 +8,11 @@ reference-chromosome only.  Ensembl's ``cdna.all`` holds both too (checked for r
 
 A gene with a copy on such a region is in the FASTA twice, under its own name and another
 gene id.  An index built from that FASTA gives the quantifier a second target for the
-gene's reads: Salmon folds an identical copy into the reference transcript but splits
-reads with a copy that differs, and kallisto splits them either way.  ``extract`` sums only
-the transcript ids in the config, so the copy's share is missing from the class total.
+gene's reads.  Of identical sequences Salmon keeps only the first in the FASTA, which need
+not be the reference transcript: when it keeps the copy, the reads go under the copy's name
+and the configured transcript is not in ``quant.sf``.  It splits reads with a copy that
+differs, and kallisto splits them either way.  ``extract`` sums only the transcript ids in
+the config, so the copy's share is missing from the class total.
 
 A same-name gene on a reference chromosome is not such a copy: an index built from
 reference chromosomes keeps it.  An Ensembl header names the region, and such a gene is

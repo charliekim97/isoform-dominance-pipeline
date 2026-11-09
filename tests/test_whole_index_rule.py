@@ -371,3 +371,23 @@ def test_a_record_left_out_in_pass_1_still_takes_an_added_records_windows(tmp_pa
     shared = I.kmers(xown[10:70], K) & I.kmers(records["ENST90000000001"], K)
     assert here["background"]["windows_dropped"]["columns"]["ENST90000000001"] >= len(shared)
     _compare(here, exact)
+
+
+def test_equal_class_totals_give_no_figure_where_the_log_ratio_is_not_estimable(tmp_path):
+    """As the test above, with T1 and T2 of one length and the gene transcript holding each
+    twice: at the flat plug-in a == b, so the gradient c_a/a - c_b/b is a multiple of
+    c_a - c_b and estimable, while the class totals, and so log(A/B), are not.  Through
+    2.11.0 the contrast read a relative SE of 1.29 here."""
+    r = random.Random(10)
+    p1, p2 = _rand(r, 250), _rand(r, 250)
+    seqs = {"ENST00000000001": p1, "ENST00000000002": p2}
+    gene = {"ENST00000000011": p1 + p1 + p2 + p2}
+    records = {"ENST90000000001": _rand(r, 40) + p1[-(K - 1):] + p1[:K - 1] + _rand(r, 40),
+               "ENST90000000002": _rand(r, 40) + p1[-(K - 1):] + p2[:K - 1] + _rand(r, 40),
+               "ENST90000000003": _rand(r, 40) + p2[-(K - 1):] + p2[:K - 1] + _rand(r, 40)}
+    # M = 0: every record is left out, and the junction windows it holds go
+    _, _, here, exact = _small(tmp_path, seqs, gene, records, max_window_records=0)
+    assert not here["groups"]["A"]["estimable"] and not here["groups"]["B"]["estimable"]
+    assert here["contrast"]["estimable"]
+    assert here["contrast"]["gls_relative_se"] == float("inf")
+    _compare(here, exact)

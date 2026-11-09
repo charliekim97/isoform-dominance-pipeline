@@ -7,7 +7,9 @@ Three claims are load-bearing and each is checked against something outside the 
 * the delta-method figure for ``log2(A/B)`` matches simulation while the linearisation
   holds, and is flagged when it does not;
 * class coherence separates a group whose members resemble each other from one that
-  merely shares a terminal acceptor.
+  merely shares a terminal acceptor;
+* the covariance keeps every direction ``estimability`` keeps, so a contrast found
+  estimable carries the whole of its variance.
 """
 import math
 import random
@@ -148,3 +150,33 @@ def test_min_log2fc_replaces_tau_in_the_reasons(min_log2fc, expect):
     joined = " ".join(res["reasons"])
     assert expect in joined, joined
     assert res["design"]["min_log2fc"] == min_log2fc
+
+
+
+@pytest.mark.parametrize("eps", [1e-5, 1e-6, 1e-7])
+def test_a_direction_estimability_keeps_keeps_its_variance(eps):
+    """``pinv`` of A'WA cuts at 1e-10 of its largest eigenvalue, 1e-5 of A_w's largest
+    singular value, while estimability keeps directions down to about 1e-10.  Between the
+    two a contrast was estimable and got no variance: through 2.11.0 these read relative SEs
+    of 3e-6, 3e-7 and 3e-8, where the GLS gives 5e5, 5e6 and 5e7."""
+    A = np.array([[1.0, 1.0], [1.0, 1.0 + eps]])
+    theta = np.array([1.0, 2.0])
+    c = np.array([1.0, -1.0])
+    assert I.estimability(A, c)["estimable"]
+    rse = I.gls_relative_se(I.gls_covariance(A, theta), c, theta)
+    _, s, vt = np.linalg.svd(A / np.sqrt(A @ theta)[:, None])
+    exact = math.sqrt(float(np.sum((vt @ c) ** 2 / s ** 2))) / abs(float(c @ theta))
+    assert rse == pytest.approx(exact, rel=1e-6)
+    assert rse > 1e5
+
+
+def test_the_covariance_is_the_pseudo_inverse_wherever_that_drops_nothing():
+    """Where ``pinv`` keeps every direction of the rank -- every system of ``validation/`` and
+    of the saved examples -- the covariance is ``pinv(A'WA, rcond=1e-10)`` bit for bit, full
+    rank or not."""
+    rng = np.random.default_rng(3)
+    A = rng.random((12, 5))
+    theta = rng.random(5) + 0.5
+    for a, th in ((A, theta), (np.hstack([A, A[:, :1]]), np.append(theta, 1.0))):
+        aw = a / np.sqrt(a @ th)[:, None]
+        assert np.array_equal(I.gls_covariance(a, th), np.linalg.pinv(aw.T @ aw, rcond=1e-10))

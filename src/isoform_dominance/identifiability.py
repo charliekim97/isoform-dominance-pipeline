@@ -1101,6 +1101,19 @@ def gls_covariance(A, theta):
     analysis is trying to estimate, so a plug-in is unavoidable; :func:`analyze` passes a
     flat one from the stated design.  Real genes are skewed toward one isoform and the
     weights move with that, in a direction this function does not attempt to predict.
+
+    The pseudo-inverse keeps every direction :func:`estimability` keeps.  ``pinv`` of
+    ``A'WA`` cuts at 1e-10 of its largest eigenvalue, the square of the largest singular
+    value of ``A_w = W^(1/2) A``, so on its own it drops each direction whose singular value
+    is below 1e-5 of the largest, where :func:`estimability`'s rank keeps them down to about
+    1e-10.  A contrast found estimable in such a direction then got none of that
+    direction's variance: through 2.11.0, ``A = [[1, 1], [1, 1 + 1e-7]]`` with ``theta =
+    [1, 2]`` gave the contrast ``[1, -1]`` a relative SE of 3e-8, where the GLS gives 5e7.
+    When ``pinv`` keeps fewer directions than that rank, the covariance is built from the
+    SVD of ``A_w`` over the rank instead.  On the 49 genes of ``validation/``, against their
+    own transcripts or Ensembl 116's whole ``cdna.all``, and on the saved examples it never
+    does, so their figures are unchanged; but the smallest retained direction sits at 3.3e-5
+    of the largest there (DMD), close to the cut.
     """
     A = np.asarray(A, dtype=float)
     theta = np.asarray(theta, dtype=float)
@@ -1111,7 +1124,21 @@ def gls_covariance(A, theta):
     if not keep.any():
         return None
     aw = A[keep] / np.sqrt(mean[keep])[:, None]
-    return np.linalg.pinv(aw.T @ aw, rcond=1e-10)
+    gram = aw.T @ aw
+    cov = np.linalg.pinv(gram, rcond=1e-10)
+    rank = _rank(np.linalg.svd(A.T, compute_uv=False), A.shape)
+    s_gram = np.linalg.svd(gram, compute_uv=False)
+    if int((s_gram > 1e-10 * s_gram[0]).sum()) < rank:
+        _, s, vt = np.linalg.svd(aw, full_matrices=False)
+        cov = (vt[:rank].T / s[:rank] ** 2) @ vt[:rank]
+    return cov
+
+
+def _rank(s, shape, rcond=1e-10):
+    """The rank :func:`estimability` takes from the singular values ``s`` of a matrix of
+    ``shape``: those above ``max(shape) * s[0] * rcond``."""
+    tol = max(shape) * (s[0] if s.size else 0.0) * rcond
+    return int((s > tol).sum())
 
 
 def gls_relative_se(cov, c, theta):
@@ -1341,8 +1368,7 @@ def estimability(A, c, rcond=1e-10, *, svd=None):
     # declared estimable and its conditioning direction is simultaneously projected
     # away, reporting 0.0 (the best possible score) for the worst-conditioned case.
     u, s = svd if svd is not None else np.linalg.svd(A.T, full_matrices=False)[:2]
-    tol = max(A.shape) * (s[0] if s.size else 0.0) * rcond
-    r = int((s > tol).sum())
+    r = _rank(s, A.shape, rcond)
     if not np.any(c):
         return {"estimable": True, "residual": 0.0,
                 "conditioning_factor": 0.0, "rank": r}
@@ -1496,14 +1522,17 @@ def _estimand_report(name, A, svd, cov, theta, indicator, n_positions, pc, repor
         A, _coefficients(name, indicator[pc[0]] - indicator[pc[1]], n_positions), svd=svd)
     contrast["label"] = contrast_label
     # The figure is the delta-method SE of log(A/B), a quadratic form in its gradient
-    # c_a/a - c_b/b.  That is a standard error only when the gradient is estimable, which
-    # the difference c_a - c_b being estimable does not ensure: with class totals that are
-    # not, it read 0.87 where the system with more rows gave 3.06.
+    # c_a/a - c_b/b.  It is a standard error only when log(A/B) is identified whatever the
+    # true totals, which needs both class totals estimable.  The difference c_a - c_b being
+    # estimable does not ensure it (with class totals that are not, it read 0.87 where the
+    # system with more rows gave 3.06), and neither does the gradient being estimable at the
+    # plug-in, which it is whenever a == b -- two classes of one length at a flat plug-in:
+    # through 2.11.0 that case read 1.29 with neither total estimable.
     a_tot = float(ca @ theta)
     b_tot = float(cb @ theta)
     raw = float("inf")
-    if contrast["estimable"] and a_tot and b_tot and estimability(
-            A, ca / a_tot - cb / b_tot, svd=svd)["estimable"]:
+    if (contrast["estimable"] and groups[pc[0]]["estimable"] and groups[pc[1]]["estimable"]
+            and a_tot and b_tot):
         raw = log_ratio_se(cov, ca, cb, theta)
     contrast["gls_relative_se"] = raw
     # estimable and still no finite figure: the class totals are not, or are zero.  With

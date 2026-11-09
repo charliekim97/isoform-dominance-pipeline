@@ -114,6 +114,40 @@ which that entry calls **Breaking**).
   README now says so; the record is left as it is. `tests/test_stated_methods.py` holds the
   paragraph and the CLI's list of subcommands.
 
+- **What Salmon does with an identical copy** (README, "Index scope", and `docs/index.md`;
+  the `index_scope` module docstring). They said Salmon folds an identical copy into the
+  reference transcript. Of identical sequences Salmon keeps only the first in the FASTA, which
+  need not be the reference transcript, as the same README says of `duplicate_clusters.tsv`
+  further down: the simulation's index kept 36 such copies in place of transcripts of the 49
+  genes (`validation/README.md`, "The 3.0 gate's result"). When it keeps the copy, the reads go
+  under the copy's name and the configured transcript is not in `quant.sf`.
+
+### Fixed
+- **A contrast estimable in a poorly determined direction got none of its variance**
+  (`identifiability.gls_covariance`). The GLS covariance was `pinv(A'WA, rcond=1e-10)`, which
+  cuts at 1e-10 of the largest eigenvalue, so it dropped every direction whose singular value
+  in the weighted system is below 1e-5 of the largest; `estimability`, which decides whether
+  a figure exists, keeps directions down to about 1e-10. A contrast in that band was
+  estimable and its relative SE read near zero, so `--min-log2fc` called it resolved: with
+  `A = [[1, 1], [1, 1 + 1e-7]]` and `theta = [1, 2]`, 3e-8 where the GLS gives 5e7. The
+  covariance now keeps every direction `estimability` keeps, from the SVD of the weighted
+  system when `pinv` would drop one. No system of `validation/` is in that band, against the
+  gene's own transcripts or against Ensembl 116's whole `cdna.all`, and none of the saved
+  examples is, so every figure, stored row and pinned report is unchanged, bit for bit. The
+  margin is thin: the smallest kept direction is at 3.3e-5 of the largest for DMD, 4.9e-5 for
+  NDUFS1 against the whole FASTA, so a larger system could have crossed.
+  `tests/test_gls_precision.py` holds both the band and the unchanged case.
+- **A contrast whose class totals are not estimable could still get a figure**
+  (`identifiability.analyze`, the contrast's `gls_relative_se`). The log ratio's delta-method
+  SE was computed when its gradient `c_a/a - c_b/b` was estimable at the plug-in. When the two
+  plug-in totals are equal -- two classes of one length at the flat plug-in -- the gradient is
+  a multiple of the difference, which can be estimable while neither total is, so the
+  contrast read a finite figure (1.29 in the test's case) for a ratio the system does not
+  determine. A figure now needs both class totals estimable, which is what identifies the
+  ratio whatever the true totals. The verdict and the exit status were right already (the
+  class figures are infinite), and no gene of `validation/`, saved example or stored row is
+  in that state. `tests/test_whole_index_rule.py` holds it.
+
 ### Corrections to earlier entries
 - **2.2.0, statistics:** "weighted Stouffer over the per-cohort exact tests". A per-cohort p
   is exact only at n ≤ 13 or, with neither a zero difference nor a tie, up to n = 50 (above,
