@@ -104,8 +104,7 @@ def test_the_paper_cites_its_references():
 
 
 def test_the_bibliography_holds_no_note_meant_for_the_author():
-    """yang2026, the study that uses the package (the research impact statement), is accepted:
-    its entry names the journal, and no reminder to the author is left to print in the
+    """The entry for yang2026 names the journal, and no reminder to the author prints in the
     reference list."""
     bib = text_of(BIB)
     entry = bib[bib.index("@article{yang2026,"):]
@@ -116,15 +115,16 @@ def test_the_bibliography_holds_no_note_meant_for_the_author():
 
 
 
-def test_the_readme_gives_the_studys_status_as_the_bibliography_does():
-    """The README's "Citation" section names the study that uses 2.1.1 as paper.bib does:
-    accepted at Nature Communications, not a manuscript under revision."""
+def test_the_readme_and_bibliography_cite_the_published_study():
+    """The README and the study's bibliography entry link to the published article."""
     readme = text_of(ROOT / "README.md")
     section = readme[readme.index("\n## Citation\n"):readme.index("\n## License\n")]
-    assert "accepted at Nature Communications" in section
-    assert "journal = {Nature Communications}" in text_of(BIB)
-    for word in ("under revision", "manuscript"):
-        assert word not in section.lower(), word
+    study_doi = "10.1038/s41467-026-79556-9"
+    assert f"[Nature Communications](https://doi.org/{study_doi})" in section
+    entry = text_of(BIB).split("@article{yang2026,", 1)[1].split("\n}", 1)[0]
+    assert "journal = {Nature Communications}" in entry
+    assert re.search(r"^\s*doi\s*=\s*\{" + re.escape(study_doi) + r"\}", entry, re.M)
+    assert "In press" not in entry
 
 @pytest.mark.parametrize("change", ["a word too many", "a key gone", "a heading renamed",
                                     "a section moved"])
