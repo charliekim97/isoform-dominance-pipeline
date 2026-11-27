@@ -137,6 +137,20 @@ def test_a_run_inside_every_bound_passes():
     assert r["stopped"] == []
 
 
+def test_an_abundance_ratio_run_is_not_the_flat_gate_design():
+    run = _run()
+    run["design"]["abundance_ratio"] = 1.0
+    with pytest.raises(gate.NotGradeable, match="abundance_ratio"):
+        gate.check_run(run, PREDICTIONS)
+
+
+def test_a_flat_mixture_with_index_competitors_is_not_the_stored_design():
+    run = _run()
+    run["design"]["prediction_background"] = "reference_index"
+    with pytest.raises(gate.NotGradeable, match="index competitors"):
+        gate.check_run(run, PREDICTIONS)
+
+
 def test_one_sd_of_the_primary_set_may_miss_but_not_smn2s_or_vegfas():
     assert gate.grade(_run(overrides={"CANX": (0.5, 1.0)}), PREDICTIONS)["passes"]
     for gene in gate.STOP_GENES:
