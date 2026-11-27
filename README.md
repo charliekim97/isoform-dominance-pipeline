@@ -8,9 +8,33 @@
 
 **Is this functional isoform-class comparison measurable by short reads? Group-level identifiability, quantification and testing from bulk RNA-seq**
 
-Most isoform analyses stumble on two things: deciding *which transcripts form a functional
-class*, and knowing whether short reads can resolve the classes at all. `isoform-dominance`
-handles both, then quantifies and tests the comparison end-to-end:
+Individual transcripts can be indistinguishable in short-read RNA-seq even when their
+combined abundance is estimable. For a defined isoform-class comparison,
+`isoform-dominance` checks structural estimability and predicts precision under a
+sequence-derived model at the stated read design and depth. It also aggregates Salmon
+transcript estimates for donor-level and cohort comparisons.
+
+[Research brief](https://github.com/charliekim97/isoform-dominance-pipeline/blob/main/RESEARCH_BRIEF.md)
+· [Validation and simulation](https://github.com/charliekim97/isoform-dominance-pipeline/blob/main/validation/README.md)
+
+## Install
+
+```bash
+pip install isoform-dominance
+```
+
+## Verify it works (no downloads, seconds)
+
+```bash
+isoform-dominance selftest
+```
+
+The self-test replays class aggregation and statistics from stored LEPR transcript
+estimates. In two public human choroid-plexus cohorts, the short isoform class predominated
+in 5 of 5 and 6 of 6 control donors. The figure includes the donor-pooled result and
+cohort-stratified analyses. See [Statistical notes](#statistical-notes) for interpretation.
+
+## Workflow and LEPR example
 
 ```
 annotate  gene symbol      → proposed isoform groups        (Ensembl, by 3' terminal exon)
@@ -22,34 +46,12 @@ qc        marker TPM       → contamination control (is the signal a cell-type 
 
 ![example output](https://raw.githubusercontent.com/charliekim97/isoform-dominance-pipeline/main/docs/example_output.png)
 
-*Bundled self-test: short LEPR isoform (LepRa) predominates over the long isoform (LepRb) in
-control human choroid plexus, in each of two independent cohorts (5/5 and 6/6 donors). The
-pooled figure (n = 11, P = 1×10⁻³) is reported alongside the stratified combinations — see
-[Statistical notes](#statistical-notes) for why the stratified ones are the numbers to quote.*
-
----
-
-## Install
-
-```bash
-pip install isoform-dominance          # released version
-isoform-dominance --version
-```
-
-From a clone, for development:
+To install from a clone and run the development tests:
 
 ```bash
 pip install -e ".[dev]"
 pytest -q
 ```
-
-## Verify it works (no downloads, seconds)
-
-```bash
-isoform-dominance selftest
-# or: pytest -q
-```
-reproduces the LEPR reference result (5/5, 6/6, combined n=11 P=9.8e-4) on a clean machine.
 
 ## What makes it more than a quantifier
 
@@ -654,10 +656,11 @@ example/                 config + sample maps
 ## Citation
 
 **Version provenance.** Version **2.1.1** was used for the LEPR isoform quantification and
-aggregation in a leptin-receptor/LRP1 choroid-plexus study, accepted at Nature Communications, and is
-archived at [10.5281/zenodo.20738150](https://doi.org/10.5281/zenodo.20738150). Releasing a new
-version does **not** alter that record: Zenodo mints a separate version DOI and leaves the old
-one in place, and the `v2.1.1` tag and release are left untouched by policy — not because they
+aggregation in the study by Yang et al., published online in
+[Nature Communications](https://doi.org/10.1038/s41467-026-79556-9) on 23 November 2026.
+The software version is archived at [10.5281/zenodo.20738150](https://doi.org/10.5281/zenodo.20738150).
+Releasing a new version does **not** alter that record: Zenodo mints a separate version DOI
+and leaves the old one in place, and the `v2.1.1` tag and release are left untouched by policy — not because they
 are technically immutable, but because that study cites them. The `extract`
 aggregation behaviour those results rest on — transcript-to-group mapping and per-donor TPM
 summation — is unchanged through 2.11.0, and the bundled self-test still reproduces the same
