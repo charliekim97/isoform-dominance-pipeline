@@ -114,7 +114,37 @@ python validation/run_simulation.py run --inputs validation/data/sweep116.json.g
 ```
 
 This path supports a flat mix by omitting `--abundance-ratio`. It is a pilot run path.
-The full G2 comparison requires frozen predictions, replicate seeds and a grading rule.
+
+### Freezing the G2 comparison
+
+Run the G2 commands from the checkout using `python -m validation.gate_g2`. The
+`freeze` command computes predictions from the archived 49-gene bundle and verified
+Ensembl 116 reference-chromosome FASTA. It writes a new JSON plan and prints its
+SHA-256 before any reads are generated. Keep that digest with the plan. The full
+reference index can be built separately using the same FASTA with `--record-reference`.
+
+```bash
+python -m validation.gate_g2 freeze --inputs validation/data/sweep116.json.gz \
+    --background-fasta reference.fa.gz --out g2-predictions.json
+```
+
+The conditions are `flat` (equal TPM per transcript), `a4` (class abundance 4:1)
+and `b4` (1:4), in that order. The 30 seeds per condition are
+`7919 * replicate + 13 + 1000003 * (condition_number + 1)`, with both counters
+starting at zero. `run` takes the plan, its saved SHA-256, the condition name,
+the inputs, the reference FASTA, and the recorded index. Each condition uses a new work
+directory and result path outside it. The plan pins the executable code and NumPy
+version for read generation. `grade` expects all three results and the same plan digest.
+
+Every condition must have absolute bias below frozen abundance SE for all six
+primary contrasts and observed SD below SE for at least five. The corresponding
+control cutoffs are 37 and 32 of 41. Absolute bias at least twice the frozen SE in
+any graded contrast fails the condition. Missing contrasts or fewer than three
+usable replicates fail both thresholds. Beyond-linear predictions are marked and
+graded by their frozen numeric SE. SMN2 and TSC1 are reported descriptively.
+
+The [completed G2 comparison](g2/README.md) records the grade, frozen plan,
+condition results and reproduction commands.
 
 ## The panel
 

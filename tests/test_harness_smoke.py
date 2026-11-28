@@ -169,14 +169,19 @@ def test_a_quantifier_one_fragment_off_has_an_error(tmp_path, monkeypatch, two_g
 
 
 def test_abundance_ratio_run_uses_the_requested_mix(tmp_path, monkeypatch, two_genes):
-    result = _run(tmp_path, monkeypatch, two_genes, extra=["--abundance-ratio", "4"])
+    result = _run(tmp_path, monkeypatch, two_genes,
+                  extra=["--abundance-ratio", "4", "--seed-offset", "2000006"])
     assert result["design"]["abundance_ratio"] == 4.0
     assert result["design"]["ratio"] is None
     assert result["design"]["prediction_background"] == "supplied_gene_transcripts"
+    assert result["design"]["seed_offset"] == 2000006
+    assert result["design"]["replicate_seeds"] == [2000019 + 7919 * r for r in range(REPLICATES)]
     truth_paths = list((tmp_path / "work").glob("*.truth.json"))
     assert len(truth_paths) == REPLICATES
     for truth in truth_paths:
-        assert json.loads(truth.read_text())["abundance_ratio"] == 4.0
+        record = json.loads(truth.read_text())
+        assert record["abundance_ratio"] == 4.0
+        assert record["seed"] == result["design"]["replicate_seeds"][record["replicate"]]
     source = sim.read_inputs(inputs=str(two_genes))
     assert {r["gene"] for r in result["genes_tpm"]} == set(GENES)
     for row in result["genes_tpm"]:

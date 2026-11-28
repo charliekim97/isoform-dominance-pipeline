@@ -306,6 +306,8 @@ def main(argv=None):
                         help="target class A:B ratio after the simulator's effective-length "
                              "correction, before sampling, at fixed expected gene fragments")
     ap.add_argument("--replicate", type=int, default=0)
+    ap.add_argument("--seed-offset", type=int, default=0,
+                    help="add an offset to the historical replicate seed")
     ap.add_argument("--tpm", type=float, default=10.0)
     ap.add_argument("--bias-5p", type=float, default=0.0,
                     help="positional coverage skew: >0 toward the 5' end, <0 toward "
@@ -318,6 +320,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if (a.rundir is None) == (a.inputs is None):
         ap.error("give exactly one of RUNDIR and --inputs")
+    if a.seed_offset < 0:
+        ap.error("--seed-offset must be nonnegative")
     if a.abundance_ratio is not None and (
             not math.isfinite(a.abundance_ratio) or a.abundance_ratio <= 0):
         ap.error("--abundance-ratio must be finite and positive")
@@ -346,7 +350,8 @@ def main(argv=None):
         except ValueError as error:
             ap.error(f"{gene}: {error}")
     os.makedirs(a.outdir, exist_ok=True)
-    rng = np.random.default_rng(a.replicate * 7919 + 13)
+    seed = a.replicate * 7919 + 13 + a.seed_offset
+    rng = np.random.default_rng(seed)
 
     truth = {"replicate": a.replicate, "depth_scale": a.depth_scale, "ratio": a.ratio,
              "tpm": a.tpm, "bias_5p": a.bias_5p, "read_length": READ_LEN,
@@ -355,6 +360,8 @@ def main(argv=None):
              "genes": {}}
     if a.abundance_ratio is not None:
         truth["abundance_ratio"] = a.abundance_ratio
+    if a.seed_offset:
+        truth["seed"] = seed
     base = os.path.join(a.outdir, "rep%d" % a.replicate)
     total = 0
     with gzip.open(base + "_1.fq.gz", "wt") as f1, gzip.open(base + "_2.fq.gz", "wt") as f2:

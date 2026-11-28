@@ -79,6 +79,8 @@ def frozen_predictions(path=PREDICTIONS, readme=README):
 def check_run(run, predictions):
     """Refuse a run that is not the one the gate names."""
     design = run.get("design") or {}
+    if design.get("seed_offset", 0):
+        raise NotGradeable("the gate requires the original replicate seeds")
     if design.get("prediction_background") == "reference_index":
         raise NotGradeable("the gate requires the stored design without expressed index competitors")
     if design.get("abundance_ratio") is not None:

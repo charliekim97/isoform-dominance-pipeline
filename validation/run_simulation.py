@@ -531,6 +531,8 @@ def one_replicate(a, rep, source, genes_arg=None, *, competitor_file=None, index
         cmd += ["--ratio", str(a.ratio)]
     if a.abundance_ratio is not None:
         cmd += ["--abundance-ratio", str(a.abundance_ratio)]
+    if a.seed_offset:
+        cmd += ["--seed-offset", str(a.seed_offset)]
     if competitor_file is not None:
         cmd += ["--competitors", competitor_file]
     if a.bias_5p:
@@ -822,16 +824,37 @@ def cmd_checkpoint(a):
     return 0 if ok else 1
 
 
-def cmd_run(a):
+def _frozen_competitors(fasta, ids):
+    """Get the frozen origins by ID from the already verified reference."""
+    remaining, sequences = set(ids), {}
+    for _, t, lines, _ in I._fasta_records(fasta):
+        if t in remaining:
+            sequences[t] = "".join(lines).upper()
+            remaining.remove(t)
+            if not remaining:
+                break
+    if remaining:
+        raise ValueError(f"a frozen competitor is missing from the reference: {min(remaining)}")
+    return dict(sorted(sequences.items()))
+
+
+def cmd_run(a, *, frozen=None):
     source = gene_inputs(a)
     predictions = dict.fromkeys(I.ESTIMANDS)
     reference, backgrounds, competitors = None, None, {}
     if a.background_fasta:
         reference = _reference_identity(a.index, a.background_fasta)
-        backgrounds, competitors = _reference_background(source, a.background_fasta)
+        if frozen is None:
+            backgrounds, competitors = _reference_background(source, a.background_fasta)
+        else:
+            if reference["fasta_sha256"] != frozen["verified_fasta_sha256"]:
+                raise ValueError("the FASTA changed after checking the frozen G2 plan")
+            competitors = _frozen_competitors(a.background_fasta, frozen["competitor_transcripts"])
         if io.file_sha256(a.background_fasta) != reference["fasta_sha256"]:
             raise ValueError("the FASTA changed while preparing the reference background")
-    if a.abundance_ratio is not None or reference is not None:
+    if frozen is not None:
+        predictions = frozen["predictions"]
+    elif a.abundance_ratio is not None or reference is not None:
         predictions = _predictions_at_abundance_ratio(
             source, a.tpm, a.depth_scale, a.mean_efflen, a.abundance_ratio,
             backgrounds=backgrounds, competitors=competitors)
@@ -866,6 +889,10 @@ def cmd_run(a):
     if reference is not None:
         design.update(prediction_background="reference_index", reference=reference,
                       competitor_transcripts=list(competitors))
+    if a.seed_offset:
+        design.update(seed_offset=a.seed_offset, replicate_seeds=[truth["seed"] for _, truth, _ in reps])
+    if frozen is not None:
+        design["g2"] = frozen["provenance"]
     json.dump({"design": design,
                "salmon": {"version": diags[0].get("salmon_version") if diags else None,
                           "kallisto_version": (diags[0].get("kallisto_version")
@@ -878,7 +905,7 @@ def cmd_run(a):
                "effective_length_taken_from": taken,
                **({"competitor_fragments": [
                    sum(truth.get("competitor_fragments", {}).values()) for _, truth, _ in reps]}
-                  if reference is not None else {})}, open(a.out, "w"), indent=1)
+                  if reference is not None else {})}, open(a.out, "x" if frozen else "w"), indent=1)
     good = [r for r in rows if r["estimable"]]
     bad = [r for r in rows if not r["estimable"]]
     print("\n%d genes, %d estimable, %d not" % (len(rows), len(good), len(bad)))
@@ -939,7 +966,7 @@ def cmd_run(a):
     return 0
 
 
-def main(argv=None):
+def main(argv=None, *, frozen=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -975,8 +1002,10 @@ def main(argv=None):
             p.add_argument("--background-fasta",
                            help="use the recorded index's FASTA and simulate its model-selected "
                                 "competitors")
+            p.add_argument("--seed-offset", type=int, default=0,
+                           help="add an offset to the historical replicate seeds")
         else:
-            p.set_defaults(abundance_ratio=None)
+            p.set_defaults(abundance_ratio=None, seed_offset=0)
         p.add_argument("--tpm", type=float, default=10.0)
         p.add_argument("--bias-5p", type=float, default=0.0,
                        help="positional coverage skew: >0 toward the 5' end, <0 "
@@ -1002,11 +1031,17 @@ def main(argv=None):
     if a.cmd == "run" and a.abundance_ratio is not None and (
             not math.isfinite(a.abundance_ratio) or a.abundance_ratio <= 0):
         ap.error("--abundance-ratio must be finite and positive")
+    if a.cmd == "run" and a.seed_offset < 0:
+        ap.error("--seed-offset must be nonnegative")
     if a.cmd == "run" and a.background_fasta:
         if a.quantifier != "salmon" or a.ratio is not None:
             ap.error("--background-fasta needs Salmon with a flat or abundance-ratio mix")
         if not all(math.isfinite(v) and v > 0 for v in (a.tpm, a.depth_scale, a.mean_efflen)):
             ap.error("--background-fasta needs positive finite TPM, depth scale and mean effective length")
+    if frozen is not None:
+        if a.cmd != "run" or not a.background_fasta:
+            ap.error("a frozen G2 plan needs run --background-fasta")
+        sys.exit(cmd_run(a, frozen=frozen))
     sys.exit(a.func(a))
 
 
