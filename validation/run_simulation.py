@@ -41,12 +41,16 @@ import shutil
 import statistics
 import subprocess
 import sys
+import tempfile
+from contextlib import nullcontext
 
 import numpy as np
 
 from isoform_dominance import identifiability as I
+from isoform_dominance import io
 
 SIM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "simulate_reads.py")
+REFERENCE_MANIFEST = "simulation_reference.json"
 
 
 def _sim():
@@ -71,6 +75,12 @@ def sh(cmd, **kw):
 
 
 def cmd_index(a):
+    if a.record_reference:
+        if a.quantifier != "salmon" or a.k != I.DEFAULT_K:
+            raise ValueError("a recorded reference needs Salmon and the model's default k")
+        if os.path.exists(a.index):
+            raise ValueError("build a recorded reference at a new index path")
+        fasta_sha = io.file_sha256(a.fasta)
     if a.quantifier == "kallisto":
         # kallisto takes the FASTA positionally and has no -t/-i ordering quirk;
         # same k so the two indexes see the same sequence resolution.
@@ -79,7 +89,36 @@ def cmd_index(a):
     else:
         sh(["salmon", "index", "-t", a.fasta, "-i", a.index, "-k", str(a.k),
             "-p", str(a.threads)])
+    if a.record_reference:
+        if io.file_sha256(a.fasta) != fasta_sha:
+            raise ValueError("the reference FASTA changed while Salmon was indexing it")
+        identity = {"fasta_sha256": fasta_sha, "index": _index_identity(a.index)}
+        with open(os.path.join(a.index, REFERENCE_MANIFEST), "x", encoding="utf-8") as dest:
+            json.dump(identity, dest)
     print("index built at %s" % a.index)
+
+
+def _index_identity(index):
+    with open(os.path.join(index, "info.json"), encoding="utf-8") as source:
+        info = json.load(source)
+    if (info.get("k") != I.DEFAULT_K or info.get("canonical") is not True
+            or info.get("num_decoys") != 0 or info.get("keep_duplicates") is not False
+            or not info.get("seq_hash") or not info.get("name_hash")):
+        raise ValueError("expected a canonical Salmon reference index without decoys or duplicates")
+    return {key: info[key] for key in ("seq_hash", "name_hash", "k", "salmon_version")}
+
+
+def _reference_identity(index, fasta):
+    path = os.path.join(index, REFERENCE_MANIFEST)
+    if not os.path.isfile(path):
+        raise ValueError("build the index with index --record-reference before using the FASTA")
+    with open(path, encoding="utf-8") as source:
+        identity = json.load(source)
+    if identity["fasta_sha256"] != io.file_sha256(fasta):
+        raise ValueError("the FASTA hash differs from the one recorded when building the index")
+    if identity["index"] != _index_identity(index):
+        raise ValueError("the Salmon index hashes differ from those recorded at build time")
+    return identity
 
 
 def predicted(source, gene, tpm, depth_scale, mean_efflen=None, ratio=None):
@@ -144,6 +183,116 @@ def _predict_at(cfg, seqs, tpm, depth_scale, mean_efflen, ratio):
     fc = I.min_resolvable_log2fc(se, 1)
     return {"estimable": est["estimable"], "conditioning_factor": est["conditioning_factor"],
             "min_resolvable_log2fc": fc, "beyond_linear": se > I.LINEARISATION_LIMIT}
+
+
+def _reference_background(source, fasta):
+    """Build the model's index backgrounds and the union of additional simulated origins."""
+    sim = _sim()
+    origins, jobs = {}, []
+    for gene, entry in source.items():
+        inputs = sim.simulation_gene(entry)
+        seqs = {t: s.strip().upper() for t, s in inputs["seqs"].items()}
+        if len(seqs) != len(entry["sequences"]) or origins.keys() & seqs.keys():
+            raise ValueError(f"{gene}: simulated transcript IDs must be unique across the library")
+        origins.update(seqs)
+        members = set().union(*(set(group) for group in inputs["groups"].values()))
+        configured, background = {}, {}
+        for t, seq in sorted(seqs.items()):
+            (configured if t in members else background).setdefault(seq, t)
+        tracks = {t: set(I.kmer_track(seq, I.DEFAULT_K, True)) for t, seq in seqs.items()}
+        jobs.append({"column_windows": set().union(*tracks.values()),
+                     "configured_windows": set().union(*(tracks[t] for t in members)),
+                     "gene_ids": seqs.keys() - members, "gene_sequences": background,
+                     "configured": configured, "exclude_ids": members})
+
+    seen = set()
+    for place, tid, lines, _ in I._fasta_records(fasta):
+        if place == 0:
+            continue
+        if not tid or tid in seen:
+            raise ValueError(f"reference record {place} has a missing or repeated transcript ID")
+        seen.add(tid)
+        if tid in origins and "".join(lines).upper() != origins[tid]:
+            raise ValueError(f"the reference sequence differs from the simulated sequence for {tid}")
+    missing = origins.keys() - seen
+    if missing:
+        raise ValueError(f"simulated transcript {min(missing)} is missing from the reference FASTA")
+
+    genes, outside = {}, {}
+    for start in range(0, len(jobs), I.DEFAULT_BATCH_SIZE):
+        stop = start + I.DEFAULT_BATCH_SIZE
+        results = I._whole_index_many(fasta, jobs[start:stop], I.DEFAULT_K, True, ())
+        for gene, result in zip(list(source)[start:stop], results, strict=True):
+            if isinstance(result, Exception):
+                raise result
+            genes[gene] = result
+            for t, (seq, _) in result["added"].items():
+                if t not in origins:
+                    if len(seq) < sim.READ_LEN:
+                        raise ValueError(f"index competitor {t} is shorter than one read")
+                    outside[t] = seq
+    return genes, dict(sorted(outside.items()))
+
+
+def _predictions_at_abundance_ratio(source, tpm, depth_scale, mean_efflen, abundance_ratio,
+                                    *, backgrounds=None, competitors=None):
+    """Both estimands at the expected mix, with optional model-selected reference columns."""
+    sim = _sim()
+    predictions = {name: {} for name in I.ESTIMANDS}
+    normalized = {gene: sim.simulation_gene(entry) for gene, entry in source.items()}
+    expected, library_rates, library_sequences = {}, {}, {}
+    for gene, inputs in normalized.items():
+        if any(len(sequence) < sim.READ_LEN for sequence in inputs["seqs"].values()):
+            raise ValueError(f"{gene}: a simulated transcript is shorter than {sim.READ_LEN} nt "
+                             "and cannot emit reads for the predicted mix")
+        expected[gene] = sim.transcript_fragment_counts(
+            inputs, tpm, depth_scale, None, None,
+            mean_efflen, expectations=True, abundance_ratio=abundance_ratio)
+        if backgrounds is not None:
+            library_rates.update(expected[gene])
+            library_sequences.update(inputs["seqs"])
+    if backgrounds is not None:
+        library_rates.update(sim.flat_fragment_expectations(
+            competitors, tpm, depth_scale, mean_efflen))
+        library_sequences.update(competitors)
+
+    for gene, inputs in normalized.items():
+        pc = I._check_classes(dict(source[gene]["config"], primary_comparison=inputs["pc"]))
+        groups, seqs = inputs["groups"], dict(inputs["seqs"])
+        rates, dropped = expected[gene], None
+        if backgrounds is not None:
+            model = backgrounds[gene]
+            seqs.update((t, seq) for t, (seq, _) in model["added"].items())
+            # If another model activated a sequence alias, retain its emitted origin.
+            # From this gene's perspective its reads are indistinguishable from the copy.
+            for aliases in ("identical_to_configured", "identical_to_background"):
+                seqs.update((t, library_sequences[t]) for t in model[aliases]
+                            if t in library_rates)
+            rates, dropped = library_rates, model["dropped"]
+        ids = list(seqs)
+        tracks = {t: I.kmer_track(seqs[t], I.DEFAULT_K, True) for t in ids}
+        matrix, _ = I.compatibility_matrix(tracks, ids, drop=dropped)
+        svd = np.linalg.svd(matrix.T, full_matrices=False)[:2] if matrix.size else None
+        theta = np.array([rates[t] for t in ids], dtype=float)
+        covariance = I.gls_covariance(matrix, theta)
+        membership = {group: set(members) for group, members in groups.items()}
+        indicator = {group: np.array([t in members for t in ids], dtype=float)
+                     for group, members in membership.items()}
+        positions = np.array([max(1, len(tracks[t])) for t in ids], dtype=float)
+        for name in I.ESTIMANDS:
+            # The prediction uses window positions for its abundance coefficients.
+            # The simulation uses fragment effective lengths to set the expected mix.
+            report = I._estimand_report(
+                name, matrix, svd, covariance, theta, indicator, positions, pc,
+                {g: {} for g in groups}, 1, I.DEFAULT_CONDITIONING_TAU, None, None)
+            contrast = report["contrast"]
+            fc = contrast["min_resolvable_log2fc"]
+            predictions[name][gene] = {
+                "verdict": report["verdict"], "estimable": contrast["estimable"],
+                "conditioning": contrast["conditioning_factor"], "min_resolvable_log2fc": fc,
+                "beyond_linear": contrast["beyond_linear"], "predicted_se": fc / 1.96,
+            }
+    return predictions
 
 
 def checkpoint_counts(truth, tpm, depth_scale, mean_efflen):
@@ -370,7 +519,7 @@ def tpm_truth(groups, pc, seqs, written, efflen, kept=None):
     return out, took
 
 
-def one_replicate(a, rep, source, genes_arg=None):
+def one_replicate(a, rep, source, genes_arg=None, *, competitor_file=None, index_identity=None):
     work = a.work
     os.makedirs(work, exist_ok=True)
     where = [a.rundir, work] if a.rundir else [work, "--inputs", a.inputs]
@@ -380,6 +529,12 @@ def one_replicate(a, rep, source, genes_arg=None):
            "--mean-efflen", str(a.mean_efflen)]
     if a.ratio is not None:
         cmd += ["--ratio", str(a.ratio)]
+    if a.abundance_ratio is not None:
+        cmd += ["--abundance-ratio", str(a.abundance_ratio)]
+    if a.seed_offset:
+        cmd += ["--seed-offset", str(a.seed_offset)]
+    if competitor_file is not None:
+        cmd += ["--competitors", competitor_file]
     if a.bias_5p:
         # "=" form: argparse rejects a bare negative value in scientific notation,
         # which str() produces for small magnitudes
@@ -389,12 +544,20 @@ def one_replicate(a, rep, source, genes_arg=None):
     sh(cmd)
     base = os.path.join(work, "rep%d" % rep)
     truth = json.load(open(base + ".truth.json"))
+    qdir = os.path.join(work, "quant%d" % rep)
     try:
         counts, diag, abundance = quantify(
             a.index, base + "_1.fq.gz", base + "_2.fq.gz",
-            os.path.join(work, "quant%d" % rep), a.threads,
+            qdir, a.threads,
             a.salmon_flags.split() if a.salmon_flags else [],
             getattr(a, "quantifier", "salmon"), getattr(a, "kallisto_bin", "kallisto"))
+        if index_identity is not None:
+            with open(os.path.join(qdir, "aux_info", "meta_info.json"),
+                      encoding="utf-8") as metadata:
+                meta = json.load(metadata)
+            if any(meta.get(f"index_{key}") != index_identity[key]
+                   for key in ("seq_hash", "name_hash")):
+                raise ValueError("Salmon quantified against a different index than recorded")
     finally:
         # 270 replicates leak 270 libraries if a quant fails halfway
         for f in (base + "_1.fq.gz", base + "_2.fq.gz"):
@@ -430,7 +593,6 @@ def one_replicate(a, rep, source, genes_arg=None):
         if took:
             diag["effective_length_taken_from"][gene] = took
     # keep the two small files that say what salmon did; drop the bulky rest
-    qdir = os.path.join(work, "quant%d" % rep)
     for keep in ("cmd_info.json",):
         src = os.path.join(qdir, keep)
         if os.path.exists(src):
@@ -483,7 +645,8 @@ def spearman(x, y):
     return num / den if den else float("nan")
 
 
-def summarise(per_rep, source, tpm, depth_scale, genes=None, mean_efflen=None, ratio=None):
+def summarise(per_rep, source, tpm, depth_scale, genes=None, mean_efflen=None, ratio=None,
+              *, predictions=None):
     rows = []
     names = genes or sorted({g for r in per_rep for g in r})
     for gene in names:
@@ -495,7 +658,8 @@ def summarise(per_rep, source, tpm, depth_scale, genes=None, mean_efflen=None, r
                 errs.append(e["estimated_log2_ratio"] - e["true_log2_ratio"])
         if len(ests) < 3:
             continue
-        p = predicted(source, gene, tpm, depth_scale, mean_efflen, ratio)
+        p = (predicted(source, gene, tpm, depth_scale, mean_efflen, ratio)
+             if predictions is None else predictions[gene])
         rows.append(dict(gene=gene, n=len(ests),
                          realised_sd=statistics.stdev(ests),
                          bias=statistics.median(errs),
@@ -525,11 +689,11 @@ def predicted_abundance(source, gene, tpm, depth_scale, mean_efflen=None):
 
 
 def summarise_tpm(per_rep, source, tpm, depth_scale, genes=None, mean_efflen=None,
-                  ratio=None):
+                  ratio=None, *, predictions=None):
     """The TPM rows: :func:`summarise`'s statistics -- ``n``, ``realised_sd`` (SD of the
     estimated log2 ratio), ``bias`` (median error), ``rmse`` -- over each replicate's
-    ``tpm`` entry, with the abundance estimand's prediction.  A ``--ratio`` run carries no
-    prediction here: it is solved at flat TPM only."""
+    ``tpm`` entry, with the abundance estimand's prediction. Fragment-ratio runs carry no
+    abundance prediction. Abundance-ratio runs supply predictions at the simulated mix."""
     rows = []
     names = genes or sorted({g for r in per_rep for g in r})
     for gene in names:
@@ -541,9 +705,13 @@ def summarise_tpm(per_rep, source, tpm, depth_scale, genes=None, mean_efflen=Non
                 errs.append(e["estimated_log2_ratio"] - e["true_log2_ratio"])
         if len(ests) < 3:
             continue
-        p = (predicted_abundance(source, gene, tpm, depth_scale, mean_efflen)
-             if ratio is None else {"estimable": None, "min_resolvable_log2fc": None,
-                                    "beyond_linear": None, "predicted_se": None})
+        if predictions is not None:
+            p = predictions[gene]
+        elif ratio is None:
+            p = predicted_abundance(source, gene, tpm, depth_scale, mean_efflen)
+        else:
+            p = {"estimable": None, "min_resolvable_log2fc": None,
+                 "beyond_linear": None, "predicted_se": None}
         rows.append(dict(gene=gene, n=len(ests),
                          realised_sd=statistics.stdev(ests),
                          bias=statistics.median(errs),
@@ -656,25 +824,76 @@ def cmd_checkpoint(a):
     return 0 if ok else 1
 
 
-def cmd_run(a):
+def _frozen_competitors(fasta, ids):
+    """Get the frozen origins by ID from the already verified reference."""
+    remaining, sequences = set(ids), {}
+    for _, t, lines, _ in I._fasta_records(fasta):
+        if t in remaining:
+            sequences[t] = "".join(lines).upper()
+            remaining.remove(t)
+            if not remaining:
+                break
+    if remaining:
+        raise ValueError(f"a frozen competitor is missing from the reference: {min(remaining)}")
+    return dict(sorted(sequences.items()))
+
+
+def cmd_run(a, *, frozen=None):
     source = gene_inputs(a)
-    reps = [one_replicate(a, i, source) for i in range(a.replicates)]
+    predictions = dict.fromkeys(I.ESTIMANDS)
+    reference, backgrounds, competitors = None, None, {}
+    if a.background_fasta:
+        reference = _reference_identity(a.index, a.background_fasta)
+        if frozen is None:
+            backgrounds, competitors = _reference_background(source, a.background_fasta)
+        else:
+            if reference["fasta_sha256"] != frozen["verified_fasta_sha256"]:
+                raise ValueError("the FASTA changed after checking the frozen G2 plan")
+            competitors = _frozen_competitors(a.background_fasta, frozen["competitor_transcripts"])
+        if io.file_sha256(a.background_fasta) != reference["fasta_sha256"]:
+            raise ValueError("the FASTA changed while preparing the reference background")
+    if frozen is not None:
+        predictions = frozen["predictions"]
+    elif a.abundance_ratio is not None or reference is not None:
+        predictions = _predictions_at_abundance_ratio(
+            source, a.tpm, a.depth_scale, a.mean_efflen, a.abundance_ratio,
+            backgrounds=backgrounds, competitors=competitors)
+    with tempfile.TemporaryDirectory() if competitors else nullcontext() as scratch:
+        competitor_file = None
+        if scratch is not None:
+            competitor_file = os.path.join(scratch, "competitors.json")
+            with open(competitor_file, "w", encoding="utf-8") as dest:
+                json.dump(competitors, dest)
+        index_identity = reference["index"] if reference else None
+        reps = [one_replicate(a, i, source, competitor_file=competitor_file,
+                              index_identity=index_identity) for i in range(a.replicates)]
     per = [r[0] for r in reps]
     diags = [r[2] for r in reps]
-    rows = summarise(per, source, a.tpm, a.depth_scale, None, a.mean_efflen, a.ratio)
-    rows_tpm = summarise_tpm(per, source, a.tpm, a.depth_scale, None, a.mean_efflen, a.ratio)
+    rows = summarise(per, source, a.tpm, a.depth_scale, None, a.mean_efflen, a.ratio,
+                     predictions=predictions["fragment"])
+    rows_tpm = summarise_tpm(per, source, a.tpm, a.depth_scale, None, a.mean_efflen, a.ratio,
+                             predictions=predictions["abundance"])
     taken = {}
     for d in diags:
         for gene, took in d.get("effective_length_taken_from", {}).items():
             taken.setdefault(gene, {}).update(took)
-    json.dump({"design": {"depth_scale": a.depth_scale, "ratio": a.ratio,
-                          "tpm": a.tpm, "bias_5p": a.bias_5p,
-                          "mean_efflen": a.mean_efflen,
-                          "replicates": a.replicates,
-                          "salmon_flags": a.salmon_flags,
-                          "quantifier": getattr(a, "quantifier", "salmon"),
-                          "genes_simulated": sorted(source),
-                          "inputs_sha256": _sha256(a.inputs) if a.inputs else None},
+    design = {"depth_scale": a.depth_scale, "ratio": a.ratio,
+              "tpm": a.tpm, "bias_5p": a.bias_5p, "mean_efflen": a.mean_efflen,
+              "replicates": a.replicates, "salmon_flags": a.salmon_flags,
+              "quantifier": getattr(a, "quantifier", "salmon"),
+              "genes_simulated": sorted(source),
+              "inputs_sha256": _sha256(a.inputs) if a.inputs else None}
+    if a.abundance_ratio is not None:
+        design["abundance_ratio"] = a.abundance_ratio
+        design["prediction_background"] = "supplied_gene_transcripts"
+    if reference is not None:
+        design.update(prediction_background="reference_index", reference=reference,
+                      competitor_transcripts=list(competitors))
+    if a.seed_offset:
+        design.update(seed_offset=a.seed_offset, replicate_seeds=[truth["seed"] for _, truth, _ in reps])
+    if frozen is not None:
+        design["g2"] = frozen["provenance"]
+    json.dump({"design": design,
                "salmon": {"version": diags[0].get("salmon_version") if diags else None,
                           "kallisto_version": (diags[0].get("kallisto_version")
                                                if diags else None),
@@ -683,7 +902,10 @@ def cmd_run(a):
                           "library_type": diags[0].get("library_type") if diags else None},
                "genes": rows,
                "genes_tpm": rows_tpm,
-               "effective_length_taken_from": taken}, open(a.out, "w"), indent=1)
+               "effective_length_taken_from": taken,
+               **({"competitor_fragments": [
+                   sum(truth.get("competitor_fragments", {}).values()) for _, truth, _ in reps]}
+                  if reference is not None else {})}, open(a.out, "x" if frozen else "w"), indent=1)
     good = [r for r in rows if r["estimable"]]
     bad = [r for r in rows if not r["estimable"]]
     print("\n%d genes, %d estimable, %d not" % (len(rows), len(good), len(bad)))
@@ -731,13 +953,20 @@ def cmd_run(a):
             print("      TPM (annotation count drives both the flag and the fragment")
             print("      count), so a raw difference here is confounded -- see")
             print("      validation/README.md before reading anything into it.")
-    print("\nTPM rows (class ratio of summed TPM against tpm_truth): %d genes; "
-          "validation/gate_3_0.py grades a uniform-coverage Salmon run" % len(rows_tpm))
+    if reference is not None:
+        print("\nTPM rows: %d genes; predictions use the recorded index and %d outside origins."
+              % (len(rows_tpm), len(competitors)))
+    elif a.abundance_ratio is not None:
+        print("\nTPM rows (class ratio of summed TPM against tpm_truth): %d genes" % len(rows_tpm))
+        print("Predictions use the simulated mix and supplied gene transcripts.")
+    else:
+        print("\nTPM rows (class ratio of summed TPM against tpm_truth): %d genes; "
+              "validation/gate_3_0.py grades a uniform-coverage Salmon run" % len(rows_tpm))
     print("\nwrote %s" % a.out)
     return 0
 
 
-def main(argv=None):
+def main(argv=None, *, frozen=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -749,6 +978,8 @@ def main(argv=None):
     p.add_argument("--threads", type=int, default=8)
     p.add_argument("--quantifier", choices=("salmon", "kallisto"), default="salmon")
     p.add_argument("--kallisto-bin", default="kallisto")
+    p.add_argument("--record-reference", action="store_true",
+                   help="record the FASTA and Salmon hashes for a fresh reference index")
     p.set_defaults(func=cmd_index)
 
     for name, fn in (("checkpoint", cmd_checkpoint), ("run", cmd_run)):
@@ -761,10 +992,20 @@ def main(argv=None):
         p.add_argument("--index", required=True)
         p.add_argument("--work", default="sim")
         p.add_argument("--depth-scale", type=float, default=1.0)
-        p.add_argument("--ratio", type=float, default=None,
-                       help="omit for the neutral flat-TPM case, which is what the "
-                            "package's precision figure assumes; set it only to test "
-                            "bias, and the prediction is re-solved at those abundances")
+        ratios = p.add_mutually_exclusive_group()
+        ratios.add_argument("--ratio", type=float, default=None,
+                            help="target expected fragment ratio, with a matched fragment prediction")
+        if name == "run":
+            ratios.add_argument("--abundance-ratio", type=float, default=None,
+                                help="target simulator abundance ratio, with both SEs evaluated "
+                                     "at the resulting mix over the supplied gene transcripts")
+            p.add_argument("--background-fasta",
+                           help="use the recorded index's FASTA and simulate its model-selected "
+                                "competitors")
+            p.add_argument("--seed-offset", type=int, default=0,
+                           help="add an offset to the historical replicate seeds")
+        else:
+            p.set_defaults(abundance_ratio=None, seed_offset=0)
         p.add_argument("--tpm", type=float, default=10.0)
         p.add_argument("--bias-5p", type=float, default=0.0,
                        help="positional coverage skew: >0 toward the 5' end, <0 "
@@ -787,6 +1028,20 @@ def main(argv=None):
         p.set_defaults(func=fn)
 
     a = ap.parse_args(argv)
+    if a.cmd == "run" and a.abundance_ratio is not None and (
+            not math.isfinite(a.abundance_ratio) or a.abundance_ratio <= 0):
+        ap.error("--abundance-ratio must be finite and positive")
+    if a.cmd == "run" and a.seed_offset < 0:
+        ap.error("--seed-offset must be nonnegative")
+    if a.cmd == "run" and a.background_fasta:
+        if a.quantifier != "salmon" or a.ratio is not None:
+            ap.error("--background-fasta needs Salmon with a flat or abundance-ratio mix")
+        if not all(math.isfinite(v) and v > 0 for v in (a.tpm, a.depth_scale, a.mean_efflen)):
+            ap.error("--background-fasta needs positive finite TPM, depth scale and mean effective length")
+    if frozen is not None:
+        if a.cmd != "run" or not a.background_fasta:
+            ap.error("a frozen G2 plan needs run --background-fasta")
+        sys.exit(cmd_run(a, frozen=frozen))
     sys.exit(a.func(a))
 
 

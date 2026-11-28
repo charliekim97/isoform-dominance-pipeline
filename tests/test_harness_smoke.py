@@ -118,14 +118,15 @@ class SalmonStub:
         return subprocess.CompletedProcess(cmd, 0)
 
 
-def _run(tmp_path, monkeypatch, two_genes, bump=0):
+def _run(tmp_path, monkeypatch, two_genes, bump=0, extra=()):
     stub = SalmonStub(sim.read_inputs(inputs=str(two_genes)), bump)
     monkeypatch.setattr(harness, "sh", stub)
     out = tmp_path / "run.json"
     with pytest.raises(SystemExit) as stop:
         harness.main(["run", "--inputs", str(two_genes), "--index", "no_index",
                       "--work", str(tmp_path / "work"), "--depth-scale", str(DEPTH),
-                      "--replicates", str(REPLICATES), "--threads", "1", "--out", str(out)])
+                      "--replicates", str(REPLICATES), "--threads", "1", "--out", str(out),
+                      *extra])
     assert stop.value.code == 0
     assert stub.calls == REPLICATES
     return json.loads(out.read_text())
@@ -165,6 +166,30 @@ def test_a_quantifier_one_fragment_off_has_an_error(tmp_path, monkeypatch, two_g
     assert len(rows) == 2 and len(tpm) == 2
     assert all(r["bias"] > 0 and r["rmse"] > 0 for r in rows)
     assert all(r["bias"] > 1e-4 and r["rmse"] > 1e-4 for r in tpm)
+
+
+def test_abundance_ratio_run_uses_the_requested_mix(tmp_path, monkeypatch, two_genes):
+    result = _run(tmp_path, monkeypatch, two_genes,
+                  extra=["--abundance-ratio", "4", "--seed-offset", "2000006"])
+    assert result["design"]["abundance_ratio"] == 4.0
+    assert result["design"]["ratio"] is None
+    assert result["design"]["prediction_background"] == "supplied_gene_transcripts"
+    assert result["design"]["seed_offset"] == 2000006
+    assert result["design"]["replicate_seeds"] == [2000019 + 7919 * r for r in range(REPLICATES)]
+    truth_paths = list((tmp_path / "work").glob("*.truth.json"))
+    assert len(truth_paths) == REPLICATES
+    for truth in truth_paths:
+        record = json.loads(truth.read_text())
+        assert record["abundance_ratio"] == 4.0
+        assert record["seed"] == result["design"]["replicate_seeds"][record["replicate"]]
+    source = sim.read_inputs(inputs=str(two_genes))
+    assert {r["gene"] for r in result["genes_tpm"]} == set(GENES)
+    for row in result["genes_tpm"]:
+        assert row["n"] == REPLICATES
+        assert abs(row["bias"]) < 1e-6
+        flat = harness.predicted_abundance(source, row["gene"], 10, DEPTH)
+        assert row["predicted_se"] > 0
+        assert row["predicted_se"] != pytest.approx(flat["predicted_se"])
 
 
 # --------------------------------------------------------------------------- #

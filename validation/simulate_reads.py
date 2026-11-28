@@ -1,7 +1,8 @@
 """Simulate paired-end fragments from real transcript sequences, with the truth kept.
 
     python validation/simulate_reads.py OUTDIR --inputs validation/data/sweep116.json.gz
-                             [--depth-scale 1.0] [--ratio 1.0] [--replicate 0] [--tpm 10]
+                             [--depth-scale 1.0] [--ratio 1.0 | --abundance-ratio 1.0]
+                             [--replicate 0] [--tpm 10]
                              [--genes A,B,...]
     python validation/simulate_reads.py RUNDIR OUTDIR [...]    # per-gene files instead
 
@@ -19,10 +20,10 @@ from the first still holds against reads made by the second, the two systems wer
 told the same thing.  Positional bias is available (`--bias-5p`, negative for the 3' direction) and off by
 default, so its effect can be isolated rather than confounded with everything else.
 
-The class ratio is applied to the two classes of each gene's `primary_comparison`, with
-the gene's total fragment count held fixed, so variance and bias can be separated: at
-1:1 a class total estimate is symmetric, and at 8:1 a quantifier that spreads mass onto
-the wrong class shows it as bias rather than only as spread.
+The target ratio is applied to the two classes of each gene's `primary_comparison`
+before the Poisson draw, with the gene's expected fragment total held fixed. `--ratio`
+targets expected fragment totals. `--abundance-ratio` targets expected class totals
+after dividing each transcript's fragment expectation by the simulator's effective length.
 
 **Known design confound, deliberately left in place (2026-09-13).**  TPM is flat *per
 transcript*, so a gene's total fragment count is proportional to how many transcripts it
@@ -97,16 +98,71 @@ def load_genes(rundir=None, only=None, inputs=None):
     for gene, entry in read_inputs(rundir, inputs).items():
         if only and gene not in only:
             continue
-        cfg = entry["config"]
-        seqs = {t.split(".")[0]: s for t, s in entry["sequences"].items()}
-        groups = {g: [t.split(".")[0] for t in v] for g, v in cfg["groups"].items()}
-        pc = cfg.get("primary_comparison") or sorted(groups)[:2]
-        out[gene] = {"groups": groups, "pc": list(pc), "seqs": seqs}
+        out[gene] = simulation_gene(entry)
     return out
 
 
+def simulation_gene(entry):
+    """Use the simulator's ID and comparison rules for one input entry."""
+    cfg = entry["config"]
+    seqs = {t.split(".")[0]: s for t, s in entry["sequences"].items()}
+    groups = {g: [t.split(".")[0] for t in v] for g, v in cfg["groups"].items()}
+    pc = cfg.get("primary_comparison") or sorted(groups)[:2]
+    return {"groups": groups, "pc": list(pc), "seqs": seqs}
+
+
+def _set_abundance_ratio(gene, expected, abundance_ratio):
+    """Rescale the compared classes in place, keeping their expected fragment sum."""
+    if not math.isfinite(abundance_ratio) or abundance_ratio <= 0:
+        raise ValueError("abundance ratio must be finite and positive")
+
+    members_a, members_b = (gene["groups"][name] for name in gene["pc"])
+    class_a, class_b = set(members_a), set(members_b)
+    if (not class_a or not class_b or class_a & class_b
+            or len(class_a) != len(members_a) or len(class_b) != len(members_b)):
+        raise ValueError("abundance ratio requires two nonempty, disjoint transcript classes")
+    if (class_a | class_b) - expected.keys():
+        raise ValueError("abundance ratio requires sequences for both transcript classes")
+
+    fragments_a = math.fsum(expected[t] for t in class_a)
+    fragments_b = math.fsum(expected[t] for t in class_b)
+    if min(fragments_a, fragments_b) <= 0:
+        raise ValueError("abundance ratio requires positive expected fragments in both classes")
+    abundance_a = math.fsum(expected[t] / I.effective_length(len(gene["seqs"][t]), FRAG_MEAN)
+                            for t in class_a)
+    abundance_b = math.fsum(expected[t] / I.effective_length(len(gene["seqs"][t]), FRAG_MEAN)
+                            for t in class_b)
+
+    # Each class keeps its internal proportions, so its fragments per unit of
+    # abundance are unchanged. Convert the abundance target using those factors.
+    fragment_ratio = abundance_ratio * (fragments_a / abundance_a) / (fragments_b / abundance_b)
+    if not math.isfinite(fragment_ratio) or fragment_ratio <= 0:
+        raise ValueError("abundance ratio gives a fragment ratio outside the numerical range")
+    total = fragments_a + fragments_b
+    scale_a = (total / (1.0 + 1.0 / fragment_ratio)) / fragments_a
+    scale_b = (total / (1.0 + fragment_ratio)) / fragments_b
+    if min(scale_a, scale_b) <= 0:
+        raise ValueError("abundance ratio gives a class with zero expected fragments")
+    for t in class_a:
+        expected[t] *= scale_a
+    for t in class_b:
+        expected[t] *= scale_b
+
+
+def _draw_counts(expected, rng):
+    return {t: int(rng.poisson(mean)) for t, mean in expected.items()}
+
+
+def flat_fragment_expectations(sequences, tpm, depth_scale, mean_efflen):
+    """Expected counts at one common TPM, before class rescaling or sampling."""
+    return {t: I.expected_informative_reads(
+        1.0, tpm, len(seq), depth=30e6 * depth_scale, mean_efflen=mean_efflen,
+        frag_mean=FRAG_MEAN) for t, seq in sequences.items()}
+
+
 def transcript_fragment_counts(gene, tpm, depth_scale, ratio, rng,
-                               mean_efflen=I.DEFAULT_MEAN_EFFLEN, expectations=False):
+                               mean_efflen=I.DEFAULT_MEAN_EFFLEN, expectations=False,
+                               *, abundance_ratio=None):
     """Expected fragments per transcript, then a Poisson draw around it.
 
     The expectation comes from the package's own
@@ -116,32 +172,36 @@ def transcript_fragment_counts(gene, tpm, depth_scale, ratio, rng,
     the prediction assumed -- a 0.82x error in the realised SD, comfortably inside the
     checkpoint's own tolerance and therefore silent.  One formula, one place.
 
-    Flat in TPM within a class, as the survey's own precision figures assume; the two
-    classes of ``primary_comparison`` are scaled to meet ``ratio`` while the gene's
-    expected total is held fixed, and everything else in the gene keeps the base rate.
+    Flat in TPM within a class, as the survey's own precision figures assume. A target
+    ratio rescales the two classes of ``primary_comparison`` at a fixed expected gene total.
+    ``ratio`` is a fragment ratio and ``abundance_ratio`` uses the simulator's effective length.
+    Everything else in the gene keeps the base rate.
     """
     seqs, groups, pc = gene["seqs"], gene["groups"], gene["pc"]
-    base = {t: I.expected_informative_reads(
-        1.0, tpm, len(s), depth=30e6 * depth_scale,
-        mean_efflen=mean_efflen, frag_mean=FRAG_MEAN) for t, s in seqs.items()}
+    base = flat_fragment_expectations(seqs, tpm, depth_scale, mean_efflen)
 
-    in_a = set(groups[pc[0]])
-    in_b = set(groups[pc[1]])
-    mass_a = sum(base[t] for t in in_a)
-    mass_b = sum(base[t] for t in in_b)
-    if ratio is not None and mass_a > 0 and mass_b > 0:
-        # hold (mass_a + mass_b) fixed, move the split to `ratio`
-        total = mass_a + mass_b
-        want_a = total * ratio / (1.0 + ratio)
-        want_b = total - want_a
-        for t in in_a:
-            base[t] *= want_a / mass_a
-        for t in in_b:
-            base[t] *= want_b / mass_b
+    if abundance_ratio is not None:
+        if ratio is not None:
+            raise ValueError("choose either a fragment ratio or an abundance ratio")
+        _set_abundance_ratio(gene, base, abundance_ratio)
+    else:
+        in_a = set(groups[pc[0]])
+        in_b = set(groups[pc[1]])
+        mass_a = sum(base[t] for t in in_a)
+        mass_b = sum(base[t] for t in in_b)
+        if ratio is not None and mass_a > 0 and mass_b > 0:
+            # hold (mass_a + mass_b) fixed, move the split to `ratio`
+            total = mass_a + mass_b
+            want_a = total * ratio / (1.0 + ratio)
+            want_b = total - want_a
+            for t in in_a:
+                base[t] *= want_a / mass_a
+            for t in in_b:
+                base[t] *= want_b / mass_b
 
     if expectations:
         return base
-    return {t: int(rng.poisson(v)) for t, v in base.items()}
+    return _draw_counts(base, rng)
 
 
 def draw_fragments(seq, n, rng, bias_5p=0.0):
@@ -239,13 +299,15 @@ def main(argv=None):
                     help="the inputs bundle, validation/data/sweep116.json.gz, in place of "
                          "RUNDIR")
     ap.add_argument("--depth-scale", type=float, default=1.0)
-    ap.add_argument("--ratio", type=float, default=None,
-                    help="true class A : class B, with the gene total held fixed. Omit "
-                         "for the neutral case -- flat TPM, which is what the package's "
-                         "own precision figure assumes. Setting it moves the Poisson "
-                         "weights, so the prediction must be recomputed from these "
-                         "abundances rather than taken from analyze()")
+    ratios = ap.add_mutually_exclusive_group()
+    ratios.add_argument("--ratio", type=float, default=None,
+                        help="target class A:B ratio of expected fragments at fixed gene total")
+    ratios.add_argument("--abundance-ratio", type=float, default=None,
+                        help="target class A:B ratio after the simulator's effective-length "
+                             "correction, before sampling, at fixed expected gene fragments")
     ap.add_argument("--replicate", type=int, default=0)
+    ap.add_argument("--seed-offset", type=int, default=0,
+                    help="add an offset to the historical replicate seed")
     ap.add_argument("--tpm", type=float, default=10.0)
     ap.add_argument("--bias-5p", type=float, default=0.0,
                     help="positional coverage skew: >0 toward the 5' end, <0 toward "
@@ -254,28 +316,57 @@ def main(argv=None):
                     help="must match what the prediction is computed with; the default "
                          "is the package's own")
     ap.add_argument("--genes", default=None)
+    ap.add_argument("--competitors", help="JSON mapping of additional transcript IDs to sequences")
     a = ap.parse_args(argv)
     if (a.rundir is None) == (a.inputs is None):
         ap.error("give exactly one of RUNDIR and --inputs")
+    if a.seed_offset < 0:
+        ap.error("--seed-offset must be nonnegative")
+    if a.abundance_ratio is not None and (
+            not math.isfinite(a.abundance_ratio) or a.abundance_ratio <= 0):
+        ap.error("--abundance-ratio must be finite and positive")
 
     only = set(a.genes.split(",")) if a.genes else None
     genes = load_genes(a.rundir, only, a.inputs)
     if not genes:
         sys.exit("no genes found in %s" % (a.rundir or a.inputs))
+    competitors = {}
+    if a.competitors:
+        with open(a.competitors, encoding="utf-8") as source:
+            competitors = json.load(source)
+        supplied = {t for g in genes.values() for t in g["seqs"]}
+        if not isinstance(competitors, dict) or any(
+                not t or t.split(".")[0] != t or t in supplied
+                or not isinstance(seq, str) or len(seq) < READ_LEN
+                for t, seq in competitors.items()):
+            ap.error("competitors need distinct, unversioned outside IDs and read-length sequences")
+    # Validate every mix before opening files for this replicate, which may already exist.
+    expected = {}
+    for gene, g in genes.items():
+        try:
+            expected[gene] = transcript_fragment_counts(
+                g, a.tpm, a.depth_scale, a.ratio, None, a.mean_efflen,
+                expectations=True, abundance_ratio=a.abundance_ratio)
+        except ValueError as error:
+            ap.error(f"{gene}: {error}")
     os.makedirs(a.outdir, exist_ok=True)
-    rng = np.random.default_rng(a.replicate * 7919 + 13)
+    seed = a.replicate * 7919 + 13 + a.seed_offset
+    rng = np.random.default_rng(seed)
 
     truth = {"replicate": a.replicate, "depth_scale": a.depth_scale, "ratio": a.ratio,
              "tpm": a.tpm, "bias_5p": a.bias_5p, "read_length": READ_LEN,
              "frag_mean": FRAG_MEAN, "frag_sd": FRAG_SD, "error_rate": ERROR_RATE,
              "mean_efflen": a.mean_efflen,
              "genes": {}}
+    if a.abundance_ratio is not None:
+        truth["abundance_ratio"] = a.abundance_ratio
+    if a.seed_offset:
+        truth["seed"] = seed
     base = os.path.join(a.outdir, "rep%d" % a.replicate)
     total = 0
     with gzip.open(base + "_1.fq.gz", "wt") as f1, gzip.open(base + "_2.fq.gz", "wt") as f2:
         for gene, g in sorted(genes.items()):
-            counts = transcript_fragment_counts(g, a.tpm, a.depth_scale, a.ratio, rng,
-                                                a.mean_efflen)
+            counts = _draw_counts(expected[gene], rng)
             wrote = emit(g["seqs"], counts, rng, f1, f2,
                          "%s_r%d" % (gene, a.replicate), a.bias_5p)
             n = sum(wrote.values())
@@ -292,6 +383,12 @@ def main(argv=None):
                                     else None),
                 "fragments_written": n,
             }
+        if competitors:
+            rates = flat_fragment_expectations(competitors, a.tpm, a.depth_scale, a.mean_efflen)
+            truth["competitor_fragments"] = emit(
+                competitors, _draw_counts(rates, rng), rng, f1, f2,
+                "outside_r%d" % a.replicate, a.bias_5p)
+            total += sum(truth["competitor_fragments"].values())
     truth["fragments_written"] = total
     json.dump(truth, open(base + ".truth.json", "w"))
     print("replicate %d: %d genes, %d fragment pairs -> %s_{1,2}.fq.gz"

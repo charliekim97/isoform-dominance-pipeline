@@ -69,6 +69,83 @@ python validation/run_simulation.py run --inputs validation/data/sweep116.json.g
 python validation/gate_3_0.py c1_d1_tpm.json    # exit status 0: passes, 1: fails, 2: not graded
 ```
 
+### Checking an abundance target
+
+The simulator sets a class abundance ratio with `--abundance-ratio`, using its own
+fragment effective lengths. The target is an expectation before fragment sampling,
+at a fixed expected gene fragment total. The truth JSON records the target alongside
+the realised fragment counts.
+
+```bash
+python validation/simulate_reads.py sim-check --inputs validation/data/sweep116.json.gz \
+    --genes LEPR,NTRK2 --depth-scale 0.1 --abundance-ratio 4
+```
+
+The same option on `run_simulation.py run` also computes fragment and abundance
+standard errors using the expected transcript counts at that mix. The prediction
+uses the supplied transcripts of each gene, including separate columns for simulated
+transcript IDs that share a sequence. Each supplied transcript must be at least
+one read long to emit fragments. The abundance coefficients use window positions,
+as in the package. The observed TPM errors continue to use the quantifier's
+effective-length convention in `tpm_truth`. These are same-gene pilot predictions.
+The historical 3.0 and D1 graders require the stored design.
+
+```bash
+python validation/run_simulation.py run --inputs validation/data/sweep116.json.gz \
+    --index salmon_idx --work sim-mix4 --abundance-ratio 4 --out sim-mix4.json
+```
+
+### Piloting the reference-index design
+
+Build a fresh Salmon index with `--record-reference`, then pass the same file to
+`run --background-fasta`. The harness checks the FASTA digest, index metadata and the
+index hashes reported by every quantification. The model scans this FASTA for
+competitor columns and excludes windows shared with records left out of the model.
+Additional competitor IDs are simulated once per library at the common transcript
+TPM. A competitor already present in a comparison uses that transcript's simulated
+rate. Replicate truth files record the extra fragment counts separately.
+
+```bash
+python validation/run_simulation.py index --fasta reference.fa.gz \
+    --index salmon-reference --record-reference
+python validation/run_simulation.py run --inputs validation/data/sweep116.json.gz \
+    --index salmon-reference --background-fasta reference.fa.gz \
+    --work sim-reference-mix4 --abundance-ratio 4 --out sim-reference-mix4.json
+```
+
+This path supports a flat mix by omitting `--abundance-ratio`. It is a pilot run path.
+
+### Freezing the G2 comparison
+
+Run the G2 commands from the checkout using `python -m validation.gate_g2`. The
+`freeze` command computes predictions from the archived 49-gene bundle and verified
+Ensembl 116 reference-chromosome FASTA. It writes a new JSON plan and prints its
+SHA-256 before any reads are generated. Keep that digest with the plan. The full
+reference index can be built separately using the same FASTA with `--record-reference`.
+
+```bash
+python -m validation.gate_g2 freeze --inputs validation/data/sweep116.json.gz \
+    --background-fasta reference.fa.gz --out g2-predictions.json
+```
+
+The conditions are `flat` (equal TPM per transcript), `a4` (class abundance 4:1)
+and `b4` (1:4), in that order. The 30 seeds per condition are
+`7919 * replicate + 13 + 1000003 * (condition_number + 1)`, with both counters
+starting at zero. `run` takes the plan, its saved SHA-256, the condition name,
+the inputs, the reference FASTA, and the recorded index. Each condition uses a new work
+directory and result path outside it. The plan pins the executable code and NumPy
+version for read generation. `grade` expects all three results and the same plan digest.
+
+Every condition must have absolute bias below frozen abundance SE for all six
+primary contrasts and observed SD below SE for at least five. The corresponding
+control cutoffs are 37 and 32 of 41. Absolute bias at least twice the frozen SE in
+any graded contrast fails the condition. Missing contrasts or fewer than three
+usable replicates fail both thresholds. Beyond-linear predictions are marked and
+graded by their frozen numeric SE. SMN2 and TSC1 are reported descriptively.
+
+The [completed G2 comparison](g2/README.md) records the grade, frozen plan,
+condition results and reproduction commands.
+
 ## The panel
 
 Every figure below except the row check and the survey, which cover all 49 genes, is over one panel: the genes with a row in all seven Salmon designs, 47 of the 49. A gene has no

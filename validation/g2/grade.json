@@ -1,0 +1,992 @@
+{
+ "passes": true,
+ "conditions": {
+  "flat": {
+   "passes": true,
+   "primary": {
+    "bias_below_se": 6,
+    "sd_below_se": 6,
+    "gross": [],
+    "passes": true,
+    "genes": {
+     "CANX": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "GNAS": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "NTRK2": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "NTRK3": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "TNFRSF1B": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "VEGFA": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     }
+    }
+   },
+   "control": {
+    "bias_below_se": 41,
+    "sd_below_se": 39,
+    "gross": [],
+    "passes": true,
+    "genes": {
+     "ALDOA": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "AR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "AXIN1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "CASP9": {
+      "bias_below_se": true,
+      "sd_below_se": false,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "CCND1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "CD40": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "CD44": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "COX5A": {
+      "bias_below_se": true,
+      "sd_below_se": false,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "CS": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "CSF1R": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "DMD": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "ECHS1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "EPOR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 25
+     },
+     "ERBB4": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "ESR1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "FASN": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "FLT1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "FOXO1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "GHR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "HK1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "IGF1R": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "IL1R2": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "IL6R": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "INSR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "JAG1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "LDHA": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "LEPR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "MCL1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "MET": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "NDUFS1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "NR1H3": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "PFKL": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 3
+     },
+     "PIK3CA": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "PPARG": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "PTPRC": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "SLC2A1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "SREBF1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "TGFB1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "TNFRSF1A": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "TP53": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "TPI1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     }
+    }
+   },
+   "report_only": {
+    "SMN2": {
+     "gene": "SMN2",
+     "n": 30,
+     "realised_sd": 0.6272677709885449,
+     "bias": -0.0677883231547095,
+     "rmse": 0.6184513171454507,
+     "beyond_linear": true,
+     "conditioning": null,
+     "estimable": false,
+     "min_resolvable_log2fc": null,
+     "predicted_se": null,
+     "verdict": "not_identifiable"
+    },
+    "TSC1": {
+     "gene": "TSC1",
+     "n": 30,
+     "realised_sd": 0.1986472051405556,
+     "bias": -0.1043143335276856,
+     "rmse": 0.2317192863757523,
+     "beyond_linear": true,
+     "conditioning": null,
+     "estimable": false,
+     "min_resolvable_log2fc": null,
+     "predicted_se": null,
+     "verdict": "not_identifiable"
+    }
+   }
+  },
+  "a4": {
+   "passes": true,
+   "primary": {
+    "bias_below_se": 6,
+    "sd_below_se": 6,
+    "gross": [],
+    "passes": true,
+    "genes": {
+     "CANX": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "GNAS": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "NTRK2": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "NTRK3": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "TNFRSF1B": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "VEGFA": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     }
+    }
+   },
+   "control": {
+    "bias_below_se": 41,
+    "sd_below_se": 39,
+    "gross": [],
+    "passes": true,
+    "genes": {
+     "ALDOA": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "AR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "AXIN1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "CASP9": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "CCND1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "CD40": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "CD44": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "COX5A": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "CS": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "CSF1R": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "DMD": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "ECHS1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "EPOR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "ERBB4": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "ESR1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "FASN": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "FLT1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "FOXO1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "GHR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "HK1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "IGF1R": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "IL1R2": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "IL6R": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "INSR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "JAG1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "LDHA": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "LEPR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "MCL1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "MET": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "NDUFS1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "NR1H3": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "PFKL": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "PIK3CA": {
+      "bias_below_se": true,
+      "sd_below_se": false,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "PPARG": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "PTPRC": {
+      "bias_below_se": true,
+      "sd_below_se": false,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "SLC2A1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "SREBF1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "TGFB1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "TNFRSF1A": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "TP53": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "TPI1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     }
+    }
+   },
+   "report_only": {
+    "SMN2": {
+     "gene": "SMN2",
+     "n": 30,
+     "realised_sd": 0.716383048984552,
+     "bias": 2.646753430774404,
+     "rmse": 2.7856852215577024,
+     "beyond_linear": true,
+     "conditioning": null,
+     "estimable": false,
+     "min_resolvable_log2fc": null,
+     "predicted_se": null,
+     "verdict": "not_identifiable"
+    },
+    "TSC1": {
+     "gene": "TSC1",
+     "n": 30,
+     "realised_sd": 0.06342074036803245,
+     "bias": 0.018028574920834095,
+     "rmse": 0.06707583997848832,
+     "beyond_linear": true,
+     "conditioning": null,
+     "estimable": false,
+     "min_resolvable_log2fc": null,
+     "predicted_se": null,
+     "verdict": "not_identifiable"
+    }
+   }
+  },
+  "b4": {
+   "passes": true,
+   "primary": {
+    "bias_below_se": 6,
+    "sd_below_se": 6,
+    "gross": [],
+    "passes": true,
+    "genes": {
+     "CANX": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "GNAS": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "NTRK2": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "NTRK3": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "TNFRSF1B": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "VEGFA": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     }
+    }
+   },
+   "control": {
+    "bias_below_se": 41,
+    "sd_below_se": 38,
+    "gross": [],
+    "passes": true,
+    "genes": {
+     "ALDOA": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "AR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "AXIN1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "CASP9": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "CCND1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "CD40": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "CD44": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "COX5A": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "CS": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "CSF1R": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "DMD": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "ECHS1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "EPOR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 28
+     },
+     "ERBB4": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "ESR1": {
+      "bias_below_se": true,
+      "sd_below_se": false,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "FASN": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "FLT1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "FOXO1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "GHR": {
+      "bias_below_se": true,
+      "sd_below_se": false,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "HK1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "IGF1R": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "IL1R2": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "IL6R": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "INSR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "JAG1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "LDHA": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "LEPR": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "MCL1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "MET": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "NDUFS1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "NR1H3": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     },
+     "PFKL": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 20
+     },
+     "PIK3CA": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "PPARG": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "PTPRC": {
+      "bias_below_se": true,
+      "sd_below_se": false,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "SLC2A1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "SREBF1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "TGFB1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "TNFRSF1A": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "TP53": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": false,
+      "usable_replicates": 30
+     },
+     "TPI1": {
+      "bias_below_se": true,
+      "sd_below_se": true,
+      "beyond_linear": true,
+      "usable_replicates": 30
+     }
+    }
+   },
+   "report_only": {
+    "SMN2": {
+     "gene": "SMN2",
+     "n": 30,
+     "realised_sd": 0.6471084224233064,
+     "bias": -0.33538872828942834,
+     "rmse": 0.8101627153419542,
+     "beyond_linear": true,
+     "conditioning": null,
+     "estimable": false,
+     "min_resolvable_log2fc": null,
+     "predicted_se": null,
+     "verdict": "not_identifiable"
+    },
+    "TSC1": {
+     "gene": "TSC1",
+     "n": 30,
+     "realised_sd": 0.2995403040499856,
+     "bias": 0.04378603072573839,
+     "rmse": 0.28307068267173074,
+     "beyond_linear": true,
+     "conditioning": null,
+     "estimable": false,
+     "min_resolvable_log2fc": null,
+     "predicted_se": null,
+     "verdict": "not_identifiable"
+    }
+   }
+  }
+ }
+}
